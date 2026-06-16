@@ -198,6 +198,7 @@ export default {
     channels: '채널',
     terminal: '터미널',
     singleChat: '채팅',
+    globalAgent: 'Global Agent',
     files: '파일',
     devices: '기기',
     groupChat: '그룹 채팅',

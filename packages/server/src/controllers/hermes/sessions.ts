@@ -99,6 +99,26 @@ function denySessionAccess(ctx: any, session: any | null | undefined): boolean {
   return true
 }
 
+function isVisibleWebUiSessionSource(source?: string | null): boolean {
+  return source === 'api_server' || source === 'cli' || source === 'coding_agent'
+}
+
+function isRequestedSessionSource(source: string | undefined, sessionSource?: string | null): boolean {
+  if (source === 'global_agent') return sessionSource === 'global_agent'
+  return isVisibleWebUiSessionSource(sessionSource)
+}
+
+function isHermesHistorySessionSource(source?: string | null): boolean {
+  return source !== 'api_server' && source !== 'global_agent'
+}
+
+function isCodingAgentSession(session?: { source?: string | null; agent?: string | null; agent_session_id?: string | null } | null): boolean {
+  return session?.source === 'coding_agent' ||
+    session?.agent === 'claude' ||
+    session?.agent === 'codex' ||
+    Boolean(session?.agent_session_id)
+}
+
 interface HermesDeleteResult {
   attempted: boolean
   deleted: boolean
@@ -350,7 +370,7 @@ export async function list(ctx: any) {
   const knownProfiles = profile ? null : new Set(listProfileNamesFromDisk())
   ctx.body = {
     sessions: filterPendingDeletedSessions(filterByAllowedProfiles(ctx, allSessions).filter(s =>
-      (s.source === 'api_server' || s.source === 'cli' || s.source === 'coding_agent') &&
+      isRequestedSessionSource(source, s.source) &&
       (!knownProfiles || knownProfiles.has(s.profile || 'default')),
     )),
   }
@@ -372,18 +392,20 @@ export async function listHermesSessions(ctx: any) {
       ...(profile ? { ...session, profile } : session),
       webui_imported: importedIds.has(session.id),
     }))
-  ctx.body = { sessions: filterPendingDeletedSessions(filterByAllowedProfiles(ctx, allSessions).filter(s => s.source !== 'api_server')) }
+  ctx.body = { sessions: filterPendingDeletedSessions(filterByAllowedProfiles(ctx, allSessions).filter(s => isHermesHistorySessionSource(s.source))) }
 }
 
 export async function search(ctx: any) {
   const q = typeof ctx.query.q === 'string' ? ctx.query.q : ''
+  const source = (ctx.query.source as string) || undefined
   const limit = ctx.query.limit ? parseInt(ctx.query.limit as string, 10) : undefined
   const profile = explicitProfileFilter(ctx)
   const results = localSearchSessions(profile, q, limit && limit > 0 ? limit : 20)
   const knownProfiles = profile ? null : new Set(listProfileNamesFromDisk())
   ctx.body = {
     results: filterPendingDeletedSessions(filterByAllowedProfiles(ctx, results).filter(s =>
-      !knownProfiles || knownProfiles.has(s.profile || 'default'),
+      isRequestedSessionSource(source, s.source) &&
+      (!knownProfiles || knownProfiles.has(s.profile || 'default')),
     )),
   }
 }
@@ -411,7 +433,7 @@ export async function getHermesSession(ctx: any) {
   // used by chat rendering and compression.
   const localSession = localGetSessionDetail(ctx.params.id)
   const localSessionProfile = (localSession?.profile || 'default') as string
-  if (localSession && localSession.source !== 'api_server' && (!profile || localSessionProfile === profile)) {
+  if (localSession && isHermesHistorySessionSource(localSession.source) && (!profile || localSessionProfile === profile)) {
     if (denySessionAccess(ctx, localSession)) return
     ctx.body = { session: localSession }
     return
@@ -422,7 +444,7 @@ export async function getHermesSession(ctx: any) {
     const session = profile
       ? await getSessionDetailFromDbWithProfile(ctx.params.id, profile)
       : await getSessionDetailFromDb(ctx.params.id)
-    if (session && session.source !== 'api_server') {
+    if (session && isHermesHistorySessionSource(session.source)) {
       const sessionWithProfile = profile ? { ...session, profile } : session
       if (denySessionAccess(ctx, sessionWithProfile)) return
       ctx.body = { session: sessionWithProfile }
@@ -439,8 +461,8 @@ export async function getHermesSession(ctx: any) {
     ctx.body = { error: 'Session not found' }
     return
   }
-  // Filter out api_server sessions
-  if (session.source === 'api_server') {
+  // Filter out Web UI-only session sources.
+  if (!isHermesHistorySessionSource(session.source)) {
     ctx.status = 404
     ctx.body = { error: 'Session not found' }
     return
@@ -542,9 +564,9 @@ export async function remove(ctx: any) {
   const existing = localGetSession(sessionId)
   if (denySessionAccess(ctx, existing)) return
   const hermesProfile = requestedProfile(ctx) || existing?.profile || getActiveProfileName()
-  const isCodingAgentSession = existing?.source === 'coding_agent'
-  if (isCodingAgentSession) codingAgentRunManager.stop(sessionId, { reportClosed: false })
-  const hermes = isCodingAgentSession
+  const codingAgentSession = isCodingAgentSession(existing)
+  if (codingAgentSession) codingAgentRunManager.stop(sessionId, { reportClosed: false })
+  const hermes = codingAgentSession
     ? { attempted: false, deleted: false, profile: hermesProfile }
     : await deleteHermesSessionIfPresent(sessionId, hermesProfile)
   const localDeleted = existing ? localDeleteSession(sessionId) : true
@@ -612,9 +634,9 @@ export async function batchRemove(ctx: any) {
       continue
     }
 
-    const isCodingAgentSession = existing?.source === 'coding_agent'
-    if (isCodingAgentSession) codingAgentRunManager.stop(id, { reportClosed: false })
-    const hermes = isCodingAgentSession
+    const codingAgentSession = isCodingAgentSession(existing)
+    if (codingAgentSession) codingAgentRunManager.stop(id, { reportClosed: false })
+    const hermes = codingAgentSession
       ? { attempted: false, deleted: false, profile: targetProfile || 'default' }
       : await deleteHermesSessionIfPresent(id, targetProfile)
     if (hermes.deleted) {

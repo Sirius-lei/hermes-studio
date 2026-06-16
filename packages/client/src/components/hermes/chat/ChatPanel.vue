@@ -95,7 +95,7 @@ const toolPanelStyle = computed(() => ({
 
 function sessionHref(sessionId: string) {
   return router.resolve({
-    name: "hermes.session",
+    name: chatStore.runtimeMode === "global_agent" ? "hermes.globalAgentSession" : "hermes.session",
     params: { sessionId },
   }).href;
 }
@@ -151,7 +151,7 @@ function startToolResize(event: PointerEvent) {
 async function handleSessionClick(sessionId: string) {
   chatStore.clearSessionCompletedUnread(sessionId);
   await router.push({
-    name: "hermes.session",
+    name: chatStore.runtimeMode === "global_agent" ? "hermes.globalAgentSession" : "hermes.session",
     params: { sessionId },
   });
   if (mobileQuery?.matches) showSessions.value = false;
@@ -514,7 +514,7 @@ async function confirmNewChat() {
     apiMode: source === "coding_agent" && !isGlobalCodingAgent ? newChatApiMode.value : undefined,
   });
   await router.push({
-    name: "hermes.session",
+    name: chatStore.runtimeMode === "global_agent" ? "hermes.globalAgentSession" : "hermes.session",
     params: { sessionId: session.id },
   });
   showNewChatModal.value = false;
@@ -526,7 +526,7 @@ function sessionProfile(sessionId: string): string | null {
 
 function buildSessionUrl(sessionId: string, profile?: string | null): string {
   const href = router.resolve({
-    name: "hermes.session",
+    name: chatStore.runtimeMode === "global_agent" ? "hermes.globalAgentSession" : "hermes.session",
     params: { sessionId },
     query: profile ? { profile } : undefined,
   }).href;
@@ -990,7 +990,7 @@ async function handleSessionModelCustomSubmit() {
     >
       <div v-if="showSessions" class="page-sidebar-top">
         <PageSidebarNav
-          active="chat"
+          :active="chatStore.runtimeMode === 'global_agent' ? 'global' : 'chat'"
           :primary-label="t('chat.newChat')"
           @primary="openNewChatModal"
         />

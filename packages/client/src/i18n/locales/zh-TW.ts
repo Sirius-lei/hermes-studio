@@ -200,6 +200,7 @@ export default {
     gateways: '閘道',
     terminal: '終端機',
     singleChat: '單聊',
+    globalAgent: '全局',
     groupChat: '群聊',
     files: '檔案',
     devices: '裝置',

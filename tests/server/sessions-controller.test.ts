@@ -309,6 +309,24 @@ describe('session conversations controller', () => {
     expect(localListSessionsMock).toHaveBeenCalledWith('travel', undefined, 2000)
   })
 
+  it('lists only global-agent sessions when requested by source', async () => {
+    localListSessionsMock.mockReturnValue([
+      { id: 'global-1', profile: 'default', source: 'global_agent' },
+      { id: 'chat-1', profile: 'default', source: 'cli' },
+    ])
+
+    const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+    const ctx: any = {
+      query: { source: 'global_agent' },
+      state: {},
+      body: null,
+    }
+    await mod.list(ctx)
+
+    expect(localListSessionsMock).toHaveBeenCalledWith(undefined, 'global_agent', 2000)
+    expect(ctx.body.sessions).toEqual([expect.objectContaining({ id: 'global-1', source: 'global_agent' })])
+  })
+
   it('marks Hermes history sessions that already exist in the Web UI store', async () => {
     localListSessionsMock.mockReturnValue([{ id: 'cli-1', profile: 'travel' }])
     listSessionSummariesMock.mockResolvedValue([
@@ -381,6 +399,24 @@ describe('session conversations controller', () => {
     await mod.search(ctx)
 
     expect(localSearchSessionsMock).toHaveBeenCalledWith(undefined, 'docker', 10)
+  })
+
+  it('searches only global-agent sessions when requested by source', async () => {
+    localSearchSessionsMock.mockReturnValue([
+      { id: 'global-1', profile: 'default', source: 'global_agent' },
+      { id: 'chat-1', profile: 'default', source: 'cli' },
+    ])
+
+    const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+    const ctx: any = {
+      query: { q: 'docker', source: 'global_agent', limit: '10' },
+      state: {},
+      body: null,
+    }
+    await mod.search(ctx)
+
+    expect(localSearchSessionsMock).toHaveBeenCalledWith(undefined, 'docker', 10)
+    expect(ctx.body.results).toEqual([expect.objectContaining({ id: 'global-1', source: 'global_agent' })])
   })
 
   it('propagates local session store errors for conversation summaries', async () => {
