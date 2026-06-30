@@ -43,6 +43,7 @@ import TerminalPanel from "./TerminalPanel.vue";
 import PageSidebarNav from "@/components/layout/PageSidebarNav.vue";
 import SettingsCircuitBadge from "@/components/layout/SettingsCircuitBadge.vue";
 import { isStoredSuperAdmin } from "@/api/client";
+import { SUB_AGENT_STORAGE_EVENT, readStoredSubAgents } from "@/utils/subagent-storage";
 
 const chatStore = useChatStore();
 const appStore = useAppStore();
@@ -81,7 +82,6 @@ type MultiAgentPlanTask = {
   status: "todo" | "doing" | "done" | "blocked"
 }
 
-const SUB_AGENT_STORAGE_KEY = "hermes.subAgents.frontendDraft.v4";
 const multiAgentMode = ref(false);
 const multiAgentAgents = ref<MultiAgentCandidate[]>([]);
 const multiAgentRunOptions = computed<MultiAgentRunOptions | null>(() => {
@@ -145,20 +145,43 @@ const multiAgentObjectiveText = computed(() => {
   return route.objective || route.reason || route.text || "";
 });
 
-const multiAgentRouteNote = computed(() => {
-  const route = multiAgentRuntimeRoute.value;
-  if (!route) return "";
-  return route.text || route.reason || "";
-});
-
 const multiAgentActivity = computed<MultiAgentExecutionEventState[]>(() =>
   multiAgentRuntimeRoute.value?.activity || [],
 );
+
+const multiAgentRecentActivity = computed<MultiAgentExecutionEventState[]>(() =>
+  multiAgentActivity.value.slice(-5),
+);
+
+const multiAgentProcessEntries = computed(() => {
+  const route = multiAgentRuntimeRoute.value;
+  const entries: string[] = [];
+  if (!route) {
+    if (chatStore.isStreaming) entries.push("等待主智能体生成任务规划...");
+    return entries;
+  }
+  if (route.reason) entries.push(`目标分析：${route.reason}`);
+  if (activePlanTask.value) {
+    entries.push(
+      `当前节点：${activePlanTask.value.title} [${activePlanTask.value.phase}] -> ${multiAgentTaskStatusLabel(activePlanTask.value.status)}`,
+    );
+    if (activePlanTask.value.summary) entries.push(`节点说明：${activePlanTask.value.summary}`);
+  }
+  for (const activity of multiAgentRecentActivity.value) {
+    const suffix = [activity.agentName, activity.toolName].filter(Boolean).join(" / ");
+    const activityText = `${activity.title}${suffix ? ` (${suffix})` : ""}：${activity.text || multiAgentActivityStatusLabel(activity.status)}`;
+    entries.push(activityText.length > 180 ? `${activityText.slice(0, 177)}...` : activityText);
+  }
+  if (entries.length === 0) entries.push("当前消息暂未进入多节点执行，等待主智能体继续处理。");
+  return entries;
+});
 
 const multiAgentStatusText = computed(() => {
   if (!multiAgentMode.value) return "未开启";
   const route = multiAgentRuntimeRoute.value;
   if (!route) return chatStore.isStreaming ? "规划中" : "等待下一条消息";
+  if (route.currentNodeId === "understand") return "主智能体分析中";
+  if (route.currentNodeId === "route") return "执行路径规划中";
   if (route.status === "failed") return "执行失败";
   if (route.status === "completed") return "已完成";
   if (route.currentNodeId === "respond") return "结果汇总中";
@@ -191,6 +214,26 @@ function multiAgentActivityStatusLabel(status: MultiAgentExecutionEventState["st
     default:
       return "已记录";
   }
+}
+
+function multiAgentConnectorState(taskIndex: number, direction: "before" | "after") {
+  const tasks = displayedMultiAgentTasks.value;
+  if (direction === "before") {
+    if (taskIndex <= 0) return "hidden";
+    const previous = tasks[taskIndex - 1];
+    if (!previous) return "hidden";
+    if (previous.status === "done") return "done";
+    if (previous.status === "blocked") return "blocked";
+    if (previous.status === "doing") return "running";
+    return "idle";
+  }
+  if (taskIndex >= tasks.length - 1) return "hidden";
+  const current = tasks[taskIndex];
+  if (!current) return "hidden";
+  if (current.status === "done") return "done";
+  if (current.status === "blocked") return "blocked";
+  if (current.status === "doing") return "running";
+  return "idle";
 }
 
 const showOutline = ref(false);
@@ -241,8 +284,7 @@ function normalizeMultiAgentSkillList(value: unknown): MultiAgentSkill[] {
 
 function refreshMultiAgentAgents() {
   try {
-    const raw = window.localStorage.getItem(SUB_AGENT_STORAGE_KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
+    const parsed = readStoredSubAgents<any>();
     if (!Array.isArray(parsed)) {
       multiAgentAgents.value = [];
       return;
@@ -413,6 +455,8 @@ onMounted(() => {
   mobileQuery.addEventListener("change", handleMobileChange);
   window.addEventListener("hermes:open-page-sidebar", openPageSidebar);
   window.addEventListener("resize", handleToolPanelViewportResize);
+  window.addEventListener("storage", refreshMultiAgentAgents);
+  window.addEventListener(SUB_AGENT_STORAGE_EVENT, refreshMultiAgentAgents);
   handleToolPanelViewportResize();
   refreshMultiAgentAgents();
   if (profilesStore.profiles.length === 0) {
@@ -424,6 +468,8 @@ onUnmounted(() => {
   mobileQuery?.removeEventListener("change", handleMobileChange);
   window.removeEventListener("hermes:open-page-sidebar", openPageSidebar);
   window.removeEventListener("resize", handleToolPanelViewportResize);
+  window.removeEventListener("storage", refreshMultiAgentAgents);
+  window.removeEventListener(SUB_AGENT_STORAGE_EVENT, refreshMultiAgentAgents);
   stopToolResize();
 });
 watch(showToolPanel, async (visible) => {
@@ -1967,24 +2013,12 @@ async function handleSessionModelCustomSubmit() {
                     <strong>{{ multiAgentStatusText }}</strong>
                   </div>
                 </div>
-                <div v-if="activePlanTask" class="multi-agent-current-card" data-testid="multi-agent-current-node">
-                  <div class="multi-agent-current-card-head">
-                    <span>当前节点</span>
-                    <strong>{{ activePlanTask.title }}</strong>
+                <div v-if="displayedMultiAgentTasks.length" class="multi-agent-canvas-shell">
+                  <div class="multi-agent-canvas-head">
+                    <strong>协作画布</strong>
+                    <span>{{ activePlanTask ? `节点 ${activePlanTask.index}` : "等待执行" }}</span>
                   </div>
-                  <div class="multi-agent-current-card-meta">
-                    <span>{{ activePlanTask.phase }}</span>
-                    <span>{{ activePlanTask.agentName }}</span>
-                    <span :class="['multi-agent-status-chip', `is-${activePlanTask.status}`]">
-                      {{ multiAgentTaskStatusLabel(activePlanTask.status) }}
-                    </span>
-                  </div>
-                  <p>{{ activePlanTask.summary }}</p>
-                </div>
-                <div v-if="multiAgentRouteNote" class="multi-agent-plain">
-                  {{ multiAgentRouteNote }}
-                </div>
-                <div v-if="displayedMultiAgentTasks.length" class="multi-agent-task-list">
+                  <div class="multi-agent-task-list">
                   <article
                     v-for="(task, taskIndex) in displayedMultiAgentTasks"
                     :key="task.id"
@@ -1997,20 +2031,42 @@ async function handleSessionModelCustomSubmit() {
                     }"
                   >
                     <div class="multi-agent-task-rail" aria-hidden="true">
-                      <svg class="multi-agent-task-svg" viewBox="0 0 32 128" preserveAspectRatio="none">
-                        <path
-                          v-if="taskIndex > 0"
-                          class="multi-agent-task-path"
-                          d="M16 0 L16 34"
-                        />
-                        <path
-                          v-if="taskIndex < displayedMultiAgentTasks.length - 1"
-                          class="multi-agent-task-path"
-                          d="M16 50 L16 128"
-                        />
-                        <circle class="multi-agent-task-node" cx="16" cy="42" r="8" />
-                      </svg>
-                      <div class="multi-agent-task-index">{{ task.index }}</div>
+                      <div
+                        class="multi-agent-task-line-segment before"
+                        :class="`is-${multiAgentConnectorState(taskIndex, 'before')}`"
+                      ></div>
+                      <div class="multi-agent-task-glyph" :class="`is-${task.status}`">
+                        <span v-if="task.status === 'todo'" class="multi-agent-task-index">{{ task.index }}</span>
+                        <span v-else-if="task.status === 'doing'" class="multi-agent-task-spinner"></span>
+                        <svg
+                          v-else-if="task.status === 'done'"
+                          class="multi-agent-task-icon"
+                          viewBox="0 0 20 20"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                        >
+                          <path d="M4 10.5 8 14.5 16 6.5" />
+                        </svg>
+                        <svg
+                          v-else
+                          class="multi-agent-task-icon"
+                          viewBox="0 0 20 20"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          stroke-linecap="round"
+                        >
+                          <path d="M6 6 14 14" />
+                          <path d="M14 6 6 14" />
+                        </svg>
+                      </div>
+                      <div
+                        class="multi-agent-task-line-segment after"
+                        :class="`is-${multiAgentConnectorState(taskIndex, 'after')}`"
+                      ></div>
                     </div>
                     <div class="multi-agent-task-card">
                       <div class="multi-agent-task-main">
@@ -2033,6 +2089,18 @@ async function handleSessionModelCustomSubmit() {
                     </div>
                   </article>
                 </div>
+                </div>
+                <section class="multi-agent-process-box" data-testid="multi-agent-current-node">
+                  <div class="multi-agent-process-head">
+                    <strong>执行过程</strong>
+                    <span>{{ activePlanTask?.agentName || "Hermes" }}</span>
+                  </div>
+                  <div class="multi-agent-process-console">
+                    <p v-for="(entry, entryIndex) in multiAgentProcessEntries" :key="`${entryIndex}-${entry}`">
+                      {{ entry }}
+                    </p>
+                  </div>
+                </section>
                 <section v-if="multiAgentActivity.length" class="multi-agent-activity" data-testid="multi-agent-activity">
                   <div class="multi-agent-activity-head">
                     <strong>子智能体回传</strong>
@@ -2815,6 +2883,10 @@ async function handleSessionModelCustomSubmit() {
     color: $text-secondary;
     font-size: 13px;
     line-height: 1.45;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
 }
 
@@ -2862,31 +2934,22 @@ async function handleSessionModelCustomSubmit() {
   }
 }
 
-.multi-agent-current-card {
-  padding: 10px 12px;
-  border: 1px solid rgba(var(--accent-primary-rgb), 0.18);
+.multi-agent-canvas-shell,
+.multi-agent-process-box {
+  padding: 12px;
+  border: 1px solid $border-light;
   border-radius: 8px;
-  background: rgba(var(--accent-primary-rgb), 0.04);
+  background: $bg-card;
   display: grid;
-  gap: 8px;
-
-  p {
-    margin: 0;
-    color: $text-secondary;
-    font-size: 12px;
-    line-height: 1.5;
-  }
+  gap: 10px;
 }
 
-.multi-agent-current-card-head {
-  display: grid;
-  gap: 2px;
-
-  span {
-    color: $text-muted;
-    font-size: 11px;
-    line-height: 15px;
-  }
+.multi-agent-canvas-head,
+.multi-agent-process-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
 
   strong {
     color: $text-primary;
@@ -2894,19 +2957,9 @@ async function handleSessionModelCustomSubmit() {
     line-height: 18px;
     font-weight: 650;
   }
-}
-
-.multi-agent-current-card-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
 
   span {
-    min-width: 0;
-    padding: 3px 8px;
-    border-radius: 999px;
-    background: $bg-card;
-    color: $text-secondary;
+    color: $text-muted;
     font-size: 11px;
     line-height: 16px;
   }
@@ -2936,67 +2989,111 @@ async function handleSessionModelCustomSubmit() {
 
 .multi-agent-task-list {
   display: grid;
-  gap: 2px;
+  gap: 6px;
 }
 
 .multi-agent-task {
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr);
-  gap: 10px;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 12px;
   align-items: stretch;
-  min-height: 112px;
+  min-height: 124px;
 }
 
 .multi-agent-task-rail {
   position: relative;
-  min-height: 112px;
-}
-
-.multi-agent-task-svg {
-  position: absolute;
-  inset: 0;
-  width: 32px;
   height: 100%;
-  overflow: visible;
+  display: grid;
+  grid-template-rows: 1fr auto 1fr;
+  justify-items: center;
 }
 
-.multi-agent-task-path {
-  fill: none;
-  stroke: rgba(var(--accent-primary-rgb), 0.16);
-  stroke-width: 2;
-  stroke-linecap: round;
+.multi-agent-task-line-segment {
+  width: 2px;
+  height: 100%;
+  border-radius: 999px;
+  background: rgba(var(--accent-primary-rgb), 0.12);
+
+  &.is-hidden {
+    opacity: 0;
+  }
+
+  &.is-done {
+    background: rgba(var(--success-rgb), 0.42);
+  }
+
+  &.is-blocked {
+    background: rgba(var(--accent-error-rgb), 0.35);
+  }
+
+  &.is-running {
+    background: linear-gradient(
+      to bottom,
+      rgba(var(--accent-info-rgb), 0.1) 0%,
+      rgba(var(--accent-info-rgb), 0.55) 40%,
+      rgba(var(--accent-info-rgb), 0.1) 100%
+    );
+    background-size: 100% 180%;
+    animation: multi-agent-line-flow 1.1s linear infinite;
+  }
 }
 
-.multi-agent-task-node {
-  fill: $bg-card;
-  stroke: rgba(var(--accent-primary-rgb), 0.36);
-  stroke-width: 2;
+.multi-agent-task-glyph {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  border: 1px solid $border-light;
+  background: $bg-card;
+  color: $text-secondary;
+  box-shadow: 0 0 0 4px rgba(var(--accent-primary-rgb), 0.04);
+
+  &.is-doing {
+    color: var(--accent-info);
+    border-color: rgba(var(--accent-info-rgb), 0.28);
+    box-shadow: 0 0 0 4px rgba(var(--accent-info-rgb), 0.08);
+  }
+
+  &.is-done {
+    color: $success;
+    border-color: rgba(var(--success-rgb), 0.28);
+    box-shadow: 0 0 0 4px rgba(var(--success-rgb), 0.08);
+  }
+
+  &.is-blocked {
+    color: var(--accent-error);
+    border-color: rgba(var(--accent-error-rgb), 0.3);
+    box-shadow: 0 0 0 4px rgba(var(--accent-error-rgb), 0.08);
+  }
 }
 
 .multi-agent-task-index {
-  position: absolute;
-  top: 30px;
-  left: 4px;
-  width: 24px;
-  height: 24px;
-  display: grid;
-  place-items: center;
-  border-radius: 999px;
-  background: $bg-card;
-  color: $text-secondary;
-  font-size: 11px;
-  font-weight: 650;
+  font-size: 12px;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
-  border: 1px solid $border-light;
-  z-index: 1;
+}
+
+.multi-agent-task-spinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 2px solid rgba(var(--accent-info-rgb), 0.18);
+  border-top-color: var(--accent-info);
+  animation: multi-agent-spin 0.9s linear infinite;
+}
+
+.multi-agent-task-icon {
+  width: 16px;
+  height: 16px;
 }
 
 .multi-agent-task-card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(112px, 142px);
-  gap: 9px;
+  grid-template-columns: minmax(0, 1fr) minmax(118px, 152px);
+  gap: 10px;
   align-items: start;
-  padding: 10px;
+  padding: 12px;
   border: 1px solid $border-light;
   border-radius: 7px;
   background: $bg-card;
@@ -3009,17 +3106,8 @@ async function handleSessionModelCustomSubmit() {
 .multi-agent-task.active {
   .multi-agent-task-card {
     border-color: rgba(var(--accent-primary-rgb), 0.28);
-    background: rgba(var(--accent-primary-rgb), 0.03);
-  }
-
-  .multi-agent-task-node {
-    stroke: rgba(var(--accent-primary-rgb), 0.65);
-    fill: rgba(var(--accent-primary-rgb), 0.14);
-  }
-
-  .multi-agent-task-index {
-    border-color: rgba(var(--accent-primary-rgb), 0.28);
-    color: $text-primary;
+    background: rgba(var(--accent-primary-rgb), 0.035);
+    box-shadow: inset 0 0 0 1px rgba(var(--accent-primary-rgb), 0.06);
   }
 }
 
@@ -3027,21 +3115,11 @@ async function handleSessionModelCustomSubmit() {
   .multi-agent-task-card {
     border-color: rgba(var(--success-rgb), 0.2);
   }
-
-  .multi-agent-task-node {
-    stroke: rgba(var(--success-rgb), 0.42);
-    fill: rgba(var(--success-rgb), 0.12);
-  }
 }
 
 .multi-agent-task.blocked {
   .multi-agent-task-card {
     border-color: rgba(var(--accent-error-rgb), 0.22);
-  }
-
-  .multi-agent-task-node {
-    stroke: rgba(var(--accent-error-rgb), 0.4);
-    fill: rgba(var(--accent-error-rgb), 0.12);
   }
 }
 
@@ -3053,6 +3131,10 @@ async function handleSessionModelCustomSubmit() {
     color: $text-secondary;
     font-size: 12px;
     line-height: 1.45;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
 }
 
@@ -3068,7 +3150,10 @@ async function handleSessionModelCustomSubmit() {
     color: $text-primary;
     font-size: 13px;
     line-height: 18px;
-    white-space: normal;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
     overflow-wrap: anywhere;
   }
 
@@ -3083,7 +3168,7 @@ async function handleSessionModelCustomSubmit() {
 .multi-agent-task-agent {
   min-width: 0;
   justify-self: stretch;
-  padding: 6px 8px;
+  padding: 7px 9px;
   border-radius: 6px;
   background: $bg-secondary;
   color: $text-secondary;
@@ -3137,6 +3222,31 @@ async function handleSessionModelCustomSubmit() {
   }
 }
 
+.multi-agent-process-console {
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: #111318;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  max-height: 190px;
+  overflow-y: auto;
+
+  p {
+    margin: 0;
+    color: #d9dee7;
+    font-family: $font-code;
+    font-size: 11px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  p + p {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px dashed rgba(255, 255, 255, 0.08);
+  }
+}
+
 .multi-agent-plain {
   padding: 10px 12px;
   border-radius: 6px;
@@ -3168,6 +3278,22 @@ async function handleSessionModelCustomSubmit() {
     color: $text-muted;
     font-size: 11px;
     line-height: 16px;
+  }
+}
+
+@keyframes multi-agent-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes multi-agent-line-flow {
+  from {
+    background-position: 0 0;
+  }
+
+  to {
+    background-position: 0 180%;
   }
 }
 
@@ -3203,6 +3329,10 @@ async function handleSessionModelCustomSubmit() {
     line-height: 1.5;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
 }
 

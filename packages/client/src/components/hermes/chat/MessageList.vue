@@ -73,6 +73,45 @@ function stopThinkingTimer() {
 
 const isThinkingIndicatorVisible = computed(() => chatStore.isRunActive || !!chatStore.abortState);
 const formattedThinkingElapsed = computed(() => formatElapsed(thinkingElapsedMs.value));
+const activeThinkingPreview = computed(() => {
+  const messages = chatStore.messages;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.role !== "assistant" || !message.isStreaming || !message.reasoning?.trim()) continue;
+    const normalized = message.reasoning
+      .split("\n")
+      .map(line => line.trim())
+      .filter(Boolean)
+      .slice(-3)
+      .join("\n");
+    if (!normalized) return "";
+    return normalized.length > 220 ? `${normalized.slice(0, 217)}...` : normalized;
+  }
+  const sid = chatStore.activeSessionId;
+  const route = sid ? chatStore.multiAgentRoutes.get(sid) || null : null;
+  if (route?.status === "running") {
+    const recentLines = route.activity
+      .slice(-3)
+      .map((entry) => {
+        const normalized = [entry.title, entry.text].filter(Boolean).join("：").trim();
+        return normalized;
+      })
+      .filter(Boolean);
+    const stageLine = route.currentNodeId === "understand"
+      ? "主智能体正在分析需求与约束。"
+      : route.currentNodeId === "route"
+        ? "主智能体正在拆解任务并确认执行路径。"
+        : route.currentNodeId === "respond"
+          ? "主智能体正在汇总阶段成果。"
+          : route.currentNodeId
+            ? `当前执行节点：${route.planNodes.find(node => node.id === route.currentNodeId)?.title || route.currentNodeId}`
+            : "";
+    const routePreview = [stageLine, ...recentLines].filter(Boolean).join("\n");
+    if (!routePreview) return "";
+    return routePreview.length > 220 ? `${routePreview.slice(0, 217)}...` : routePreview;
+  }
+  return "";
+});
 
 const currentToolCalls = computed(() => {
   const msgs = chatStore.messages;
@@ -537,6 +576,9 @@ defineExpose({
             <div class="thinking-status-copy">
               <span class="thinking-status-label">{{ t("chat.thinkingInProgress") }}</span>
               <span class="thinking-status-time">{{ formattedThinkingElapsed }}</span>
+              <div v-if="activeThinkingPreview" class="thinking-status-preview">
+                {{ activeThinkingPreview }}
+              </div>
             </div>
           </div>
           <div v-if="visibleToolCalls.length > 0 || chatStore.compressionState || chatStore.abortState" class="tool-calls-panel">
@@ -1459,6 +1501,15 @@ defineExpose({
   row-gap: 2px;
   min-width: 0;
   min-height: 20px;
+}
+
+.thinking-status-preview {
+  width: 100%;
+  color: $text-secondary;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .thinking-status-label {

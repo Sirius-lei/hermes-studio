@@ -15,6 +15,7 @@ import { detectThinkingBoundary } from '@/utils/thinking-parser'
 import { sanitizeAgentDisplayText } from '@/utils/agent-display-text'
 import { isKnownBridgeSessionCommand } from '@/utils/hermes/bridge-session-commands'
 import { responseErrorMessage } from '@/utils/http-error'
+import { recordSubAgentInvocationComplete, recordSubAgentInvocationStart } from '@/utils/subagent-storage'
 
 // Re-export ContentBlock for convenience
 export type ContentBlock = ContentBlockImport
@@ -86,6 +87,14 @@ export interface MultiAgentRouteState {
   planNodes: MultiAgentPlanNodeState[]
   activity: MultiAgentExecutionEventState[]
 }
+
+function summarizeMultiAgentObjectiveText(value: string, maxLength = 160) {
+  const normalized = sanitizeMultiAgentText(value).replace(/\s+/g, ' ').trim()
+  if (!normalized) return ''
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 3).trimEnd()}...` : normalized
+}
+
+const RESERVED_MULTI_AGENT_NODE_IDS = new Set(['understand', 'route', 'respond'])
 
 export interface Message {
   id: string
@@ -1410,27 +1419,190 @@ export const useChatStore = defineStore('chat', () => {
     multiAgentRoutes.value = next
   }
 
+  function mutateMultiAgentRouteState(
+    sessionId: string,
+    updater: (current: MultiAgentRouteState) => MultiAgentRouteState,
+  ) {
+    const current = multiAgentRoutes.value.get(sessionId)
+    if (!current) return
+    setMultiAgentRouteState(sessionId, updater(current))
+  }
+
+  function resetMultiAgentRouteState(sessionId: string, objective: string, mode: 'delegate_subagent' | 'hermes_native' = 'hermes_native') {
+    setMultiAgentRouteState(sessionId, {
+      mode,
+      category: '规划中',
+      reason: '主智能体正在分析用户需求。',
+      text: '主智能体正在生成任务规划，请稍候。',
+      objective: summarizeMultiAgentObjectiveText(objective),
+      status: 'running',
+      currentNodeId: 'understand',
+      selectedAgentId: '',
+      selectedAgentName: '',
+      planNodes: [
+        {
+          id: 'understand',
+          title: '理解需求与约束',
+          phase: '分析',
+          status: 'doing',
+          executor: { type: 'hermes', name: 'Hermes' },
+          summary: '主智能体正在读取消息、提取目标与约束。',
+        },
+        {
+          id: 'route',
+          title: '确认执行路径',
+          phase: '路由',
+          status: 'todo',
+          executor: { type: 'hermes', name: 'Hermes' },
+          summary: '等待主智能体完成意图分析与任务拆解。',
+        },
+        {
+          id: 'respond',
+          title: '汇总阶段成果并回复用户',
+          phase: '汇总',
+          status: 'todo',
+          executor: { type: 'hermes', name: 'Hermes' },
+          summary: '等待前置节点完成后生成最终回复。',
+        },
+      ],
+      activity: [
+        {
+          id: `route:reset:${sessionId}:${Date.now()}`,
+          kind: 'route',
+          title: '主智能体开始规划',
+          text: '已清空上一轮协作画布，正在生成新的任务规划。',
+          status: 'running',
+          timestamp: Date.now(),
+        },
+      ],
+    })
+  }
+
   function appendMultiAgentActivity(
     sessionId: string,
     event: MultiAgentExecutionEventState,
   ) {
-    const current = multiAgentRoutes.value.get(sessionId)
-    if (!current) return
-    setMultiAgentRouteState(sessionId, {
+    mutateMultiAgentRouteState(sessionId, current => ({
       ...current,
       activity: [...current.activity, event].slice(-24),
+    }))
+  }
+
+  function patchMultiAgentPlanNodes(
+    sessionId: string,
+    nodeIds: string[],
+    patch: Partial<MultiAgentPlanNodeState>,
+  ) {
+    const current = multiAgentRoutes.value.get(sessionId)
+    if (!current) return
+    const idSet = new Set(nodeIds.filter(Boolean))
+    if (idSet.size === 0) return
+    const nodes = current.planNodes.map((node) => {
+      if (!idSet.has(node.id)) return node
+      return {
+        ...node,
+        ...patch,
+        executor: patch.executor
+          ? {
+              ...node.executor,
+              ...patch.executor,
+            }
+          : node.executor,
+      }
+    })
+    setMultiAgentRouteState(sessionId, {
+      ...current,
+      planNodes: nodes,
+    })
+  }
+
+  function nextRunnableMultiAgentNode(
+    route: MultiAgentRouteState,
+    options: {
+      excludeNodeIds?: string[]
+      includeRespond?: boolean
+    } = {},
+  ) {
+    const excluded = new Set(options.excludeNodeIds || [])
+    return route.planNodes.find(node => {
+      if (excluded.has(node.id)) return false
+      if (!options.includeRespond && RESERVED_MULTI_AGENT_NODE_IDS.has(node.id)) return false
+      if (node.status === 'done' || node.status === 'blocked') return false
+      return true
+    }) || null
+  }
+
+  function setMultiAgentNodeStatus(
+    sessionId: string,
+    nodeId: string,
+    patch: Partial<MultiAgentPlanNodeState>,
+  ) {
+    if (!nodeId) return
+    patchMultiAgentPlanNodes(sessionId, [nodeId], patch)
+  }
+
+  function resolveSubagentPlanNodeIds(sessionId: string, subagentId: string, explicitNodeIds: string[] = []) {
+    const current = multiAgentRoutes.value.get(sessionId)
+    if (!current) return explicitNodeIds.filter(Boolean)
+    const explicit = explicitNodeIds.filter(id => current.planNodes.some(node => node.id === id))
+    if (explicit.length > 0) return explicit
+    const matched = current.planNodes.filter(node =>
+      node.id !== 'route'
+      && node.id !== 'respond'
+      && node.executor.type === 'subagent'
+      && node.executor.id === subagentId,
+    )
+    if (matched.length === 0) return []
+    const unfinished = matched.filter(node => node.status !== 'done' && node.status !== 'blocked')
+    return (unfinished.length > 0 ? unfinished : matched).map(node => node.id)
+  }
+
+  function beginHermesPlannedExecution(sessionId: string) {
+    const current = multiAgentRoutes.value.get(sessionId)
+    if (!current || current.mode !== 'hermes_native') return
+    const nextNode = nextRunnableMultiAgentNode(current)
+    if (!nextNode) return
+    updateMultiAgentExecutionState(sessionId, {
+      nodeId: 'understand',
+      currentNodeStatus: 'done',
+    })
+    updateMultiAgentExecutionState(sessionId, {
+      nodeId: 'route',
+      currentNodeStatus: 'done',
+    })
+    updateMultiAgentExecutionState(sessionId, {
+      status: 'running',
+      currentNodeId: nextNode.id,
+      nodeId: nextNode.id,
+      currentNodeSummary: nextNode.summary || `主智能体开始执行：${nextNode.title}`,
+      currentNodeStatus: 'doing',
+    })
+    appendMultiAgentActivity(sessionId, {
+      id: `route:execute:${sessionId}:${Date.now()}`,
+      kind: 'route',
+      title: '进入执行阶段',
+      text: `当前开始执行：${nextNode.title}`,
+      status: 'running',
+      timestamp: Date.now(),
+      agentId: nextNode.executor.id,
+      agentName: nextNode.executor.name,
     })
   }
 
   function updateMultiAgentExecutionState(sessionId: string, patch: {
     status?: MultiAgentRouteState['status']
     currentNodeId?: string | null
+    nodeId?: string | null
     currentNodeSummary?: string
     currentNodeStatus?: MultiAgentPlanNodeState['status']
   }) {
     const current = multiAgentRoutes.value.get(sessionId)
     if (!current) return
-    const targetNodeId = patch.currentNodeId !== undefined ? patch.currentNodeId : current.currentNodeId
+    const targetNodeId = patch.nodeId !== undefined
+      ? patch.nodeId
+      : patch.currentNodeId !== undefined
+        ? patch.currentNodeId
+        : current.currentNodeId
     const nodes = current.planNodes.map(node => {
       if (!targetNodeId || node.id !== targetNodeId) return node
       return {
@@ -1442,22 +1614,34 @@ export const useChatStore = defineStore('chat', () => {
     setMultiAgentRouteState(sessionId, {
       ...current,
       status: patch.status || current.status,
-      currentNodeId: targetNodeId,
+      currentNodeId: patch.currentNodeId !== undefined ? patch.currentNodeId : current.currentNodeId,
       planNodes: nodes,
       activity: current.activity,
     })
   }
 
-  function ensureMultiAgentPlanNode(
+  function upsertMultiAgentPlanNode(
     sessionId: string,
     node: MultiAgentPlanNodeState,
   ) {
     const current = multiAgentRoutes.value.get(sessionId)
     if (!current) return
-    if (current.planNodes.some(item => item.id === node.id)) return
+    const nextNodes = current.planNodes.some(item => item.id === node.id)
+      ? current.planNodes.map((item) => {
+          if (item.id !== node.id) return item
+          return {
+            ...item,
+            ...node,
+            executor: {
+              ...item.executor,
+              ...node.executor,
+            },
+          }
+        })
+      : [...current.planNodes, node]
     setMultiAgentRouteState(sessionId, {
       ...current,
-      planNodes: [...current.planNodes, node],
+      planNodes: nextNodes,
     })
   }
 
@@ -1467,19 +1651,49 @@ export const useChatStore = defineStore('chat', () => {
 
     const currentNodeId = current.currentNodeId
     const finalNodes: MultiAgentPlanNodeState[] = current.planNodes.map((node): MultiAgentPlanNodeState => {
+      if (outcome === 'completed') {
+        if (node.id === 'understand' || node.id === 'route') {
+          return {
+            ...node,
+            status: 'done',
+          }
+        }
+        if (node.status === 'doing') {
+          return {
+            ...node,
+            status: 'done',
+          }
+        }
+        if (node.id === 'respond') {
+          return {
+            ...node,
+            status: 'done',
+            summary: '主智能体已汇总阶段成果并回复用户。',
+          }
+        }
+        return {
+          ...node,
+          status: node.status,
+          summary: node.summary,
+        }
+      }
       if (node.id === currentNodeId) {
         return {
           ...node,
-          status: outcome === 'completed' ? 'done' : 'blocked',
+          status: 'blocked',
         }
       }
       if (node.id === 'respond') {
         return {
           ...node,
-          status: outcome === 'completed' ? 'done' : 'todo',
-          summary: outcome === 'completed'
-            ? '主智能体已汇总阶段成果并回复用户。'
-            : node.summary,
+          status: node.status === 'doing' ? 'blocked' : node.status,
+          summary: node.summary,
+        }
+      }
+      if (node.id === 'execute' && node.status === 'doing') {
+        return {
+          ...node,
+          status: 'blocked',
         }
       }
       return node
@@ -1492,6 +1706,17 @@ export const useChatStore = defineStore('chat', () => {
       planNodes: finalNodes,
       activity: current.activity,
     })
+
+    appendMultiAgentActivity(sessionId, {
+      id: `route:final:${sessionId}:${Date.now()}`,
+      kind: 'route',
+      title: outcome === 'completed' ? '主智能体完成汇总' : '执行失败',
+      text: outcome === 'completed'
+        ? '本轮任务已结束，最终回复已返回到对话区。'
+        : '任务执行中断，请先处理失败节点或工具异常。',
+      status: outcome === 'completed' ? 'done' : 'error',
+      timestamp: Date.now(),
+    })
   }
 
   function handleSubagentEvent(sessionId: string, evt: RunEvent) {
@@ -1499,6 +1724,10 @@ export const useChatStore = defineStore('chat', () => {
     if (!eventName.startsWith('subagent.')) return
 
     const subagentId = String((evt as any).subagent_id || `${(evt as any).task_index ?? 0}`)
+    const explicitPlanNodeIds = Array.isArray((evt as any).plan_node_ids)
+      ? ((evt as any).plan_node_ids as unknown[]).map(item => String(item || '').trim()).filter(Boolean)
+      : []
+    const planNodeIds = resolveSubagentPlanNodeIds(sessionId, subagentId, explicitPlanNodeIds)
     const toolCallId = `subagent:${evt.run_id || 'run'}:${subagentId}`
     const taskIndex = Number((evt as any).task_index ?? 0)
     const taskCount = Number((evt as any).task_count ?? 1)
@@ -1510,6 +1739,7 @@ export const useChatStore = defineStore('chat', () => {
     const summary = sanitizeMultiAgentText((evt as any).summary || '')
     const duration = Number((evt as any).duration_seconds ?? (evt as any).duration)
     const agentName = sanitizeMultiAgentText((evt as any).subagent_name || (evt as any).agent_name || '')
+    const targetNodeId = planNodeIds[0] || 'execute'
 
     let preview = text || summary || goal
     if (eventName === 'subagent.start') {
@@ -1530,19 +1760,31 @@ export const useChatStore = defineStore('chat', () => {
       ? ((evt as any).status && String((evt as any).status) !== 'completed' ? 'error' : 'done')
       : 'running'
 
-    ensureMultiAgentPlanNode(sessionId, {
-      id: 'execute',
-      title: `执行子任务：${agentName || '子智能体'}`,
-      phase: '执行',
-      status: toolStatus === 'error' ? 'blocked' : toolStatus === 'done' ? 'done' : 'doing',
-      executor: {
-        type: 'subagent',
-        id: subagentId,
-        name: agentName || '子智能体',
-      },
-      summary: summary || text || goal || preview,
-    })
-    ensureMultiAgentPlanNode(sessionId, {
+    if (planNodeIds.length > 0) {
+      patchMultiAgentPlanNodes(sessionId, planNodeIds, {
+        status: toolStatus === 'error' ? 'blocked' : toolStatus === 'done' ? 'done' : 'doing',
+        executor: {
+          type: 'subagent',
+          id: subagentId,
+          name: agentName || '子智能体',
+        },
+        summary: summary || text || goal || preview,
+      })
+    } else {
+      upsertMultiAgentPlanNode(sessionId, {
+        id: 'execute',
+        title: `执行子任务：${agentName || '子智能体'}`,
+        phase: '执行',
+        status: toolStatus === 'error' ? 'blocked' : toolStatus === 'done' ? 'done' : 'doing',
+        executor: {
+          type: 'subagent',
+          id: subagentId,
+          name: agentName || '子智能体',
+        },
+        summary: summary || text || goal || preview,
+      })
+    }
+    upsertMultiAgentPlanNode(sessionId, {
       id: 'respond',
       title: '汇总阶段成果并回复用户',
       phase: '汇总',
@@ -1591,21 +1833,80 @@ export const useChatStore = defineStore('chat', () => {
       output: eventName === 'subagent.complete' ? summary || text || preview : undefined,
     })
 
+    if (eventName === 'subagent.start') {
+      recordSubAgentInvocationStart({
+        sessionId,
+        runId: evt.run_id,
+        agentId: subagentId,
+        agentName,
+        task: goal || preview,
+      })
+      setMultiAgentNodeStatus(sessionId, 'understand', { status: 'done' })
+      setMultiAgentNodeStatus(sessionId, 'route', { status: 'done' })
+      updateMultiAgentExecutionState(sessionId, {
+        status: 'running',
+        currentNodeId: targetNodeId,
+        nodeId: targetNodeId,
+        currentNodeSummary: goal || preview,
+        currentNodeStatus: 'doing',
+      })
+    }
+
+    if (eventName === 'subagent.complete') {
+      recordSubAgentInvocationComplete({
+        sessionId,
+        runId: evt.run_id,
+        agentId: subagentId,
+        agentName,
+        status: toolStatus === 'done' ? 'completed' : 'failed',
+        summary: summary || text || preview,
+        durationSeconds: Number.isFinite(duration) ? duration : undefined,
+      })
+      setMultiAgentNodeStatus(sessionId, 'route', {
+        summary: '任务路径已确认，执行控制权已交给当前节点。',
+      })
+    }
+
     if (existing) {
       updateMessage(sessionId, existing.id, update)
       if (eventName === 'subagent.complete' && toolStatus === 'done') {
+        const route = multiAgentRoutes.value.get(sessionId)
+        const nextNode = route ? nextRunnableMultiAgentNode(route, { excludeNodeIds: [targetNodeId] }) : null
         updateMultiAgentExecutionState(sessionId, {
           status: 'running',
+          nodeId: targetNodeId,
           currentNodeSummary: summary || preview,
           currentNodeStatus: 'done',
         })
-        updateMultiAgentExecutionState(sessionId, {
-          currentNodeId: 'respond',
-          currentNodeSummary: '子智能体已返回阶段成果，Hermes 正在组织最终回复。',
-          currentNodeStatus: 'doing',
-        })
+        if (nextNode) {
+          updateMultiAgentExecutionState(sessionId, {
+            currentNodeId: nextNode.id,
+            nodeId: nextNode.id,
+            currentNodeSummary: `上一节点已完成，等待开始：${nextNode.title}`,
+            currentNodeStatus: nextNode.status,
+          })
+          appendMultiAgentActivity(sessionId, {
+            id: `${toolCallId}:queue:${Date.now()}`,
+            kind: 'subagent.complete',
+            title: '节点完成，等待下一节点',
+            text: `已完成：${summary || goal || preview}；下一节点：${nextNode.title}`,
+            status: 'done',
+            timestamp: Date.now(),
+            agentId: subagentId,
+            agentName: agentName || undefined,
+          })
+        } else {
+          updateMultiAgentExecutionState(sessionId, {
+            currentNodeId: 'respond',
+            nodeId: 'respond',
+            currentNodeSummary: '子智能体已返回阶段成果，Hermes 正在组织最终回复。',
+            currentNodeStatus: 'doing',
+          })
+        }
       } else {
         updateMultiAgentExecutionState(sessionId, {
+          currentNodeId: targetNodeId,
+          nodeId: targetNodeId,
           status: toolStatus === 'error' ? 'failed' : 'running',
           currentNodeSummary: preview,
           currentNodeStatus: toolStatus === 'error' ? 'blocked' : 'doing',
@@ -1622,20 +1923,45 @@ export const useChatStore = defineStore('chat', () => {
       ...update,
     })
     if (eventName === 'subagent.complete' && toolStatus === 'done') {
+      const route = multiAgentRoutes.value.get(sessionId)
+      const nextNode = route ? nextRunnableMultiAgentNode(route, { excludeNodeIds: [targetNodeId] }) : null
       updateMultiAgentExecutionState(sessionId, {
         status: 'running',
+        nodeId: targetNodeId,
         currentNodeSummary: summary || preview,
         currentNodeStatus: 'done',
       })
-      updateMultiAgentExecutionState(sessionId, {
-        currentNodeId: 'respond',
-        currentNodeSummary: '子智能体已返回阶段成果，Hermes 正在组织最终回复。',
-        currentNodeStatus: 'doing',
-      })
+      if (nextNode) {
+        updateMultiAgentExecutionState(sessionId, {
+          currentNodeId: nextNode.id,
+          nodeId: nextNode.id,
+          currentNodeSummary: `上一节点已完成，等待开始：${nextNode.title}`,
+          currentNodeStatus: nextNode.status,
+        })
+        appendMultiAgentActivity(sessionId, {
+          id: `${toolCallId}:queue:${Date.now()}`,
+          kind: 'subagent.complete',
+          title: '节点完成，等待下一节点',
+          text: `已完成：${summary || goal || preview}；下一节点：${nextNode.title}`,
+          status: 'done',
+          timestamp: Date.now(),
+          agentId: subagentId,
+          agentName: agentName || undefined,
+        })
+      } else {
+        updateMultiAgentExecutionState(sessionId, {
+          currentNodeId: 'respond',
+          nodeId: 'respond',
+          currentNodeSummary: '子智能体已返回阶段成果，Hermes 正在组织最终回复。',
+          currentNodeStatus: 'doing',
+        })
+      }
       return
     }
 
     updateMultiAgentExecutionState(sessionId, {
+      currentNodeId: targetNodeId,
+      nodeId: targetNodeId,
       status: toolStatus === 'error' ? 'failed' : 'running',
       currentNodeSummary: preview,
       currentNodeStatus: toolStatus === 'error' ? 'blocked' : 'doing',
@@ -1795,40 +2121,72 @@ export const useChatStore = defineStore('chat', () => {
     if ((evt as any).kind === 'multi_agent_route') {
       const selectedAgent = ((evt as any).selected_agent || {}) as { id?: string; name?: string }
       const rawPlan = Array.isArray((evt as any).plan?.nodes) ? (evt as any).plan.nodes as Array<Record<string, any>> : []
+      const existing = multiAgentRoutes.value.get(sid)
+      const planNodes: MultiAgentPlanNodeState[] = rawPlan.map((node, index) => ({
+        id: String(node.id || `node_${index + 1}`),
+        title: sanitizeMultiAgentText(node.title || `节点 ${index + 1}`) || `节点 ${index + 1}`,
+        phase: sanitizeMultiAgentText(node.phase || '执行') || '执行',
+        status: String(node.status || 'todo') as MultiAgentPlanNodeState['status'],
+        executor: {
+          type: node.executor?.type === 'subagent' ? 'subagent' : 'hermes',
+          id: typeof node.executor?.id === 'string' ? node.executor.id : undefined,
+          name: sanitizeMultiAgentText(node.executor?.name || 'Hermes') || 'Hermes',
+        },
+        summary: sanitizeMultiAgentText(node.summary || ''),
+      }))
+      const executableCount = planNodes.filter(node => !RESERVED_MULTI_AGENT_NODE_IDS.has(node.id)).length
+      const currentNodeId = executableCount > 0
+        ? 'route'
+        : 'respond'
+      const normalizedNodes: MultiAgentPlanNodeState[] = planNodes.map(node => {
+        if (node.id === 'understand') return { ...node, status: 'done' as const }
+        if (node.id === 'route') return { ...node, status: executableCount > 0 ? 'doing' as const : 'done' as const }
+        if (node.id === 'respond') return {
+          ...node,
+          status: executableCount > 0 ? 'todo' as const : 'doing' as const,
+        }
+        return {
+          ...node,
+          status: node.status === 'done' || node.status === 'blocked' ? node.status : 'todo',
+        }
+      })
+      const objective = sanitizeMultiAgentText((evt as any).plan?.objective || (evt as any).reason || '')
+      const routeText = sanitizeMultiAgentText((evt as any).text || (evt as any).reason || '')
+      const activity: MultiAgentExecutionEventState[] = [
+        ...(existing?.activity || []),
+        {
+          id: `route:understand:${sid}:${Date.now()}`,
+          kind: 'route' as const,
+          title: '主智能体完成需求理解',
+          text: objective || '已抽取本轮任务目标与约束。',
+          status: 'done' as const,
+          timestamp: Date.now(),
+        },
+        {
+          id: `route:planned:${sid}:${Date.now() + 1}`,
+          kind: 'route' as const,
+          title: '主智能体生成任务路径',
+          text: executableCount > 0
+            ? `已生成 ${executableCount} 个执行节点${selectedAgent.name ? `，优先委派给 ${sanitizeMultiAgentText(selectedAgent.name)}` : ''}。`
+            : (routeText || '本轮无需拆分子节点，直接进入回复阶段。'),
+          status: (executableCount > 0 ? 'running' : 'done') as MultiAgentExecutionEventState['status'],
+          timestamp: Date.now() + 1,
+          agentId: String(selectedAgent.id || '') || undefined,
+          agentName: sanitizeMultiAgentText(selectedAgent.name || '') || undefined,
+        },
+      ].slice(-24)
       setMultiAgentRouteState(sid, {
         mode: String((evt as any).mode || 'hermes_native') as 'delegate_subagent' | 'hermes_native',
         category: sanitizeMultiAgentText((evt as any).category || '通用任务') || '通用任务',
         reason: sanitizeMultiAgentText((evt as any).reason || ''),
-        text: sanitizeMultiAgentText((evt as any).text || ''),
-        objective: sanitizeMultiAgentText((evt as any).plan?.objective || (evt as any).reason || ''),
+        text: routeText,
+        objective: objective || existing?.objective || '',
         status: String((evt as any).plan?.status || 'running') as MultiAgentRouteState['status'],
-        currentNodeId: typeof (evt as any).plan?.currentNodeId === 'string' ? (evt as any).plan.currentNodeId : null,
+        currentNodeId,
         selectedAgentId: String(selectedAgent.id || ''),
         selectedAgentName: sanitizeMultiAgentText(selectedAgent.name || ''),
-        planNodes: rawPlan.map((node, index) => ({
-          id: String(node.id || `node_${index + 1}`),
-          title: sanitizeMultiAgentText(node.title || `节点 ${index + 1}`) || `节点 ${index + 1}`,
-          phase: sanitizeMultiAgentText(node.phase || '执行') || '执行',
-          status: String(node.status || 'todo') as MultiAgentPlanNodeState['status'],
-          executor: {
-            type: node.executor?.type === 'subagent' ? 'subagent' : 'hermes',
-            id: typeof node.executor?.id === 'string' ? node.executor.id : undefined,
-            name: sanitizeMultiAgentText(node.executor?.name || 'Hermes') || 'Hermes',
-          },
-          summary: sanitizeMultiAgentText(node.summary || ''),
-        })),
-        activity: [
-          {
-            id: `route:${sid}:${Date.now()}`,
-            kind: 'route',
-            title: '主智能体完成路由',
-            text: sanitizeMultiAgentText((evt as any).text || (evt as any).reason || ''),
-            status: 'info',
-            timestamp: Date.now(),
-            agentId: String(selectedAgent.id || '') || undefined,
-            agentName: sanitizeMultiAgentText(selectedAgent.name || '') || undefined,
-          },
-        ],
+        planNodes: normalizedNodes,
+        activity,
       })
     }
     const text = sanitizeMultiAgentText((evt as any).text || (evt as any).message || '')
@@ -2249,6 +2607,12 @@ export const useChatStore = defineStore('chat', () => {
       attachments: attachments && attachments.length > 0 ? attachments : undefined,
       queued: shouldQueue,
       systemType: isBridgeSlashCommand ? 'command' : undefined,
+    }
+
+    if (multiAgent?.enabled) {
+      resetMultiAgentRouteState(sid, trimmedContent)
+    } else {
+      setMultiAgentRouteState(sid, null)
     }
 
     if (shouldQueue) {
@@ -3167,6 +3531,7 @@ export const useChatStore = defineStore('chat', () => {
           clearSessionCompletedUnread(sid)
           serverWorking.value.add(sid)
           clearAgentEventMessages(sid)
+          beginHermesPlannedExecution(sid)
           setAbortState(null)
           setCompressionState(sid, null)
           runProducedAssistantText = false

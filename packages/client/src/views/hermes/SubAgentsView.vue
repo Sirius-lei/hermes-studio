@@ -1,17 +1,29 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import {
   NButton,
+  NCheckbox,
   NInput,
   NModal,
   NTag,
   useMessage,
 } from 'naive-ui'
 import { copyToClipboard } from '@/utils/clipboard'
+import {
+  SUB_AGENT_STORAGE_EVENT,
+  readStoredSubAgents,
+  writeStoredSubAgents,
+} from '@/utils/subagent-storage'
+import {
+  readCapabilityCenter,
+  writeCapabilityCenter,
+  type CapabilityCatalogRecord,
+  type CapabilityKind,
+} from '@/utils/subagent-capability-center'
 
 type AgentStatus = 'online' | 'offline' | 'draft' | 'configured'
 type DeploymentStatus = 'validated' | 'deployed' | 'failed'
-type AssetSource = 'runtime' | 'draft'
+type AssetSource = 'runtime' | 'draft' | 'catalog'
 
 interface AssetRef {
   id: string
@@ -21,6 +33,16 @@ interface AssetRef {
   source: AssetSource
   path?: string
   version?: string
+  entry?: string
+  files?: string[]
+  size?: number
+  modified?: number | string
+  tags?: string[]
+  category?: string
+  provides?: string[]
+  catalogId?: string
+  deliveryMode?: 'remote_zip' | 'reference'
+  sourceProject?: string
 }
 
 interface DeploymentRecord {
@@ -28,6 +50,18 @@ interface DeploymentRecord {
   status: DeploymentStatus
   message: string
   createdAt: number
+}
+
+interface InvocationRecord {
+  id: string
+  status: 'running' | 'completed' | 'failed'
+  task: string
+  summary: string
+  startedAt: number
+  finishedAt?: number | null
+  durationMs?: number | null
+  sessionId?: string
+  runId?: string
 }
 
 interface EndpointRef {
@@ -68,6 +102,7 @@ interface SubAgentRecord {
   lastRun: string
   lastPublishedAt: number | null
   deployments: DeploymentRecord[]
+  recentInvocations: InvocationRecord[]
   runtimeConfig: RuntimeConfig
   updatedAt: number
 }
@@ -82,6 +117,7 @@ interface RuntimeAsset {
   size?: number
   modified?: number | string
   tags?: string[]
+  files?: string[]
 }
 
 interface RuntimeAgentsMd {
@@ -99,7 +135,13 @@ interface RuntimeAgentProfile {
   agent_dir?: string
   workspace?: string
   agents_md?: RuntimeAgentsMd
-  model_summary?: string
+  model_summary?: Array<{
+    name?: string
+    baseUrl?: string
+    api?: string
+    hasApiKey?: boolean
+    models?: Array<{ id?: string; name?: string }>
+  }>
   packages?: string[]
   skills?: RuntimeAsset[]
   extensions?: RuntimeAsset[]
@@ -112,7 +154,38 @@ interface RuntimeConfigSummary {
   extensions?: RuntimeAsset[]
 }
 
-const STORAGE_KEY = 'hermes.subAgents.frontendDraft.v4'
+interface RuntimeSkillsResponse {
+  skills?: RuntimeAsset[]
+}
+
+interface RuntimeExtensionsResponse {
+  extensions?: RuntimeAsset[]
+  packages?: string[]
+}
+
+interface RuntimeModelsResponse {
+  model_summary?: Array<{
+    name?: string
+    baseUrl?: string
+    api?: string
+    hasApiKey?: boolean
+    models?: Array<{ id?: string; name?: string }>
+  }>
+}
+
+interface RuntimeValidateResponse {
+  ok?: boolean
+  config?: Record<string, unknown>
+  error?: string
+}
+
+interface RuntimeApplyResponse {
+  ok?: boolean
+  applied?: Record<string, unknown>
+  config?: RuntimeConfigSummary
+  error?: string
+}
+
 const LEGACY_STORAGE_KEYS = [
   'hermes.subAgents.frontendDraft.v1',
   'hermes.subAgents.frontendDraft.v2',
@@ -125,7 +198,7 @@ const piMonoManagementEndpoints: EndpointRef[] = [
   { method: 'GET', path: '/api/agent/models', label: 'Models', description: '读取 models.json 脱敏后的模型配置和 model_summary' },
   { method: 'GET', path: '/api/agent/agents-md', label: 'AGENTS.md', description: '读取远程 AGENTS.md 内容和元信息' },
   { method: 'GET', path: '/api/agent/skills', label: 'Skills', description: '读取运行时已安装 skills' },
-  { method: 'GET', path: '/api/agent/extensions', label: 'Extensions', description: '读取运行时已安装 extensions 和 packages' },
+  { method: 'GET', path: '/api/agent/extensions', label: '工具', description: '读取运行时已安装工具与 packages' },
   { method: 'GET', path: '/api/agent/config', label: 'Config', description: '读取可注入配置摘要' },
   { method: 'POST', path: '/api/agent/config/validate', label: 'Validate', description: '校验 AGENTS.md、skills、extensions、packages payload' },
   { method: 'POST', path: '/api/agent/config', label: 'Apply', description: '远程写入 AGENTS.md，下载并替换 skills/extensions' },
@@ -148,19 +221,40 @@ const defaultRuntimeConfig: RuntimeConfig = {
 const message = useMessage()
 
 const agents = ref<SubAgentRecord[]>([])
+const skillCenter = ref<CapabilityCatalogRecord[]>([])
+const toolCenter = ref<CapabilityCatalogRecord[]>([])
 const selectedAgentId = ref('')
 const search = ref('')
 const activeTab = ref<'overview' | 'agentsMd' | 'skills' | 'tools' | 'runtime' | 'deployments'>('overview')
+const workspaceTab = ref<'agents' | 'skillCenter' | 'toolCenter'>('agents')
 const showCreateModal = ref(false)
 const showPayloadModal = ref(false)
+const showCatalogCreateModal = ref(false)
+const editingCatalogId = ref('')
 const validationMessage = ref('')
 const validationOk = ref(false)
 const isSyncing = ref(false)
+const isValidating = ref(false)
+const isDeploying = ref(false)
+const selectedAssetPreview = ref<AssetRef | null>(null)
 
 const createForm = reactive({
   name: '',
   description: '',
   baseUrl: 'http://127.0.0.1:8767',
+})
+
+const catalogForm = reactive({
+  kind: 'skill' as CapabilityKind,
+  name: '',
+  description: '',
+  category: '',
+  version: '',
+  url: '',
+  tags: '',
+  entry: '',
+  provides: '',
+  sourceProject: 'subAgent-pi',
 })
 
 const selectedAgent = computed(() => agents.value.find(agent => agent.id === selectedAgentId.value) || agents.value[0] || null)
@@ -190,13 +284,13 @@ const configPayload = computed(() => {
       content: agent.agentsMd,
     },
     skills: agent.skills
-      .filter(item => item.source === 'draft' && isHttpUrl(item.url))
+      .filter(item => item.source !== 'runtime' && isHttpUrl(item.url))
       .map(({ name, url }) => ({ name, url })),
     extensions: agent.tools
-      .filter(item => item.source === 'draft' && isHttpUrl(item.url))
+      .filter(item => item.source !== 'runtime' && isHttpUrl(item.url))
       .map(({ name, url }) => ({ name, url })),
     packages: agent.tools
-      .filter(item => item.source === 'draft' && isHttpUrl(item.url))
+      .filter(item => item.source !== 'runtime' && isHttpUrl(item.url))
       .map(item => item.name),
   }
 })
@@ -300,6 +394,7 @@ function createSeedAgent(input: {
           createdAt: input.lastPublishedAt,
         }]
       : [],
+    recentInvocations: [],
     updatedAt: now,
   }
 }
@@ -350,6 +445,16 @@ function normalizeAsset(value: Partial<AssetRef>, source: AssetSource): AssetRef
     source: value.source || source,
     path: value.path,
     version: value.version,
+    entry: value.entry,
+    files: Array.isArray(value.files) ? value.files : [],
+    size: value.size,
+    modified: value.modified,
+    tags: Array.isArray(value.tags) ? value.tags : [],
+    category: value.category ? String(value.category) : '',
+    provides: Array.isArray(value.provides) ? value.provides.map(item => String(item || '').trim()).filter(Boolean) : [],
+    catalogId: value.catalogId ? String(value.catalogId) : '',
+    deliveryMode: value.deliveryMode === 'remote_zip' ? 'remote_zip' : 'reference',
+    sourceProject: value.sourceProject ? String(value.sourceProject) : '',
   }
 }
 
@@ -365,6 +470,7 @@ function normalizeStoredAgents(parsed: unknown): SubAgentRecord[] | null {
       skills: Array.isArray(record.skills) ? record.skills.map(item => normalizeAsset(item, item.source || 'runtime')) : [],
       tools: Array.isArray(record.tools) ? record.tools.map(item => normalizeAsset(item, item.source || 'runtime')) : [],
       packages: Array.isArray(record.packages) ? record.packages : [],
+      recentInvocations: Array.isArray((record as any).recentInvocations) ? (record as any).recentInvocations : [],
       runtimeConfig: cloneRuntimeConfig(record.runtimeConfig || record.sourceConfig || {}),
     } as SubAgentRecord
   })
@@ -393,19 +499,18 @@ function resetToPiMonoSeed(showToast = false) {
   }
 }
 
-function loadAgents() {
+function loadAgents(options: { preserveSelection?: boolean } = {}) {
+  const previousSelectedId = selectedAgentId.value
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) {
-      const parsed = JSON.parse(raw)
-      const normalized = normalizeStoredAgents(parsed)
-      if (normalized) {
-        clearLegacyAgentDrafts()
-        agents.value = normalized
-        selectedAgentId.value = agents.value[0].id
-        persistAgents()
-        return
-      }
+    const normalized = normalizeStoredAgents(readStoredSubAgents())
+    if (normalized) {
+      clearLegacyAgentDrafts()
+      agents.value = normalized
+      selectedAgentId.value = options.preserveSelection && normalized.some(agent => agent.id === previousSelectedId)
+        ? previousSelectedId
+        : normalized[0].id
+      persistAgentsSilently()
+      return
     }
   } catch {
     // fall back to seed runtime
@@ -414,7 +519,11 @@ function loadAgents() {
 }
 
 function persistAgents() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(agents.value))
+  writeStoredSubAgents(agents.value as unknown as Array<Record<string, unknown>>, { notify: true })
+}
+
+function persistAgentsSilently() {
+  writeStoredSubAgents(agents.value as unknown as Array<Record<string, unknown>>, { notify: false })
 }
 
 function updateAgent(id: string, patch: Partial<SubAgentRecord>) {
@@ -439,6 +548,135 @@ function openCreateModal() {
   createForm.description = ''
   createForm.baseUrl = 'http://127.0.0.1:8767'
   showCreateModal.value = true
+}
+
+function loadCapabilityCenters() {
+  skillCenter.value = readCapabilityCenter('skill')
+  toolCenter.value = readCapabilityCenter('tool')
+}
+
+function persistCapabilityCenter(kind: CapabilityKind) {
+  if (kind === 'skill') {
+    writeCapabilityCenter('skill', skillCenter.value)
+    return
+  }
+  writeCapabilityCenter('tool', toolCenter.value)
+}
+
+function openCatalogCreateModal(kind: CapabilityKind) {
+  editingCatalogId.value = ''
+  catalogForm.kind = kind
+  catalogForm.name = ''
+  catalogForm.description = ''
+  catalogForm.category = ''
+  catalogForm.version = ''
+  catalogForm.url = ''
+  catalogForm.tags = ''
+  catalogForm.entry = ''
+  catalogForm.provides = ''
+  catalogForm.sourceProject = 'subAgent-pi'
+  showCatalogCreateModal.value = true
+}
+
+function openCatalogEditModal(record: CapabilityCatalogRecord) {
+  editingCatalogId.value = record.id
+  catalogForm.kind = record.kind
+  catalogForm.name = record.name
+  catalogForm.description = record.description
+  catalogForm.category = record.category
+  catalogForm.version = record.version || ''
+  catalogForm.url = record.url || ''
+  catalogForm.tags = (record.tags || []).join(', ')
+  catalogForm.entry = record.entry || ''
+  catalogForm.provides = (record.provides || []).join(', ')
+  catalogForm.sourceProject = record.sourceProject || 'subAgent-pi'
+  showCatalogCreateModal.value = true
+}
+
+function createCatalogRecord() {
+  const name = catalogForm.name.trim()
+  if (!name) {
+    message.error('请输入能力名称')
+    return
+  }
+  const kind = catalogForm.kind
+  const list = kind === 'skill' ? skillCenter.value : toolCenter.value
+  const nextRecord: CapabilityCatalogRecord = {
+    id: editingCatalogId.value || `${kind}-${Date.now().toString(36)}`,
+    kind,
+    name,
+    description: catalogForm.description.trim(),
+    category: catalogForm.category.trim() || '未分组',
+    version: catalogForm.version.trim(),
+    url: catalogForm.url.trim(),
+    entry: catalogForm.entry.trim(),
+    tags: catalogForm.tags.split(',').map(item => item.trim()).filter(Boolean),
+    provides: catalogForm.provides.split(',').map(item => item.trim()).filter(Boolean),
+    files: [],
+    path: '',
+    sourceProject: catalogForm.sourceProject.trim() || 'subAgent-pi',
+    deliveryMode: catalogForm.url.trim() ? 'remote_zip' : 'reference',
+  }
+  if (editingCatalogId.value) {
+    const index = list.findIndex(item => item.id === editingCatalogId.value)
+    if (index >= 0) {
+      list.splice(index, 1, nextRecord)
+    }
+  } else {
+    list.unshift(nextRecord)
+  }
+  persistCapabilityCenter(kind)
+  showCatalogCreateModal.value = false
+  message.success(editingCatalogId.value ? '能力已更新' : '能力已加入中心')
+  editingCatalogId.value = ''
+}
+
+function isCatalogSelected(kind: CapabilityKind, record: CapabilityCatalogRecord) {
+  const agent = selectedAgent.value
+  if (!agent) return false
+  const current = kind === 'skill' ? agent.skills : agent.tools
+  return current.some(item =>
+    (record.id && item.catalogId === record.id)
+    || item.name === record.name,
+  )
+}
+
+function catalogRecordToAsset(record: CapabilityCatalogRecord): AssetRef {
+  return normalizeAsset({
+    id: `catalog-${record.kind}-${record.id}`,
+    name: record.name,
+    url: record.url,
+    description: record.description,
+    source: 'catalog',
+    version: record.version,
+    entry: record.entry,
+    files: record.files,
+    path: record.path,
+    tags: record.tags,
+    category: record.category,
+    provides: record.provides,
+    catalogId: record.id,
+    deliveryMode: record.deliveryMode,
+    sourceProject: record.sourceProject,
+  }, 'catalog')
+}
+
+function toggleCatalogSelection(kind: CapabilityKind, record: CapabilityCatalogRecord, checked: boolean) {
+  const agent = selectedAgent.value
+  if (!agent) return
+  const assetKind = kind === 'skill' ? 'skills' : 'tools'
+  const current = assetKind === 'skills' ? agent.skills : agent.tools
+  const next = checked
+    ? [...current, catalogRecordToAsset(record)]
+    : current.filter(item => item.catalogId !== record.id && item.name !== record.name)
+  if (assetKind === 'skills') {
+    updateSelected({ skills: next })
+    return
+  }
+  updateSelected({
+    tools: next,
+    packages: next.filter(item => item.source !== 'runtime').map(item => item.name),
+  })
 }
 
 function createAgent() {
@@ -480,39 +718,6 @@ function createAgent() {
   message.success('子智能体草稿已创建')
 }
 
-function addAsset(kind: 'skills' | 'tools', asset: AssetRef) {
-  const agent = selectedAgent.value
-  if (!agent) return
-  const current = agent[kind]
-  if (current.some(item => item.name === asset.name && item.url === asset.url)) {
-    message.info(`${asset.name} 已在当前配置中`)
-    return
-  }
-  const next = [...current, { ...asset, id: `${asset.id}-${Date.now()}` }]
-  const patch: Partial<SubAgentRecord> = kind === 'tools'
-    ? { tools: next, packages: next.filter(item => item.source === 'draft').map(item => item.name) }
-    : { skills: next }
-  updateSelected(patch)
-}
-
-function addCustomAsset(kind: 'skills' | 'tools') {
-  const name = window.prompt(kind === 'skills' ? '技能名称' : '工具名称')
-  if (!name?.trim()) return
-  const url = window.prompt('ZIP URL')
-  if (!url?.trim()) return
-  if (!isHttpUrl(url)) {
-    message.error('ZIP URL 必须以 http:// 或 https:// 开头')
-    return
-  }
-  addAsset(kind, {
-    id: `draft-${Date.now()}`,
-    name: name.trim(),
-    url: url.trim(),
-    description: '准备注入到 subAgent-pi 的远程 ZIP 资产',
-    source: 'draft',
-  })
-}
-
 function removeAsset(kind: 'skills' | 'tools', id: string) {
   const agent = selectedAgent.value
   if (!agent) return
@@ -533,6 +738,7 @@ function runtimeAssetToRef(asset: RuntimeAsset, kind: 'skill' | 'extension', ind
     asset.description,
     asset.version ? `version: ${asset.version}` : '',
     asset.path ? `path: ${asset.path}` : '',
+    asset.entry ? `entry: ${asset.entry}` : '',
   ].filter(Boolean).join(' · ')
   return {
     id: `runtime-${kind}-${name}-${index}`,
@@ -542,6 +748,15 @@ function runtimeAssetToRef(asset: RuntimeAsset, kind: 'skill' | 'extension', ind
     source: 'runtime',
     path: asset.path,
     version: asset.version,
+    entry: asset.entry,
+    files: Array.isArray(asset.files) ? asset.files : [],
+    size: asset.size,
+    modified: asset.modified,
+    tags: Array.isArray(asset.tags) ? asset.tags : [],
+    category: '',
+    provides: [],
+    deliveryMode: 'reference',
+    sourceProject: 'subAgent-pi runtime',
   }
 }
 
@@ -570,6 +785,81 @@ async function fetchRuntimeJson<T>(baseUrl: string, path: string): Promise<T> {
   }
 }
 
+async function postRuntimeJson<T>(baseUrl: string, path: string, payload: unknown): Promise<T> {
+  const controller = new AbortController()
+  const timer = window.setTimeout(() => controller.abort(), 15000)
+  try {
+    const response = await fetch(`${normalizeBaseUrl(baseUrl)}${path}`, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    })
+    const data = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      throw new Error(String((data as any)?.error || `${path} returned ${response.status}`))
+    }
+    return data as T
+  } finally {
+    window.clearTimeout(timer)
+  }
+}
+
+function summarizeModelSummary(summary: RuntimeModelsResponse['model_summary'] | RuntimeAgentProfile['model_summary']): string {
+  if (!Array.isArray(summary) || summary.length === 0) return '未返回模型摘要'
+  const chunks = summary.map((item) => {
+    const models = Array.isArray(item.models)
+      ? item.models.map(model => model?.name || model?.id || '').filter(Boolean).slice(0, 3).join(', ')
+      : ''
+    return [
+      item.name || '',
+      models,
+      item.baseUrl ? `@ ${item.baseUrl}` : '',
+    ].filter(Boolean).join(' ')
+  }).filter(Boolean)
+  return chunks.join('；') || '未返回模型摘要'
+}
+
+function hasConfiguredApiKey(summary: RuntimeModelsResponse['model_summary'] | RuntimeAgentProfile['model_summary']): boolean {
+  return Array.isArray(summary) && summary.some(item => item?.hasApiKey === true)
+}
+
+function formatInvocationTime(value: number | null | undefined): string {
+  if (!value) return '-'
+  return new Date(value).toLocaleString()
+}
+
+function formatDurationMs(value: number | null | undefined): string {
+  if (!value) return '-'
+  if (value < 1000) return `${value}ms`
+  return `${(value / 1000).toFixed(1)}s`
+}
+
+function invocationStatusLabel(status: InvocationRecord['status']): string {
+  if (status === 'completed') return '成功'
+  if (status === 'failed') return '失败'
+  return '执行中'
+}
+
+function invocationStatusType(status: InvocationRecord['status']) {
+  if (status === 'completed') return 'success'
+  if (status === 'failed') return 'error'
+  return 'warning'
+}
+
+function openRuntimePage(path = '') {
+  const agent = selectedAgent.value
+  if (!agent?.baseUrl) {
+    message.error('请先配置 subAgent-pi base URL')
+    return
+  }
+  const href = `${normalizeBaseUrl(agent.baseUrl)}${path}`
+  window.open(href, '_blank', 'noopener,noreferrer')
+}
+
 async function syncRuntimeConfig(agent = selectedAgent.value, showToast = true) {
   if (!agent) return
   const baseUrl = normalizeBaseUrl(agent.baseUrl)
@@ -581,32 +871,38 @@ async function syncRuntimeConfig(agent = selectedAgent.value, showToast = true) 
   isSyncing.value = true
   try {
     await fetchRuntimeJson<unknown>(baseUrl, '/health').catch(() => null)
-    const [profile, config] = await Promise.all([
+    const [profile, config, agentsMd, skillsResponse, extensionsResponse, modelsResponse] = await Promise.all([
       fetchRuntimeJson<RuntimeAgentProfile>(baseUrl, '/api/agent/profile'),
       fetchRuntimeJson<RuntimeConfigSummary>(baseUrl, '/api/agent/config').catch(() => null),
+      fetchRuntimeJson<RuntimeAgentsMd>(baseUrl, '/api/agent/agents-md').catch(() => null),
+      fetchRuntimeJson<RuntimeSkillsResponse>(baseUrl, '/api/agent/skills').catch(() => null),
+      fetchRuntimeJson<RuntimeExtensionsResponse>(baseUrl, '/api/agent/extensions').catch(() => null),
+      fetchRuntimeJson<RuntimeModelsResponse>(baseUrl, '/api/agent/models').catch(() => null),
     ])
-    const runtimeSkills = (profile.skills || config?.skills || []).map((item, index) => runtimeAssetToRef(item, 'skill', index))
-    const runtimeTools = (profile.extensions || config?.extensions || []).map((item, index) => runtimeAssetToRef(item, 'extension', index))
+    const runtimeSkills = (skillsResponse?.skills || profile.skills || config?.skills || []).map((item, index) => runtimeAssetToRef(item, 'skill', index))
+    const runtimeTools = (extensionsResponse?.extensions || profile.extensions || config?.extensions || []).map((item, index) => runtimeAssetToRef(item, 'extension', index))
     const draftSkills = agent.skills.filter(item => item.source === 'draft')
     const draftTools = agent.tools.filter(item => item.source === 'draft')
-    const agentsMd = profile.agents_md?.content || config?.agents_md?.content || agent.agentsMd
-    const packages = profile.packages || config?.packages || draftTools.map(item => item.name)
+    const agentsMdContent = agentsMd?.content || profile.agents_md?.content || config?.agents_md?.content || agent.agentsMd
+    const packages = extensionsResponse?.packages || profile.packages || config?.packages || draftTools.map(item => item.name)
+    const modelSummary = summarizeModelSummary(modelsResponse?.model_summary || profile.model_summary)
 
     updateAgent(agent.id, {
       name: profile.name || agent.name,
       description: profile.description || agent.description,
       baseUrl,
       status: 'online',
-      agentsMd,
+      agentsMd: agentsMdContent,
       skills: [...runtimeSkills, ...draftSkills],
       tools: [...runtimeTools, ...draftTools],
       packages,
-      modelSummary: profile.model_summary || agent.modelSummary || '未返回模型摘要',
+      modelSummary,
       lastRun: '刚刚同步运行时配置',
       runtimeConfig: cloneRuntimeConfig({
         ...agent.runtimeConfig,
         source: 'subAgent-pi runtime',
         enabled: true,
+        apiKeyConfigured: hasConfiguredApiKey(modelsResponse?.model_summary || profile.model_summary),
         lastSyncedAt: Date.now(),
         syncError: '',
       }),
@@ -634,7 +930,15 @@ async function syncRuntimeConfig(agent = selectedAgent.value, showToast = true) 
   }
 }
 
-function validateCurrentAgent() {
+function pushDeploymentRecord(agentId: string, record: DeploymentRecord) {
+  const current = agents.value.find(item => item.id === agentId)
+  if (!current) return
+  updateAgent(agentId, {
+    deployments: [record, ...current.deployments].slice(0, 24),
+  })
+}
+
+async function validateCurrentAgent() {
   const agent = selectedAgent.value
   if (!agent) return
   const errors: string[] = []
@@ -644,7 +948,7 @@ function validateCurrentAgent() {
   if (!agent.agentsMd.trim()) errors.push('AGENTS.md 不能为空')
   for (const item of [...agent.skills, ...agent.tools]) {
     if (!item.name.trim()) errors.push('技能/工具名称不能为空')
-    if (item.source === 'draft' && !isHttpUrl(item.url)) errors.push(`${item.name} 的 ZIP URL 无效`)
+    if (item.source === 'draft' && !isHttpUrl(item.url)) errors.push(`${item.name} 的远程地址无效`)
   }
   if (errors.length > 0) {
     validationOk.value = false
@@ -652,37 +956,70 @@ function validateCurrentAgent() {
     message.error(validationMessage.value)
     return
   }
-  validationOk.value = true
-  validationMessage.value = '前端预检通过；接入后端后将调用 subAgent-pi /api/agent/config/validate'
-  const record: DeploymentRecord = {
-    id: `validate-${Date.now()}`,
-    status: 'validated',
-    message: validationMessage.value,
-    createdAt: Date.now(),
+
+  isValidating.value = true
+  try {
+    await postRuntimeJson<RuntimeValidateResponse>(agent.baseUrl, '/api/agent/config/validate', configPayload.value)
+    validationOk.value = true
+    validationMessage.value = 'subAgent-pi 远程校验通过'
+    pushDeploymentRecord(agent.id, {
+      id: `validate-${Date.now()}`,
+      status: 'validated',
+      message: validationMessage.value,
+      createdAt: Date.now(),
+    })
+    message.success('远程校验通过')
+  } catch (error) {
+    validationOk.value = false
+    validationMessage.value = getErrorMessage(error)
+    pushDeploymentRecord(agent.id, {
+      id: `validate-failed-${Date.now()}`,
+      status: 'failed',
+      message: `校验失败：${validationMessage.value}`,
+      createdAt: Date.now(),
+    })
+    message.error(`校验失败：${validationMessage.value}`)
+  } finally {
+    isValidating.value = false
   }
-  updateSelected({ deployments: [record, ...agent.deployments] })
-  message.success('预检通过')
 }
 
-function simulateDeploy() {
+async function applyCurrentAgentConfig() {
   const agent = selectedAgent.value
   if (!agent) return
   if (!validationOk.value) {
-    validateCurrentAgent()
+    await validateCurrentAgent()
     if (!validationOk.value) return
   }
-  const record: DeploymentRecord = {
-    id: `deploy-${Date.now()}`,
-    status: 'deployed',
-    message: '模拟发布成功；后端接入后将调用 subAgent-pi /api/agent/config',
-    createdAt: Date.now(),
+  isDeploying.value = true
+  try {
+    const response = await postRuntimeJson<RuntimeApplyResponse>(agent.baseUrl, '/api/agent/config', configPayload.value)
+    updateSelected({
+      status: 'online',
+      lastPublishedAt: Date.now(),
+    })
+    pushDeploymentRecord(agent.id, {
+      id: `deploy-${Date.now()}`,
+      status: 'deployed',
+      message: `已发布到 subAgent-pi 运行时${response.applied ? '，并完成远程写入' : ''}`,
+      createdAt: Date.now(),
+    })
+    validationOk.value = true
+    validationMessage.value = '已写入 subAgent-pi 运行时'
+    await syncRuntimeConfig(agent, false)
+    message.success('发布完成')
+  } catch (error) {
+    const deployError = getErrorMessage(error)
+    pushDeploymentRecord(agent.id, {
+      id: `deploy-failed-${Date.now()}`,
+      status: 'failed',
+      message: `发布失败：${deployError}`,
+      createdAt: Date.now(),
+    })
+    message.error(`发布失败：${deployError}`)
+  } finally {
+    isDeploying.value = false
   }
-  updateSelected({
-    status: 'online',
-    lastPublishedAt: Date.now(),
-    deployments: [record, ...agent.deployments],
-  })
-  message.success('已模拟发布')
 }
 
 async function copyPayload() {
@@ -693,8 +1030,20 @@ async function copyPayload() {
 
 onMounted(() => {
   loadAgents()
+  loadCapabilityCenters()
+  window.addEventListener('storage', handleStoredAgentsUpdated)
+  window.addEventListener(SUB_AGENT_STORAGE_EVENT, handleStoredAgentsUpdated)
   void syncRuntimeConfig(selectedAgent.value, false)
 })
+
+onUnmounted(() => {
+  window.removeEventListener('storage', handleStoredAgentsUpdated)
+  window.removeEventListener(SUB_AGENT_STORAGE_EVENT, handleStoredAgentsUpdated)
+})
+
+function handleStoredAgentsUpdated() {
+  loadAgents({ preserveSelection: true })
+}
 </script>
 
 <template>
@@ -706,6 +1055,7 @@ onMounted(() => {
       </div>
       <div class="header-actions">
         <NButton size="small" :loading="isSyncing" @click="syncRuntimeConfig(selectedAgent, true)">同步运行时</NButton>
+        <NButton size="small" @click="openRuntimePage('/chat')">打开 Chat</NButton>
         <NButton size="small" @click="resetToPiMonoSeed(true)">重置 pi-mono</NButton>
         <NButton size="small" @click="showPayloadModal = true">查看 Payload</NButton>
         <NButton type="primary" size="small" @click="openCreateModal">新建智能体</NButton>
@@ -730,10 +1080,15 @@ onMounted(() => {
         </div>
 
         <div class="list-controls">
+          <div class="workspace-tabs">
+            <button :class="{ active: workspaceTab === 'agents' }" type="button" @click="workspaceTab = 'agents'">子智能体</button>
+            <button :class="{ active: workspaceTab === 'skillCenter' }" type="button" @click="workspaceTab = 'skillCenter'">Skills 中心</button>
+            <button :class="{ active: workspaceTab === 'toolCenter' }" type="button" @click="workspaceTab = 'toolCenter'">工具中心</button>
+          </div>
           <NInput v-model:value="search" size="small" clearable placeholder="搜索名称、描述或 URL" />
         </div>
 
-        <div class="agent-list">
+        <div v-if="workspaceTab === 'agents'" class="agent-list">
           <button
             v-for="agent in filteredAgents"
             :key="agent.id"
@@ -750,6 +1105,40 @@ onMounted(() => {
           </button>
           <div v-if="filteredAgents.length === 0" class="empty-list">没有匹配的子智能体</div>
         </div>
+
+        <div v-else class="agent-list catalog-list">
+          <div class="catalog-header-actions">
+            <NButton size="small" @click="openCatalogCreateModal(workspaceTab === 'skillCenter' ? 'skill' : 'tool')">新增</NButton>
+          </div>
+          <div
+            v-for="record in workspaceTab === 'skillCenter' ? skillCenter : toolCenter"
+            :key="record.id"
+            class="catalog-row"
+          >
+            <div class="catalog-row-head">
+              <strong>{{ record.name }}</strong>
+              <div class="catalog-row-head-actions">
+                <NTag size="small" :type="record.kind === 'skill' ? 'info' : 'warning'">{{ record.category }}</NTag>
+                <NTag size="small" :type="record.url ? 'success' : 'default'">{{ record.url ? '可分发' : '仅模板' }}</NTag>
+              </div>
+            </div>
+            <span>{{ record.description || '无描述' }}</span>
+            <small>{{ [record.version ? `v${record.version}` : '', record.sourceProject || '', record.provides?.length ? `能力: ${record.provides.join(', ')}` : ''].filter(Boolean).join(' · ') }}</small>
+            <div class="catalog-row-actions">
+              <NButton size="tiny" quaternary @click="openCatalogEditModal(record)">编辑</NButton>
+              <NButton
+                v-if="selectedAgent"
+                size="tiny"
+                quaternary
+                type="primary"
+                @click="toggleCatalogSelection(record.kind, record, !isCatalogSelected(record.kind, record))"
+              >
+                {{ isCatalogSelected(record.kind, record) ? '移出当前子智能体' : '同步到当前子智能体' }}
+              </NButton>
+            </div>
+          </div>
+          <div v-if="(workspaceTab === 'skillCenter' ? skillCenter.length : toolCenter.length) === 0" class="empty-list">中心暂时为空</div>
+        </div>
       </aside>
 
       <section v-if="selectedAgent" class="agent-detail-pane">
@@ -762,8 +1151,10 @@ onMounted(() => {
           <div class="detail-actions">
             <NTag :type="statusType(selectedAgent.status)" round>{{ statusLabel(selectedAgent.status) }}</NTag>
             <NButton size="small" :loading="isSyncing" @click="syncRuntimeConfig(selectedAgent, true)">同步配置</NButton>
-            <NButton size="small" @click="validateCurrentAgent">预检</NButton>
-            <NButton type="primary" size="small" @click="simulateDeploy">模拟发布</NButton>
+            <NButton size="small" @click="openRuntimePage()">控制台</NButton>
+            <NButton size="small" @click="openRuntimePage('/chat')">Chat</NButton>
+            <NButton size="small" :loading="isValidating" @click="validateCurrentAgent">远程校验</NButton>
+            <NButton type="primary" size="small" :loading="isDeploying" @click="applyCurrentAgentConfig">发布配置</NButton>
           </div>
         </div>
 
@@ -771,7 +1162,7 @@ onMounted(() => {
           <button :class="{ active: activeTab === 'overview' }" type="button" @click="activeTab = 'overview'">概览</button>
           <button :class="{ active: activeTab === 'agentsMd' }" type="button" @click="activeTab = 'agentsMd'">AGENTS.md</button>
           <button :class="{ active: activeTab === 'skills' }" type="button" @click="activeTab = 'skills'">Skills</button>
-          <button :class="{ active: activeTab === 'tools' }" type="button" @click="activeTab = 'tools'">Extensions</button>
+          <button :class="{ active: activeTab === 'tools' }" type="button" @click="activeTab = 'tools'">工具</button>
           <button :class="{ active: activeTab === 'runtime' }" type="button" @click="activeTab = 'runtime'">运行详情</button>
           <button :class="{ active: activeTab === 'deployments' }" type="button" @click="activeTab = 'deployments'">发布记录</button>
         </div>
@@ -830,10 +1221,28 @@ onMounted(() => {
             <div class="panel-title">构建摘要</div>
             <div class="summary-list">
               <div><span>Skills</span><strong>{{ selectedAgent.skills.length }}</strong></div>
-              <div><span>Extensions</span><strong>{{ selectedAgent.tools.length }}</strong></div>
+              <div><span>工具</span><strong>{{ selectedAgent.tools.length }}</strong></div>
               <div><span>Packages</span><strong>{{ selectedAgent.packages.length }}</strong></div>
               <div><span>最后运行</span><strong>{{ selectedAgent.lastRun }}</strong></div>
             </div>
+          </section>
+
+          <section class="panel span-2">
+            <div class="panel-title">最近调用</div>
+            <div v-if="selectedAgent.recentInvocations.length" class="invocation-list">
+              <div v-for="record in selectedAgent.recentInvocations" :key="record.id" class="invocation-row">
+                <div class="invocation-row-head">
+                  <NTag size="small" :type="invocationStatusType(record.status)">{{ invocationStatusLabel(record.status) }}</NTag>
+                  <strong>{{ record.task || '未命名任务' }}</strong>
+                </div>
+                <div class="invocation-row-meta">
+                  <span>{{ formatInvocationTime(record.startedAt) }}</span>
+                  <span>{{ formatDurationMs(record.durationMs) }}</span>
+                </div>
+                <p>{{ record.summary || '等待子智能体返回摘要' }}</p>
+              </div>
+            </div>
+            <div v-else class="empty-inline">暂无真实调用记录</div>
           </section>
 
           <section class="panel span-2">
@@ -882,19 +1291,36 @@ onMounted(() => {
           <div class="panel-title-row">
             <div>
               <div class="panel-title">Skills</div>
-              <p>运行时已安装 skills 只展示；手动添加 ZIP URL 后才会进入下一次 config 注入 payload。</p>
+              <p>从 Skills 中心勾选装配到当前子智能体；运行时同步内容会单独保留。</p>
             </div>
-            <NButton size="small" @click="addCustomAsset('skills')">添加 URL</NButton>
+            <NButton size="small" @click="openCatalogCreateModal('skill')">新增</NButton>
+          </div>
+          <div class="catalog-picker">
+            <div v-for="record in skillCenter" :key="record.id" class="catalog-picker-row">
+              <NCheckbox
+                :checked="isCatalogSelected('skill', record)"
+                @update:checked="checked => toggleCatalogSelection('skill', record, checked)"
+              />
+              <div class="catalog-picker-main">
+                <strong>{{ record.name }}</strong>
+                <span>{{ record.description || '无描述' }}</span>
+                <small>{{ [record.category, record.provides?.length ? record.provides.join(', ') : ''].filter(Boolean).join(' · ') }}</small>
+              </div>
+            </div>
           </div>
           <div class="asset-list">
             <div v-for="asset in selectedAgent.skills" :key="asset.id" class="asset-row">
-              <div>
+              <div class="asset-main">
                 <strong>{{ asset.name }}</strong>
                 <span>{{ asset.description || asset.url || '无描述' }}</span>
+                <small v-if="asset.path || asset.version || asset.entry">
+                  {{ [asset.version ? `v${asset.version}` : '', asset.path || '', asset.entry || ''].filter(Boolean).join(' · ') }}
+                </small>
               </div>
               <div class="asset-actions">
-                <NTag size="small" :type="asset.source === 'runtime' ? 'info' : 'warning'">{{ asset.source }}</NTag>
-                <NButton v-if="asset.source === 'draft'" size="tiny" quaternary type="error" @click="removeAsset('skills', asset.id)">移除</NButton>
+                <NTag size="small" :type="asset.source === 'runtime' ? 'info' : asset.source === 'catalog' ? 'success' : 'warning'">{{ asset.source }}</NTag>
+                <NButton size="tiny" quaternary @click="selectedAssetPreview = asset">详情</NButton>
+                <NButton v-if="asset.source !== 'runtime'" size="tiny" quaternary type="error" @click="removeAsset('skills', asset.id)">移除</NButton>
               </div>
             </div>
             <div v-if="selectedAgent.skills.length === 0" class="empty-inline">运行时暂未返回 skills</div>
@@ -904,23 +1330,40 @@ onMounted(() => {
         <section v-else-if="activeTab === 'tools'" class="panel fill-panel">
           <div class="panel-title-row">
             <div>
-              <div class="panel-title">Extensions</div>
-              <p>运行时已安装 extensions 只展示；手动添加 ZIP URL 后会同步生成 packages 注入草稿。</p>
+              <div class="panel-title">工具</div>
+              <p>从工具中心勾选装配到当前子智能体；运行时同步内容会单独保留。</p>
             </div>
-            <NButton size="small" @click="addCustomAsset('tools')">添加 URL</NButton>
+            <NButton size="small" @click="openCatalogCreateModal('tool')">新增</NButton>
+          </div>
+          <div class="catalog-picker">
+            <div v-for="record in toolCenter" :key="record.id" class="catalog-picker-row">
+              <NCheckbox
+                :checked="isCatalogSelected('tool', record)"
+                @update:checked="checked => toggleCatalogSelection('tool', record, checked)"
+              />
+              <div class="catalog-picker-main">
+                <strong>{{ record.name }}</strong>
+                <span>{{ record.description || '无描述' }}</span>
+                <small>{{ [record.category, record.provides?.length ? record.provides.join(', ') : ''].filter(Boolean).join(' · ') }}</small>
+              </div>
+            </div>
           </div>
           <div class="asset-list">
             <div v-for="asset in selectedAgent.tools" :key="asset.id" class="asset-row">
-              <div>
+              <div class="asset-main">
                 <strong>{{ asset.name }}</strong>
                 <span>{{ asset.description || asset.url || '无描述' }}</span>
+                <small v-if="asset.path || asset.version || asset.entry">
+                  {{ [asset.version ? `v${asset.version}` : '', asset.path || '', asset.entry || ''].filter(Boolean).join(' · ') }}
+                </small>
               </div>
               <div class="asset-actions">
-                <NTag size="small" :type="asset.source === 'runtime' ? 'info' : 'warning'">{{ asset.source }}</NTag>
-                <NButton v-if="asset.source === 'draft'" size="tiny" quaternary type="error" @click="removeAsset('tools', asset.id)">移除</NButton>
+                <NTag size="small" :type="asset.source === 'runtime' ? 'info' : asset.source === 'catalog' ? 'success' : 'warning'">{{ asset.source }}</NTag>
+                <NButton size="tiny" quaternary @click="selectedAssetPreview = asset">详情</NButton>
+                <NButton v-if="asset.source !== 'runtime'" size="tiny" quaternary type="error" @click="removeAsset('tools', asset.id)">移除</NButton>
               </div>
             </div>
-            <div v-if="selectedAgent.tools.length === 0" class="empty-inline">运行时暂未返回 extensions</div>
+            <div v-if="selectedAgent.tools.length === 0" class="empty-inline">运行时暂未返回工具</div>
             <div class="packages-line">
               <span>packages</span>
               <code>{{ selectedAgent.packages.length ? selectedAgent.packages.join(', ') : '[]' }}</code>
@@ -1003,6 +1446,72 @@ onMounted(() => {
       <template #action>
         <NButton @click="showPayloadModal = false">关闭</NButton>
         <NButton type="primary" @click="copyPayload">复制</NButton>
+      </template>
+    </NModal>
+
+    <NModal :show="!!selectedAssetPreview" preset="dialog" title="资产详情" style="width: 720px;" @update:show="value => { if (!value) selectedAssetPreview = null }">
+      <div v-if="selectedAssetPreview" class="asset-preview">
+        <div class="asset-preview-row"><span>名称</span><strong>{{ selectedAssetPreview.name }}</strong></div>
+        <div class="asset-preview-row"><span>来源</span><strong>{{ selectedAssetPreview.source }}</strong></div>
+        <div class="asset-preview-row"><span>描述</span><strong>{{ selectedAssetPreview.description || '-' }}</strong></div>
+        <div class="asset-preview-row"><span>分类</span><strong>{{ selectedAssetPreview.category || '-' }}</strong></div>
+        <div class="asset-preview-row"><span>URL</span><strong>{{ selectedAssetPreview.url || '-' }}</strong></div>
+        <div class="asset-preview-row"><span>路径</span><strong>{{ selectedAssetPreview.path || '-' }}</strong></div>
+        <div class="asset-preview-row"><span>版本</span><strong>{{ selectedAssetPreview.version || '-' }}</strong></div>
+        <div class="asset-preview-row"><span>入口</span><strong>{{ selectedAssetPreview.entry || '-' }}</strong></div>
+        <div class="asset-preview-row"><span>分发方式</span><strong>{{ selectedAssetPreview.deliveryMode || '-' }}</strong></div>
+        <div class="asset-preview-row"><span>来源项目</span><strong>{{ selectedAssetPreview.sourceProject || '-' }}</strong></div>
+        <div class="asset-preview-row"><span>提供能力</span><strong>{{ selectedAssetPreview.provides?.length ? selectedAssetPreview.provides.join(', ') : '-' }}</strong></div>
+        <div class="asset-preview-row"><span>文件</span><strong>{{ selectedAssetPreview.files?.length ? selectedAssetPreview.files.join(', ') : '-' }}</strong></div>
+        <div class="asset-preview-row"><span>标签</span><strong>{{ selectedAssetPreview.tags?.length ? selectedAssetPreview.tags.join(', ') : '-' }}</strong></div>
+      </div>
+      <template #action>
+        <NButton @click="selectedAssetPreview = null">关闭</NButton>
+      </template>
+    </NModal>
+
+    <NModal v-model:show="showCatalogCreateModal" preset="dialog" :title="catalogForm.kind === 'skill' ? '新增 Skill' : '新增工具'" style="width: 720px;">
+      <div class="create-form">
+        <label>
+          <span>名称</span>
+          <NInput v-model:value="catalogForm.name" />
+        </label>
+        <label>
+          <span>描述</span>
+          <NInput v-model:value="catalogForm.description" type="textarea" :autosize="{ minRows: 3, maxRows: 5 }" />
+        </label>
+        <label>
+          <span>分类</span>
+          <NInput v-model:value="catalogForm.category" placeholder="例如：问数 / 报表 / 文档 / 浏览器 / 通用" />
+        </label>
+        <label>
+          <span>版本</span>
+          <NInput v-model:value="catalogForm.version" />
+        </label>
+        <label>
+          <span>URL</span>
+          <NInput v-model:value="catalogForm.url" placeholder="可选，远程 ZIP 地址" />
+        </label>
+        <label>
+          <span>入口</span>
+          <NInput v-model:value="catalogForm.entry" placeholder="工具可填 index.ts / index.js" />
+        </label>
+        <label>
+          <span>标签</span>
+          <NInput v-model:value="catalogForm.tags" placeholder="逗号分隔" />
+        </label>
+        <label>
+          <span>提供能力</span>
+          <NInput v-model:value="catalogForm.provides" placeholder="逗号分隔，例如 sql_query, query_cache_read" />
+        </label>
+        <label>
+          <span>来源项目</span>
+          <NInput v-model:value="catalogForm.sourceProject" />
+        </label>
+      </div>
+      <template #action>
+        <NButton @click="showCatalogCreateModal = false">取消</NButton>
+        <NButton type="primary" @click="createCatalogRecord">新增</NButton>
       </template>
     </NModal>
   </div>
@@ -1096,12 +1605,78 @@ onMounted(() => {
   gap: 8px;
 }
 
+.workspace-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+
+  button {
+    min-height: 32px;
+    border: 1px solid $border-color;
+    border-radius: 6px;
+    background: transparent;
+    color: $text-secondary;
+    cursor: pointer;
+  }
+
+  button.active {
+    color: $text-primary;
+    border-color: rgba(var(--accent-primary-rgb), 0.22);
+    background: rgba(var(--accent-primary-rgb), 0.08);
+    font-weight: 650;
+  }
+}
+
 .agent-list {
   min-height: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.catalog-list {
+  gap: 10px;
+}
+
+.catalog-header-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.catalog-row {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid $border-light;
+  border-radius: $radius-sm;
+  background: $bg-primary;
+
+  span,
+  small {
+    color: $text-secondary;
+    overflow-wrap: anywhere;
+  }
+
+  small {
+    color: $text-muted;
+  }
+}
+
+.catalog-row-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.catalog-row-head-actions,
+.catalog-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .agent-row {
@@ -1242,6 +1817,47 @@ onMounted(() => {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
+}
+
+.invocation-list {
+  display: grid;
+  gap: 10px;
+}
+
+.invocation-row {
+  padding: 10px;
+  border: 1px solid $border-light;
+  border-radius: $radius-sm;
+  background: rgba(var(--accent-primary-rgb), 0.03);
+
+  p {
+    margin: 8px 0 0;
+    color: $text-secondary;
+    line-height: 1.5;
+  }
+}
+
+.invocation-row-head,
+.invocation-row-meta,
+.asset-preview-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.invocation-row-head strong,
+.asset-preview-row strong {
+  min-width: 0;
+  flex: 1;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.invocation-row-meta {
+  margin-top: 6px;
+  color: $text-muted;
+  font-size: 12px;
 }
 
 .panel {
@@ -1425,6 +2041,39 @@ label {
   gap: 8px;
 }
 
+.catalog-picker {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid $border-light;
+  border-radius: $radius-sm;
+  background: rgba(var(--accent-primary-rgb), 0.03);
+}
+
+.catalog-picker-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.catalog-picker-main {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+
+  span,
+  small {
+    color: $text-secondary;
+    overflow-wrap: anywhere;
+  }
+
+  small {
+    color: $text-muted;
+  }
+}
+
 .asset-row,
 .deployment-row {
   display: flex;
@@ -1440,7 +2089,8 @@ label {
   }
 
   strong,
-  span {
+  span,
+  small {
     display: block;
     min-width: 0;
     overflow-wrap: anywhere;
@@ -1451,6 +2101,16 @@ label {
     font-size: 12px;
     margin-top: 3px;
   }
+
+  small {
+    color: $text-muted;
+    font-size: 12px;
+    margin-top: 4px;
+  }
+}
+
+.asset-main {
+  min-width: 0;
 }
 
 .asset-actions {
@@ -1493,6 +2153,20 @@ label {
   color: $text-primary;
   font-size: 12px;
   line-height: 1.5;
+}
+
+.asset-preview {
+  display: grid;
+  gap: 10px;
+}
+
+.asset-preview-row {
+  padding: 8px 0;
+  border-bottom: 1px solid $border-light;
+
+  span {
+    color: $text-secondary;
+  }
 }
 
 @media (max-width: 1100px) {

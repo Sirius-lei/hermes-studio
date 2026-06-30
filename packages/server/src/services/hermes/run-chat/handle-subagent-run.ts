@@ -237,6 +237,14 @@ function buildSubagentMessages(decision: MultiAgentRouteDecision) {
     '你是被 Hermes Studio 选中的子智能体执行者。',
     `任务分类：${decision.category}`,
     `路由原因：${decision.reason}`,
+    ...(decision.plan && decision.delegatedNodeIds.length > 0
+      ? [
+          '本次下发的任务清单：',
+          ...decision.plan.nodes
+            .filter(node => decision.delegatedNodeIds.includes(node.id))
+            .map((node, index) => `${index + 1}. [${node.phase}] ${node.title} - ${node.summary}`),
+        ]
+      : []),
     '直接完成用户请求，不要解释路由过程，不要引用 Hermes Studio 内部实现。',
   ].join('\n')
   return [
@@ -540,6 +548,7 @@ export async function handleSubagentRun(
     run_id: runId,
     subagent_id: selectedAgent.id,
     agent_name: selectedAgent.name,
+    plan_node_ids: decision.delegatedNodeIds,
     task_index: 0,
     task_count: 1,
     goal: subagentGoal(decision),
@@ -600,6 +609,7 @@ export async function handleSubagentRun(
       run_id: runId,
       subagent_id: selectedAgent.id,
       agent_name: selectedAgent.name,
+      plan_node_ids: decision.delegatedNodeIds,
       task_index: 0,
       task_count: 1,
       goal: subagentGoal(decision),
@@ -625,6 +635,7 @@ export async function handleSubagentRun(
       run_id: runId,
       subagent_id: selectedAgent.id,
       agent_name: selectedAgent.name,
+      plan_node_ids: decision.delegatedNodeIds,
       task_index: 0,
       task_count: 1,
       goal: subagentGoal(decision),

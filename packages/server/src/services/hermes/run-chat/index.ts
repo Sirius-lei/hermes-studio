@@ -412,10 +412,13 @@ export class ChatRunSocket {
     if (data.session_id && isBridgeRunSource(source) && isSessionCommand(data.input)) return
 
     if (!isCodingAgentExecution(source, data)) {
-      const routeDecision = resolveMultiAgentRoute({
+      const routeDecision = await resolveMultiAgentRoute({
         enabled: data.multi_agent_mode === true,
         input: data.input,
         candidates: data.sub_agent_candidates || [],
+        profile,
+        provider: data.provider,
+        model: data.model,
       })
       if (data.session_id && routeDecision.enabled) {
         const routeEvent = {
