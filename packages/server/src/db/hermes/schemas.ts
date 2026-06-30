@@ -160,6 +160,32 @@ export const WORKFLOW_RUN_NODE_SESSIONS_INDEXES = {
 }
 
 // ============================================================================
+// Task Plans
+// ============================================================================
+
+export const TASK_PLANS_TABLE = 'task_plans'
+
+export const TASK_PLANS_SCHEMA: Record<string, string> = {
+  id: 'TEXT PRIMARY KEY',
+  profile: "TEXT NOT NULL DEFAULT 'default'",
+  title: 'TEXT NOT NULL',
+  requirement: 'TEXT NOT NULL',
+  summary: "TEXT NOT NULL DEFAULT ''",
+  status: "TEXT NOT NULL DEFAULT 'draft'",
+  planner_provider: "TEXT NOT NULL DEFAULT ''",
+  planner_model: "TEXT NOT NULL DEFAULT ''",
+  plan_json: "TEXT NOT NULL DEFAULT '{}'",
+  created_at: 'INTEGER NOT NULL',
+  updated_at: 'INTEGER NOT NULL',
+}
+
+export const TASK_PLANS_INDEXES = {
+  idx_task_plans_profile: 'CREATE INDEX IF NOT EXISTS idx_task_plans_profile ON task_plans(profile)',
+  idx_task_plans_status: 'CREATE INDEX IF NOT EXISTS idx_task_plans_status ON task_plans(status)',
+  idx_task_plans_updated_at: 'CREATE INDEX IF NOT EXISTS idx_task_plans_updated_at ON task_plans(updated_at)',
+}
+
+// ============================================================================
 // Compression Snapshot (compression-snapshot.ts)
 // ============================================================================
 
@@ -731,6 +757,11 @@ export function initAllHermesTables(): void {
     })
     syncTable(WORKFLOW_RUN_NODE_SESSIONS_TABLE, WORKFLOW_RUN_NODE_SESSIONS_SCHEMA, {
       indexes: WORKFLOW_RUN_NODE_SESSIONS_INDEXES,
+    })
+
+    // Task plans
+    syncTable(TASK_PLANS_TABLE, TASK_PLANS_SCHEMA, {
+      indexes: TASK_PLANS_INDEXES,
     })
 
     // Compression snapshot

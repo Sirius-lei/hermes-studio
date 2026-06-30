@@ -186,6 +186,8 @@ export default {
     history: '历史',
     jobs: '任务',
     kanban: '看板',
+    taskPlans: '任务门户',
+    subAgents: '子智能体',
     workflow: '工作流',
     models: '模型',
     profiles: '用户',

@@ -283,6 +283,21 @@ function openVersionManagement() {
           </RouteLinkItem>
         </div>
       </div>
+
+      <div class="nav-group nav-group-standalone">
+        <RouteLinkItem class="nav-item" :to="{ name: 'hermes.subAgents' }" :active="selectedKey === 'hermes.subAgents'">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="7" r="3" />
+            <path d="M6 21v-2a6 6 0 0 1 12 0v2" />
+            <circle cx="5" cy="10" r="2" />
+            <path d="M2 20v-1a4 4 0 0 1 4-4" />
+            <circle cx="19" cy="10" r="2" />
+            <path d="M22 20v-1a4 4 0 0 0-4-4" />
+          </svg>
+          <span>{{ t("sidebar.subAgents") }}</span>
+        </RouteLinkItem>
+      </div>
+
     </nav>
 
     <ProfileSelector />
@@ -415,6 +430,12 @@ function openVersionManagement() {
   display: flex;
   flex-direction: column;
   gap: 2px;
+
+  &.nav-group-standalone {
+    margin-top: 4px;
+    padding-top: 8px;
+    border-top: 1px solid $border-light;
+  }
 
   &.nav-group-bottom {
     margin-top: auto;

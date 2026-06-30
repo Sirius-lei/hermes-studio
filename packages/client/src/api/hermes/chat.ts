@@ -14,6 +14,9 @@ export interface ChatMessage {
 
 export interface StartRunRequest {
   input: string | ContentBlock[]
+  display_input?: string | ContentBlock[] | null
+  display_role?: 'user' | 'command'
+  storage_message?: string
   instructions?: string
   session_id?: string
   profile?: string
@@ -33,6 +36,17 @@ export interface StartRunRequest {
   api_key?: string
   apiMode?: ProviderApiMode
   api_mode?: ProviderApiMode
+  multi_agent_mode?: boolean
+  sub_agent_candidates?: Array<{
+    id: string
+    name: string
+    description?: string
+    baseUrl?: string
+    chatPath?: string
+    enabled?: boolean
+    skills?: Array<{ name?: string; description?: string }>
+    tools?: Array<{ name?: string; description?: string }>
+  }>
   /** Per-session reasoning effort override.
    * Empty/undefined = use config.yaml default. */
   reasoning_effort?: string

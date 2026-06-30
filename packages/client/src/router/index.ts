@@ -56,6 +56,16 @@ const router = createRouter({
       component: () => import('@/views/hermes/WorkflowView.vue'),
     },
     {
+      path: '/hermes/task-plans',
+      name: 'hermes.taskPlans',
+      redirect: { name: 'hermes.chat' },
+    },
+    {
+      path: '/hermes/sub-agents',
+      name: 'hermes.subAgents',
+      component: () => import('@/views/hermes/SubAgentsView.vue'),
+    },
+    {
       path: '/hermes/models',
       name: 'hermes.models',
       component: () => import('@/views/hermes/ModelsView.vue'),

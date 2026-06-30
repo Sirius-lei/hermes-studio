@@ -35,6 +35,7 @@ import { jobRoutes } from './hermes/jobs'
 import { cronHistoryRoutes } from './hermes/cron-history'
 import { kanbanRoutes } from './hermes/kanban'
 import { workflowRoutes } from './hermes/workflows'
+import { taskPlanRoutes } from './hermes/task-plans'
 import { ttsRoutes, ttsProtectedRoutes } from './hermes/tts'
 import { sttProtectedRoutes } from './hermes/stt'
 import { mcuFirmwareRoutes } from './hermes/mcu-firmware'
@@ -95,6 +96,7 @@ export function registerRoutes(app: any, authMiddleware: Array<(ctx: Context, ne
   app.use(cronHistoryRoutes.routes())
   app.use(kanbanRoutes.routes())
   app.use(workflowRoutes.routes())
+  app.use(taskPlanRoutes.routes())
   app.use(ttsProtectedRoutes.routes())
   app.use(sttProtectedRoutes.routes())
   app.use(mcuFirmwareRoutes.routes())

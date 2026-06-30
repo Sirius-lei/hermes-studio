@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Attachment } from '@/stores/hermes/chat'
+import type { MultiAgentRunOptions } from '@/stores/hermes/chat'
 import { useChatStore } from '@/stores/hermes/chat'
 import { useAppStore } from '@/stores/hermes/app'
 import { useProfilesStore } from '@/stores/hermes/profiles'
@@ -19,6 +20,18 @@ import type { StoredSttProvider } from '@/api/hermes/stt-settings'
 import { useSttSettings } from '@/composables/useSttSettings'
 import { useBrowserSpeechRecognition } from '@/composables/useBrowserSpeechRecognition'
 import { BRIDGE_SESSION_COMMAND_DEFINITIONS } from '@/utils/hermes/bridge-session-commands'
+
+const props = withDefaults(defineProps<{
+  multiAgentMode?: boolean
+  multiAgentRunOptions?: MultiAgentRunOptions | null
+}>(), {
+  multiAgentMode: false,
+  multiAgentRunOptions: null,
+})
+
+const emit = defineEmits<{
+  (e: 'toggle-multi-agent'): void
+}>()
 
 const chatStore = useChatStore()
 const appStore = useAppStore()
@@ -674,7 +687,11 @@ function handleSend() {
     return
   }
 
-  chatStore.sendMessage(text, attachments.value.length > 0 ? attachments.value : undefined)
+  chatStore.sendMessage(
+    text,
+    attachments.value.length > 0 ? attachments.value : undefined,
+    props.multiAgentMode ? (props.multiAgentRunOptions || { enabled: true }) : undefined,
+  )
   inputText.value = ''
   saveDraftForActiveSession('')
   attachments.value = []
@@ -866,6 +883,10 @@ function formatSize(bytes: number): string {
 function isImage(type: string): boolean {
   return type.startsWith('image/')
 }
+
+function handleToggleMultiAgent() {
+  emit('toggle-multi-agent')
+}
 </script>
 
 <template>
@@ -881,6 +902,43 @@ function isImage(type: string): boolean {
           </NButton>
         </template>
         {{ t('chat.attachFiles') }}
+      </NTooltip>
+
+      <NTooltip trigger="hover">
+        <template #trigger>
+          <NButton
+            quaternary
+            size="tiny"
+            class="multi-agent-top-button"
+            :class="{ active: props.multiAgentMode }"
+            :aria-label="props.multiAgentMode ? '关闭多智能体协作模式' : '开启多智能体协作模式'"
+            :title="props.multiAgentMode ? '关闭多智能体协作模式' : '开启多智能体协作模式'"
+            :aria-pressed="props.multiAgentMode"
+            @click="handleToggleMultiAgent"
+          >
+            <template #icon>
+              <svg
+                width="15"
+                height="15"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <circle cx="12" cy="5" r="3" />
+                <circle cx="5" cy="18" r="3" />
+                <circle cx="19" cy="18" r="3" />
+                <path d="M10.2 7.4 6.8 15.3" />
+                <path d="M13.8 7.4 17.2 15.3" />
+                <path d="M8 18h8" />
+              </svg>
+            </template>
+            <span class="multi-agent-mode-label">多智能体</span>
+          </NButton>
+        </template>
+        {{ props.multiAgentMode ? '关闭多智能体协作模式' : '开启多智能体协作模式' }}
       </NTooltip>
 
       <NPopselect
@@ -1461,6 +1519,20 @@ function isImage(type: string): boolean {
   align-items: center;
 }
 
+.multi-agent-top-button {
+  gap: 6px;
+  color: $text-secondary;
+
+  &.active {
+    color: var(--accent-primary);
+    background: rgba(var(--accent-primary-rgb), 0.08) !important;
+  }
+}
+
+.multi-agent-mode-label {
+  white-space: nowrap;
+}
+
 .slash-command-dropdown {
   position: absolute;
   left: 12px;
@@ -1614,6 +1686,17 @@ function isImage(type: string): boolean {
   text-align: center;
   color: $text-muted;
   font-size: 13px;
+}
+
+@media (max-width: 768px) {
+  .multi-agent-top-button {
+    min-width: 0;
+    padding-inline: 8px;
+  }
+
+  .multi-agent-mode-label {
+    display: none;
+  }
 }
 
 @media (max-width: 768px) {

@@ -51,6 +51,17 @@ export interface QueuedRun {
   apiMode?: string
   api_mode?: string
   originSocketId?: string
+  multiAgentMode?: boolean
+  subAgentCandidates?: Array<{
+    id: string
+    name: string
+    description?: string
+    baseUrl?: string
+    chatPath?: string
+    enabled?: boolean
+    skills?: Array<{ name?: string; description?: string }>
+    tools?: Array<{ name?: string; description?: string }>
+  }>
   goalContinuation?: boolean
 }
 

@@ -22,7 +22,7 @@ const PROVIDER_MODEL_CATALOG = buildProviderModelMap()
 
 type ModelMeta = { preview?: boolean; disabled?: boolean; alias?: string }
 type ProviderApiMode = 'chat_completions' | 'codex_responses' | 'anthropic_messages' | 'bedrock_converse' | 'codex_app_server'
-type AvailableGroup = { provider: string; label: string; base_url: string; models: string[]; api_key: string; api_mode?: ProviderApiMode; builtin?: boolean; model_meta?: Record<string, ModelMeta>; available_models?: string[]; base_url_env?: string; provider_source?: 'custom_providers' | 'providers'; provider_key?: string }
+export type AvailableGroup = { provider: string; label: string; base_url: string; models: string[]; api_key: string; api_mode?: ProviderApiMode; builtin?: boolean; model_meta?: Record<string, ModelMeta>; available_models?: string[]; base_url_env?: string; provider_source?: 'custom_providers' | 'providers'; provider_key?: string }
 type ModelVisibility = Record<string, ModelVisibilityRule>
 type CustomModels = Record<string, string[]>
 
@@ -447,6 +447,45 @@ async function buildAvailableForProfile(
   const groupsWithCustomModels = applyCustomModels(groups, normalizeCustomModels(appConfig.customModels))
 
   return { profile, default: currentDefault, default_provider: currentDefaultProvider, groups: groupsWithCustomModels }
+}
+
+export async function resolveAvailableModelForProfile(input: {
+  profile: string
+  provider?: string | null
+  model?: string | null
+}): Promise<{
+  provider: string
+  model: string
+  label: string
+  base_url: string
+  api_key: string
+  api_mode?: ProviderApiMode
+}> {
+  const appConfig = await readAppConfig()
+  const modelAliases = normalizeAliases(appConfig.modelAliases)
+  const modelVisibility = normalizeModelVisibility(appConfig.modelVisibility)
+  const customModels = normalizeCustomModels(appConfig.customModels)
+  const modelCatalogCache = await readProviderModelCatalogCache()
+  const available = await buildAvailableForProfile(input.profile, modelCatalogCache, appConfig)
+  const groups = applyModelVisibility(
+    applyModelAliases(applyCustomModels(available.groups, customModels), modelAliases),
+    modelVisibility,
+  )
+  const visibleDefault = resolveVisibleDefault(available.default, available.default_provider, groups)
+  const provider = input.provider?.trim() || visibleDefault.defaultProvider
+  const model = input.model?.trim() || visibleDefault.defaultModel
+  if (!provider || !model) throw new Error('No Hermes model is available for planning')
+
+  const group = groups.find(item => item.provider === provider && item.models.includes(model))
+  if (!group) throw new Error(`Model "${model}" is not available for provider "${provider}"`)
+  return {
+    provider,
+    model,
+    label: group.label,
+    base_url: group.base_url,
+    api_key: group.api_key,
+    api_mode: group.api_mode,
+  }
 }
 
 export async function getAvailable(ctx: any) {

@@ -17,9 +17,11 @@ import { getAgentBridgeManager } from '../agent-bridge/manager'
 import { redactAgentBridgeError } from '../agent-bridge/redact'
 import { handleBridgeRun, resumeBridgeRun } from './handle-bridge-run'
 import { handleCodingAgentRun } from './handle-coding-agent-run'
+import { handleSubagentRun } from './handle-subagent-run'
 import { handleAbort } from './abort'
-import { getOrCreateSession } from './compression'
+import { getOrCreateSession, pushState } from './compression'
 import { loadSessionStateFromDb, resolveRunSource } from './load-state'
+import { resolveMultiAgentRoute, type MultiAgentRouteCandidate } from './multi-agent-routing'
 import { handleSessionCommand, isSessionCommand, parseSessionCommand } from './session-command'
 import { contentBlocksToString } from './content-blocks'
 import type { ContentBlock, QueuedRun, SessionState } from './types'
@@ -194,6 +196,8 @@ export class ChatRunSocket {
       api_key?: string
       apiMode?: string
       api_mode?: string
+      multi_agent_mode?: boolean
+      sub_agent_candidates?: MultiAgentRouteCandidate[]
       profile?: string
       // Local patch (reasoning-effort): per-session reasoning effort override.
       reasoning_effort?: string
@@ -261,6 +265,8 @@ export class ChatRunSocket {
             api_key: data.api_key,
             apiMode: data.apiMode,
             api_mode: data.api_mode,
+            multiAgentMode: data.multi_agent_mode === true,
+            subAgentCandidates: data.sub_agent_candidates,
             originSocketId: socket.id,
           })
           this.nsp.to(`session:${data.session_id}`).emit('run.queued', {
@@ -395,6 +401,8 @@ export class ChatRunSocket {
       api_key?: string
       apiMode?: string
       api_mode?: string
+      multi_agent_mode?: boolean
+      sub_agent_candidates?: MultiAgentRouteCandidate[]
       onEvent?: (event: string, payload: any) => void
     },
     profile: string,
@@ -404,6 +412,49 @@ export class ChatRunSocket {
     if (data.session_id && isBridgeRunSource(source) && isSessionCommand(data.input)) return
 
     if (!isCodingAgentExecution(source, data)) {
+      const routeDecision = resolveMultiAgentRoute({
+        enabled: data.multi_agent_mode === true,
+        input: data.input,
+        candidates: data.sub_agent_candidates || [],
+      })
+      if (data.session_id && routeDecision.enabled) {
+        const routeEvent = {
+          event: 'agent.event',
+          kind: 'multi_agent_route',
+          mode: routeDecision.executionMode,
+          category: routeDecision.category,
+          confidence: routeDecision.confidence,
+          reason: routeDecision.reason,
+          plan: routeDecision.plan,
+          selected_agent: routeDecision.selectedAgent
+            ? {
+                id: routeDecision.selectedAgent.id,
+                name: routeDecision.selectedAgent.name,
+                baseUrl: routeDecision.selectedAgent.baseUrl || '',
+              }
+            : null,
+          text: routeDecision.routeText,
+        }
+        pushState(this.sessionMap, data.session_id, 'agent.event', {
+          ...routeEvent,
+          session_id: data.session_id,
+        })
+        this.emitToSession(socket, data.session_id, 'agent.event', routeEvent)
+      }
+      if (routeDecision.executionMode === 'delegate_subagent' && routeDecision.selectedAgent) {
+        await handleSubagentRun(
+          this.nsp,
+          socket,
+          data,
+          profile,
+          this.sessionMap,
+          routeDecision,
+          this.dequeueNextQueuedRun.bind(this),
+          skipUserMessage,
+        )
+        return
+      }
+
       const bridgeReady = await ensureBridgeReadyForChatRun()
       if (!bridgeReady.ok) {
         let shouldDequeueNext = false
@@ -446,6 +497,9 @@ export class ChatRunSocket {
       let fullInstructions = data.instructions
         ? `${getSystemPrompt(undefined, { source })}\n${data.instructions}`
         : getSystemPrompt(undefined, { source })
+      if (routeDecision.hermesInstructions) {
+        fullInstructions = `${fullInstructions}\n\n${routeDecision.hermesInstructions}`
+      }
       if (data.session_id) {
         const sessionRow = getSession(data.session_id)
         const workspace = await ensureHermesRunWorkspace(profile, sessionRow?.workspace || data.workspace)
@@ -638,6 +692,8 @@ export class ChatRunSocket {
       api_key: next.api_key,
       apiMode: next.apiMode,
       api_mode: next.api_mode,
+      multi_agent_mode: next.multiAgentMode,
+      sub_agent_candidates: next.subAgentCandidates,
     }, next.profile || fallbackProfile, skipUserMessage)
   }
 
@@ -667,6 +723,8 @@ export class ChatRunSocket {
       api_key?: string
       apiMode?: string
       api_mode?: string
+      multi_agent_mode?: boolean
+      sub_agent_candidates?: MultiAgentRouteCandidate[]
       profile?: string
       reasoning_effort?: string
     },

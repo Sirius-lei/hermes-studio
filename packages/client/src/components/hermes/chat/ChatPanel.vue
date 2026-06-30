@@ -2,7 +2,14 @@
 import { renameSession, setSessionWorkspace, batchDeleteSessions, exportSession } from "@/api/hermes/sessions";
 import type { AvailableModelGroup } from "@/api/hermes/system";
 import { fetchCodingAgentsStatus, inferCodingAgentApiMode, normalizeCodingAgentApiMode, type CodingAgentApiMode, type CodingAgentId } from "@/api/coding-agents";
-import { useChatStore, type Session } from "@/stores/hermes/chat";
+import {
+  useChatStore,
+  type MultiAgentExecutionEventState,
+  type MultiAgentPlanNodeState,
+  type MultiAgentRouteState,
+  type MultiAgentRunOptions,
+  type Session,
+} from "@/stores/hermes/chat";
 import { useAppStore } from "@/stores/hermes/app";
 import { useProfilesStore } from "@/stores/hermes/profiles";
 import { useSessionBrowserPrefsStore } from "@/stores/hermes/session-browser-prefs";
@@ -46,6 +53,146 @@ const message = useMessage();
 const { t } = useI18n();
 const isSuperAdmin = computed(() => isStoredSuperAdmin());
 
+type MultiAgentSkill = {
+  name: string
+  description?: string
+}
+
+type MultiAgentCandidate = {
+  id: string
+  name: string
+  description: string
+  baseUrl?: string
+  chatPath?: string
+  enabled?: boolean
+  skills: MultiAgentSkill[]
+  tools: MultiAgentSkill[]
+}
+
+type MultiAgentPlanTask = {
+  id: string
+  index: number
+  phase: string
+  title: string
+  summary: string
+  executorType: "hermes" | "subagent"
+  agentId: string
+  agentName: string
+  status: "todo" | "doing" | "done" | "blocked"
+}
+
+const SUB_AGENT_STORAGE_KEY = "hermes.subAgents.frontendDraft.v4";
+const multiAgentMode = ref(false);
+const multiAgentAgents = ref<MultiAgentCandidate[]>([]);
+const multiAgentRunOptions = computed<MultiAgentRunOptions | null>(() => {
+  if (!multiAgentMode.value) return null;
+  return {
+    enabled: true,
+    candidates: multiAgentAgents.value.map(agent => ({
+      id: agent.id,
+      name: agent.name,
+      description: agent.description,
+      baseUrl: agent.baseUrl || "",
+      chatPath: agent.chatPath || "/v1/chat/completions",
+      enabled: agent.enabled !== false,
+      skills: agent.skills.map(skill => ({
+        name: skill.name,
+        description: skill.description || "",
+      })),
+      tools: agent.tools.map(tool => ({
+        name: tool.name,
+        description: tool.description || "",
+      })),
+    })),
+  };
+});
+
+const multiAgentRuntimeRoute = computed<MultiAgentRouteState | null>(() => {
+  if (!multiAgentMode.value) return null;
+  const sessionId = chatStore.activeSessionId;
+  if (!sessionId) return null;
+  return chatStore.multiAgentRoutes.get(sessionId) || null;
+});
+
+const displayedMultiAgentTasks = computed<MultiAgentPlanTask[]>(() => {
+  const route = multiAgentRuntimeRoute.value;
+  if (!route) return [];
+
+  return route.planNodes.map((task, index) => ({
+    ...task,
+    index: index + 1,
+    executorType: task.executor.type,
+    agentId: task.executor.id || "",
+    agentName: task.executor.name,
+  }));
+});
+
+const activePlanTask = computed(() => {
+  const route = multiAgentRuntimeRoute.value;
+  if (!route) return null;
+  return displayedMultiAgentTasks.value.find(task => task.id === route.currentNodeId) || null;
+});
+
+const multiAgentRouteModeLabel = computed(() => {
+  const route = multiAgentRuntimeRoute.value;
+  if (!route) return "";
+  return route.mode === "delegate_subagent" ? "子智能体直连" : "Hermes 编排";
+});
+
+const multiAgentObjectiveText = computed(() => {
+  const route = multiAgentRuntimeRoute.value;
+  if (!route) return "";
+  return route.objective || route.reason || route.text || "";
+});
+
+const multiAgentRouteNote = computed(() => {
+  const route = multiAgentRuntimeRoute.value;
+  if (!route) return "";
+  return route.text || route.reason || "";
+});
+
+const multiAgentActivity = computed<MultiAgentExecutionEventState[]>(() =>
+  multiAgentRuntimeRoute.value?.activity || [],
+);
+
+const multiAgentStatusText = computed(() => {
+  if (!multiAgentMode.value) return "未开启";
+  const route = multiAgentRuntimeRoute.value;
+  if (!route) return chatStore.isStreaming ? "规划中" : "等待下一条消息";
+  if (route.status === "failed") return "执行失败";
+  if (route.status === "completed") return "已完成";
+  if (route.currentNodeId === "respond") return "结果汇总中";
+  if (route.mode === "delegate_subagent") return "子智能体执行中";
+  if (route.status === "running") return "主链路执行中";
+  return "等待下一条消息";
+});
+
+function multiAgentTaskStatusLabel(status: MultiAgentPlanNodeState["status"]) {
+  switch (status) {
+    case "doing":
+      return "执行中";
+    case "done":
+      return "已完成";
+    case "blocked":
+      return "失败";
+    default:
+      return "待执行";
+  }
+}
+
+function multiAgentActivityStatusLabel(status: MultiAgentExecutionEventState["status"]) {
+  switch (status) {
+    case "running":
+      return "运行中";
+    case "done":
+      return "已完成";
+    case "error":
+      return "失败";
+    default:
+      return "已记录";
+  }
+}
+
 const showOutline = ref(false);
 const messageListRef = ref<InstanceType<typeof MessageList> | null>(null);
 const chatInputRef = ref<(InstanceType<typeof ChatInput> & { addFiles?: (files: File[]) => void }) | null>(null);
@@ -83,6 +230,45 @@ const isMobile = ref(false);
 const toolPanelStyle = computed(() => ({
   width: isMobile.value ? "100%" : `${toolPanelWidth.value}px`,
 }));
+
+function normalizeMultiAgentSkillList(value: unknown): MultiAgentSkill[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item: any) => ({
+    name: String(item?.name || item?.id || "").trim(),
+    description: String(item?.description || "").trim(),
+  })).filter(item => item.name);
+}
+
+function refreshMultiAgentAgents() {
+  try {
+    const raw = window.localStorage.getItem(SUB_AGENT_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) {
+      multiAgentAgents.value = [];
+      return;
+    }
+    multiAgentAgents.value = parsed.map((agent: any) => ({
+      id: String(agent?.id || agent?.name || "").trim(),
+      name: String(agent?.name || agent?.id || "").trim(),
+      description: String(agent?.description || "").trim(),
+      baseUrl: String(agent?.baseUrl || "").trim(),
+      chatPath: String(agent?.runtimeConfig?.chatPath || "/v1/chat/completions").trim(),
+      enabled: agent?.runtimeConfig?.enabled !== false && agent?.status !== "offline" && agent?.status !== "draft",
+      skills: normalizeMultiAgentSkillList(agent?.skills),
+      tools: normalizeMultiAgentSkillList(agent?.tools),
+    })).filter(agent => agent.id && agent.name);
+  } catch {
+    multiAgentAgents.value = [];
+  }
+}
+
+function toggleMultiAgentMode() {
+  multiAgentMode.value = !multiAgentMode.value;
+  if (multiAgentMode.value) {
+    refreshMultiAgentAgents();
+    return;
+  }
+}
 
 function sessionHref(sessionId: string) {
   return router.resolve({
@@ -228,6 +414,7 @@ onMounted(() => {
   window.addEventListener("hermes:open-page-sidebar", openPageSidebar);
   window.addEventListener("resize", handleToolPanelViewportResize);
   handleToolPanelViewportResize();
+  refreshMultiAgentAgents();
   if (profilesStore.profiles.length === 0) {
     void profilesStore.fetchProfiles();
   }
@@ -1719,13 +1906,163 @@ async function handleSessionModelCustomSubmit() {
         >
           <div class="chat-main-content">
             <MessageList ref="messageListRef" />
-            <ChatInput ref="chatInputRef" />
+            <ChatInput
+              ref="chatInputRef"
+              :multi-agent-mode="multiAgentMode"
+              :multi-agent-run-options="multiAgentRunOptions"
+              @toggle-multi-agent="toggleMultiAgentMode"
+            />
           </div>
           <OutlinePanel
             v-if="showOutline"
             :messages="chatStore.messages"
             @navigate="handleOutlineNavigate"
           />
+          <aside
+            v-if="multiAgentMode"
+            class="multi-agent-side-panel"
+            aria-label="多智能体协作规划"
+            data-testid="multi-agent-panel"
+          >
+            <div class="multi-agent-side-header">
+              <div class="multi-agent-side-title">
+                <span class="multi-agent-plan-dot" />
+                <div>
+                  <strong>多智能体协作模式</strong>
+                  <span>{{ multiAgentStatusText }}</span>
+                </div>
+              </div>
+              <button class="multi-agent-side-close" type="button" @click="toggleMultiAgentMode">
+                关闭
+              </button>
+            </div>
+            <div class="multi-agent-side-body">
+              <div v-if="!multiAgentRuntimeRoute" class="multi-agent-placeholder" data-testid="multi-agent-placeholder">
+                <strong>多智能体画布已展开</strong>
+                <span>发送需求后，这里会按执行顺序展示规划节点和当前进度。</span>
+              </div>
+              <template v-else>
+                <div class="multi-agent-summary">
+                  <span>任务目标</span>
+                  <p>{{ multiAgentObjectiveText }}</p>
+                </div>
+                <div class="multi-agent-side-meta">
+                  <span>{{ multiAgentRuntimeRoute.category }}</span>
+                  <span>{{ multiAgentRouteModeLabel }}</span>
+                  <span v-if="multiAgentRuntimeRoute.selectedAgentName">
+                    {{ multiAgentRuntimeRoute.selectedAgentName }}
+                  </span>
+                </div>
+                <div class="multi-agent-metrics">
+                  <div>
+                    <span>任务节点</span>
+                    <strong>{{ displayedMultiAgentTasks.length }}</strong>
+                  </div>
+                  <div>
+                    <span>当前节点</span>
+                    <strong>{{ activePlanTask?.index || "-" }}</strong>
+                  </div>
+                  <div>
+                    <span>执行状态</span>
+                    <strong>{{ multiAgentStatusText }}</strong>
+                  </div>
+                </div>
+                <div v-if="activePlanTask" class="multi-agent-current-card" data-testid="multi-agent-current-node">
+                  <div class="multi-agent-current-card-head">
+                    <span>当前节点</span>
+                    <strong>{{ activePlanTask.title }}</strong>
+                  </div>
+                  <div class="multi-agent-current-card-meta">
+                    <span>{{ activePlanTask.phase }}</span>
+                    <span>{{ activePlanTask.agentName }}</span>
+                    <span :class="['multi-agent-status-chip', `is-${activePlanTask.status}`]">
+                      {{ multiAgentTaskStatusLabel(activePlanTask.status) }}
+                    </span>
+                  </div>
+                  <p>{{ activePlanTask.summary }}</p>
+                </div>
+                <div v-if="multiAgentRouteNote" class="multi-agent-plain">
+                  {{ multiAgentRouteNote }}
+                </div>
+                <div v-if="displayedMultiAgentTasks.length" class="multi-agent-task-list">
+                  <article
+                    v-for="(task, taskIndex) in displayedMultiAgentTasks"
+                    :key="task.id"
+                    class="multi-agent-task"
+                    :data-testid="`multi-agent-task-${task.id}`"
+                    :class="{
+                      active: task.id === multiAgentRuntimeRoute.currentNodeId,
+                      done: task.status === 'done',
+                      blocked: task.status === 'blocked',
+                    }"
+                  >
+                    <div class="multi-agent-task-rail" aria-hidden="true">
+                      <svg class="multi-agent-task-svg" viewBox="0 0 32 128" preserveAspectRatio="none">
+                        <path
+                          v-if="taskIndex > 0"
+                          class="multi-agent-task-path"
+                          d="M16 0 L16 34"
+                        />
+                        <path
+                          v-if="taskIndex < displayedMultiAgentTasks.length - 1"
+                          class="multi-agent-task-path"
+                          d="M16 50 L16 128"
+                        />
+                        <circle class="multi-agent-task-node" cx="16" cy="42" r="8" />
+                      </svg>
+                      <div class="multi-agent-task-index">{{ task.index }}</div>
+                    </div>
+                    <div class="multi-agent-task-card">
+                      <div class="multi-agent-task-main">
+                        <div class="multi-agent-task-line">
+                          <strong>{{ task.title }}</strong>
+                          <span>{{ task.phase }}</span>
+                        </div>
+                        <p>{{ task.summary }}</p>
+                      </div>
+                      <div
+                        class="multi-agent-task-agent"
+                        :class="[
+                          `is-${task.status}`,
+                          { empty: !task.agentId && task.executorType !== 'hermes' },
+                        ]"
+                      >
+                        <span>{{ task.agentName }}</span>
+                        <small>{{ multiAgentTaskStatusLabel(task.status) }}</small>
+                      </div>
+                    </div>
+                  </article>
+                </div>
+                <section v-if="multiAgentActivity.length" class="multi-agent-activity" data-testid="multi-agent-activity">
+                  <div class="multi-agent-activity-head">
+                    <strong>子智能体回传</strong>
+                    <span>{{ multiAgentActivity.length }} 条</span>
+                  </div>
+                  <div class="multi-agent-activity-list">
+                    <article
+                      v-for="activity in multiAgentActivity"
+                      :key="activity.id"
+                      class="multi-agent-activity-item"
+                      :class="`is-${activity.status}`"
+                    >
+                      <div class="multi-agent-activity-title">
+                        <strong>{{ activity.title }}</strong>
+                        <span>{{ multiAgentActivityStatusLabel(activity.status) }}</span>
+                      </div>
+                      <div class="multi-agent-activity-meta">
+                        <span v-if="activity.agentName">{{ activity.agentName }}</span>
+                        <span v-if="activity.toolName">{{ activity.toolName }}</span>
+                      </div>
+                      <p>{{ activity.text }}</p>
+                    </article>
+                  </div>
+                </section>
+                <div v-else class="multi-agent-plain">
+                  当前消息暂不需要拆解执行节点，仍由 Hermes 直接处理。
+                </div>
+              </template>
+            </div>
+          </aside>
           <aside
             v-if="showToolPanel"
             class="chat-tool-panel"
@@ -2362,6 +2699,549 @@ async function handleSessionModelCustomSubmit() {
   min-width: 0;
 }
 
+.multi-agent-side-panel {
+  width: 360px;
+  flex-shrink: 0;
+  border-left: 1px solid $border-color;
+  background: $bg-card;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.multi-agent-side-header {
+  min-height: 58px;
+  padding: 12px;
+  border-bottom: 1px solid $border-light;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.multi-agent-side-title {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  strong {
+    display: block;
+    color: $text-primary;
+    font-size: 14px;
+    line-height: 18px;
+    font-weight: 650;
+  }
+
+  span {
+    display: block;
+    margin-top: 1px;
+    color: $text-muted;
+    font-size: 12px;
+    line-height: 16px;
+    overflow-wrap: anywhere;
+  }
+}
+
+.multi-agent-plan-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: $success;
+  box-shadow: 0 0 0 4px rgba(var(--success-rgb), 0.12);
+  flex-shrink: 0;
+}
+
+.multi-agent-side-close {
+  min-height: 30px;
+  border: 1px solid $border-light;
+  border-radius: 6px;
+  background: $bg-card;
+  color: $text-secondary;
+  padding: 0 10px;
+  font-size: 12px;
+  cursor: pointer;
+
+  &:hover {
+    color: $text-primary;
+    border-color: $border-color;
+  }
+}
+
+.multi-agent-side-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.multi-agent-placeholder {
+  min-height: 160px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  color: $text-secondary;
+  font-size: 12px;
+  line-height: 1.55;
+
+  strong {
+    color: $text-primary;
+    font-size: 14px;
+    line-height: 18px;
+    font-weight: 650;
+  }
+
+  span {
+    max-width: 260px;
+  }
+}
+
+.multi-agent-summary {
+  display: grid;
+  gap: 4px;
+
+  span {
+    color: $text-muted;
+    font-size: 11px;
+    line-height: 15px;
+  }
+
+  p {
+    margin: 0;
+    color: $text-secondary;
+    font-size: 13px;
+    line-height: 1.45;
+  }
+}
+
+.multi-agent-side-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+
+  span {
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: $bg-secondary;
+    color: $text-secondary;
+    font-size: 11px;
+    line-height: 16px;
+  }
+}
+
+.multi-agent-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+
+  div {
+    min-width: 0;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: $bg-secondary;
+  }
+
+  span {
+    display: block;
+    color: $text-muted;
+    font-size: 11px;
+    line-height: 15px;
+  }
+
+  strong {
+    display: block;
+    margin-top: 2px;
+    color: $text-primary;
+    font-size: 14px;
+    line-height: 18px;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.multi-agent-current-card {
+  padding: 10px 12px;
+  border: 1px solid rgba(var(--accent-primary-rgb), 0.18);
+  border-radius: 8px;
+  background: rgba(var(--accent-primary-rgb), 0.04);
+  display: grid;
+  gap: 8px;
+
+  p {
+    margin: 0;
+    color: $text-secondary;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+}
+
+.multi-agent-current-card-head {
+  display: grid;
+  gap: 2px;
+
+  span {
+    color: $text-muted;
+    font-size: 11px;
+    line-height: 15px;
+  }
+
+  strong {
+    color: $text-primary;
+    font-size: 13px;
+    line-height: 18px;
+    font-weight: 650;
+  }
+}
+
+.multi-agent-current-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+
+  span {
+    min-width: 0;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: $bg-card;
+    color: $text-secondary;
+    font-size: 11px;
+    line-height: 16px;
+  }
+}
+
+.multi-agent-status-chip {
+  &.is-todo {
+    background: $bg-secondary;
+    color: $text-muted;
+  }
+
+  &.is-doing {
+    background: rgba(var(--accent-info-rgb), 0.12);
+    color: var(--accent-info);
+  }
+
+  &.is-done {
+    background: rgba(var(--success-rgb), 0.12);
+    color: $success;
+  }
+
+  &.is-blocked {
+    background: rgba(var(--accent-error-rgb), 0.12);
+    color: var(--accent-error);
+  }
+}
+
+.multi-agent-task-list {
+  display: grid;
+  gap: 2px;
+}
+
+.multi-agent-task {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 10px;
+  align-items: stretch;
+  min-height: 112px;
+}
+
+.multi-agent-task-rail {
+  position: relative;
+  min-height: 112px;
+}
+
+.multi-agent-task-svg {
+  position: absolute;
+  inset: 0;
+  width: 32px;
+  height: 100%;
+  overflow: visible;
+}
+
+.multi-agent-task-path {
+  fill: none;
+  stroke: rgba(var(--accent-primary-rgb), 0.16);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.multi-agent-task-node {
+  fill: $bg-card;
+  stroke: rgba(var(--accent-primary-rgb), 0.36);
+  stroke-width: 2;
+}
+
+.multi-agent-task-index {
+  position: absolute;
+  top: 30px;
+  left: 4px;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: $bg-card;
+  color: $text-secondary;
+  font-size: 11px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid $border-light;
+  z-index: 1;
+}
+
+.multi-agent-task-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(112px, 142px);
+  gap: 9px;
+  align-items: start;
+  padding: 10px;
+  border: 1px solid $border-light;
+  border-radius: 7px;
+  background: $bg-card;
+  transition:
+    border-color $transition-fast,
+    background-color $transition-fast,
+    transform $transition-fast;
+}
+
+.multi-agent-task.active {
+  .multi-agent-task-card {
+    border-color: rgba(var(--accent-primary-rgb), 0.28);
+    background: rgba(var(--accent-primary-rgb), 0.03);
+  }
+
+  .multi-agent-task-node {
+    stroke: rgba(var(--accent-primary-rgb), 0.65);
+    fill: rgba(var(--accent-primary-rgb), 0.14);
+  }
+
+  .multi-agent-task-index {
+    border-color: rgba(var(--accent-primary-rgb), 0.28);
+    color: $text-primary;
+  }
+}
+
+.multi-agent-task.done {
+  .multi-agent-task-card {
+    border-color: rgba(var(--success-rgb), 0.2);
+  }
+
+  .multi-agent-task-node {
+    stroke: rgba(var(--success-rgb), 0.42);
+    fill: rgba(var(--success-rgb), 0.12);
+  }
+}
+
+.multi-agent-task.blocked {
+  .multi-agent-task-card {
+    border-color: rgba(var(--accent-error-rgb), 0.22);
+  }
+
+  .multi-agent-task-node {
+    stroke: rgba(var(--accent-error-rgb), 0.4);
+    fill: rgba(var(--accent-error-rgb), 0.12);
+  }
+}
+
+.multi-agent-task-main {
+  min-width: 0;
+
+  p {
+    margin: 4px 0 0;
+    color: $text-secondary;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+}
+
+.multi-agent-task-line {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+
+  strong {
+    min-width: 0;
+    color: $text-primary;
+    font-size: 13px;
+    line-height: 18px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  span {
+    flex-shrink: 0;
+    color: $text-muted;
+    font-size: 11px;
+    line-height: 16px;
+  }
+}
+
+.multi-agent-task-agent {
+  min-width: 0;
+  justify-self: stretch;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: $bg-secondary;
+  color: $text-secondary;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+
+  &.empty {
+    color: $text-muted;
+    background: $bg-secondary;
+  }
+
+  small {
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  &.is-doing small {
+    background: rgba(var(--accent-info-rgb), 0.12);
+    color: var(--accent-info);
+  }
+
+  &.is-done small {
+    background: rgba(var(--success-rgb), 0.12);
+    color: $success;
+  }
+
+  &.is-blocked small {
+    background: rgba(var(--accent-error-rgb), 0.12);
+    color: var(--accent-error);
+  }
+
+  span,
+  small {
+    min-width: 0;
+    font-size: 11px;
+    line-height: 16px;
+  }
+
+  span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  small {
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.multi-agent-plain {
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: $bg-secondary;
+  color: $text-secondary;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.multi-agent-activity {
+  display: grid;
+  gap: 8px;
+}
+
+.multi-agent-activity-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+
+  strong {
+    color: $text-primary;
+    font-size: 13px;
+    line-height: 18px;
+    font-weight: 650;
+  }
+
+  span {
+    color: $text-muted;
+    font-size: 11px;
+    line-height: 16px;
+  }
+}
+
+.multi-agent-activity-list {
+  display: grid;
+  gap: 8px;
+}
+
+.multi-agent-activity-item {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid $border-light;
+  border-radius: 7px;
+  background: $bg-card;
+
+  &.is-running {
+    border-color: rgba(var(--accent-info-rgb), 0.22);
+  }
+
+  &.is-done {
+    border-color: rgba(var(--success-rgb), 0.2);
+  }
+
+  &.is-error {
+    border-color: rgba(var(--accent-error-rgb), 0.22);
+  }
+
+  p {
+    margin: 0;
+    color: $text-secondary;
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
+
+.multi-agent-activity-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+
+  strong {
+    color: $text-primary;
+    font-size: 12px;
+    line-height: 17px;
+    font-weight: 600;
+  }
+
+  span {
+    flex-shrink: 0;
+    color: $text-muted;
+    font-size: 11px;
+    line-height: 16px;
+  }
+}
+
+.multi-agent-activity-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+
+  span {
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: $bg-secondary;
+    color: $text-secondary;
+    font-size: 11px;
+    line-height: 16px;
+  }
+}
+
 .chat-header {
   display: flex;
   align-items: center;
@@ -2432,6 +3312,37 @@ async function handleSessionModelCustomSubmit() {
 
   .header-sidebar-toggle {
     display: none;
+  }
+
+  .multi-agent-side-panel {
+    position: absolute;
+    right: 0;
+    top: 0;
+    height: 100%;
+    width: min(100%, 340px);
+    z-index: 35;
+    box-shadow: -6px 0 18px rgba(0, 0, 0, 0.14);
+  }
+
+  .multi-agent-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .multi-agent-task {
+    grid-template-columns: 34px minmax(0, 1fr);
+    min-height: 0;
+  }
+
+  .multi-agent-task-rail {
+    min-height: 120px;
+  }
+
+  .multi-agent-task-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .multi-agent-task-agent {
+    justify-self: start;
   }
 
 }

@@ -186,6 +186,8 @@ export default {
     history: 'History',
     jobs: 'Jobs',
     kanban: 'Kanban',
+    taskPlans: 'Task Portal',
+    subAgents: 'Sub Agents',
     workflow: 'Workflow',
     models: 'Models',
     profiles: 'Profiles',
