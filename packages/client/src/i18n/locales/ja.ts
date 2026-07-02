@@ -1,7 +1,7 @@
 export default {
   // ログイン
   login: {
-    title: 'Hermes Web UI',
+    title: 'Agent Workspace',
     description: 'ユーザー名とパスワードを入力して続行してください。',
     placeholder: 'アクセストークン',
     submit: 'ログイン',
@@ -413,7 +413,7 @@ export default {
     contextEditInvalid: '有効なコンテキスト長を入力してください',
     contextEditSuccess: 'コンテキスト長を更新しました',
     contextEditFailed: '更新に失敗しました',
-    emptyState: 'Hermes Agent と会話を開始しましょう',
+    emptyState: 'メインエージェントとの会話を開始しましょう',
     emptyStateAgent: '{agent} と会話を開始しましょう',
     viewOlderInHistory: '以前のメッセージは履歴で表示',
     scrollToBottom: '一番下へ移動',

@@ -4,7 +4,6 @@ import type { AvailableModelGroup } from "@/api/hermes/system";
 import { fetchCodingAgentsStatus, inferCodingAgentApiMode, normalizeCodingAgentApiMode, type CodingAgentApiMode, type CodingAgentId } from "@/api/coding-agents";
 import {
   useChatStore,
-  type MultiAgentExecutionEventState,
   type MultiAgentPlanNodeState,
   type MultiAgentRouteState,
   type MultiAgentRunOptions,
@@ -41,7 +40,6 @@ import OutlinePanel from "./OutlinePanel.vue";
 import FilesPanel from "./FilesPanel.vue";
 import TerminalPanel from "./TerminalPanel.vue";
 import PageSidebarNav from "@/components/layout/PageSidebarNav.vue";
-import SettingsCircuitBadge from "@/components/layout/SettingsCircuitBadge.vue";
 import { isStoredSuperAdmin } from "@/api/client";
 import { SUB_AGENT_STORAGE_EVENT, readStoredSubAgents } from "@/utils/subagent-storage";
 
@@ -82,6 +80,13 @@ type MultiAgentPlanTask = {
   status: "todo" | "doing" | "done" | "blocked"
 }
 
+type MultiAgentPlannerStep = {
+  id: string
+  title: string
+  detail: string
+  status: "pending" | "running" | "done"
+}
+
 const multiAgentMode = ref(false);
 const multiAgentAgents = ref<MultiAgentCandidate[]>([]);
 const multiAgentRunOptions = computed<MultiAgentRunOptions | null>(() => {
@@ -118,25 +123,65 @@ const displayedMultiAgentTasks = computed<MultiAgentPlanTask[]>(() => {
   const route = multiAgentRuntimeRoute.value;
   if (!route) return [];
 
-  return route.planNodes.map((task, index) => ({
-    ...task,
-    index: index + 1,
-    executorType: task.executor.type,
-    agentId: task.executor.id || "",
-    agentName: task.executor.name,
-  }));
+  return route.planNodes
+    .filter(task => !["understand", "route", "respond"].includes(task.id))
+    .map((task, index) => ({
+      ...task,
+      index: index + 1,
+      executorType: task.executor.type,
+      agentId: task.executor.id || "",
+      agentName: task.executor.name,
+    }));
 });
 
-const activePlanTask = computed(() => {
+const activeExecutionTask = computed(() => {
   const route = multiAgentRuntimeRoute.value;
   if (!route) return null;
   return displayedMultiAgentTasks.value.find(task => task.id === route.currentNodeId) || null;
 });
 
-const multiAgentRouteModeLabel = computed(() => {
+const multiAgentTodoSteps = computed<MultiAgentPlannerStep[]>(() => {
   const route = multiAgentRuntimeRoute.value;
-  if (!route) return "";
-  return route.mode === "delegate_subagent" ? "子智能体直连" : "Hermes 编排";
+  if (!route?.todo?.length) return [];
+  return route.todo.map((item, index) => {
+    const mappedTask = displayedMultiAgentTasks.value[index];
+    const isDone = route.status === "completed" || (mappedTask ? mappedTask.status === "done" : false);
+    const isRunning = !isDone && (mappedTask ? mappedTask.status === "doing" : index === 0 && route.currentNodeId === "route");
+    return {
+      id: `todo_${index + 1}`,
+      title: item,
+      detail: route.constraints[index] || route.reason || "等待执行。",
+      status: isDone ? "done" : isRunning ? "running" : "pending",
+    };
+  });
+});
+
+const multiAgentPlannerDoneCount = computed(() =>
+  multiAgentTodoSteps.value.filter(step => step.status === "done").length,
+);
+
+const multiAgentExecutionDoneCount = computed(() =>
+  displayedMultiAgentTasks.value.filter(task => task.status === "done").length,
+);
+
+const multiAgentPanelStatusText = computed(() => {
+  const route = multiAgentRuntimeRoute.value;
+  if (!route) return "等待任务";
+  if (route.status === "failed") return "执行失败";
+  if (route.status === "completed") return "已完成";
+  if (route.currentNodeId === "understand") return "理解需求中";
+  if (route.currentNodeId === "route") return "规划任务中";
+  if (route.currentNodeId === "respond") return "汇总结果中";
+  return "执行中";
+});
+
+const multiAgentPrimaryActorText = computed(() => {
+  const route = multiAgentRuntimeRoute.value;
+  if (!route) return "当前由主智能体待命";
+  if (route.selectedAgentName) return `已匹配子智能体：${route.selectedAgentName}`;
+  return route.mode === "delegate_subagent"
+    ? "等待子智能体接管"
+    : "当前由主智能体执行";
 });
 
 const multiAgentObjectiveText = computed(() => {
@@ -145,50 +190,12 @@ const multiAgentObjectiveText = computed(() => {
   return route.objective || route.reason || route.text || "";
 });
 
-const multiAgentActivity = computed<MultiAgentExecutionEventState[]>(() =>
-  multiAgentRuntimeRoute.value?.activity || [],
+const multiAgentObjectiveLines = computed(() =>
+  multiAgentObjectiveText.value
+    .split("\n")
+    .map(line => line.trim())
+    .filter(Boolean),
 );
-
-const multiAgentRecentActivity = computed<MultiAgentExecutionEventState[]>(() =>
-  multiAgentActivity.value.slice(-5),
-);
-
-const multiAgentProcessEntries = computed(() => {
-  const route = multiAgentRuntimeRoute.value;
-  const entries: string[] = [];
-  if (!route) {
-    if (chatStore.isStreaming) entries.push("等待主智能体生成任务规划...");
-    return entries;
-  }
-  if (route.reason) entries.push(`目标分析：${route.reason}`);
-  if (activePlanTask.value) {
-    entries.push(
-      `当前节点：${activePlanTask.value.title} [${activePlanTask.value.phase}] -> ${multiAgentTaskStatusLabel(activePlanTask.value.status)}`,
-    );
-    if (activePlanTask.value.summary) entries.push(`节点说明：${activePlanTask.value.summary}`);
-  }
-  for (const activity of multiAgentRecentActivity.value) {
-    const suffix = [activity.agentName, activity.toolName].filter(Boolean).join(" / ");
-    const activityText = `${activity.title}${suffix ? ` (${suffix})` : ""}：${activity.text || multiAgentActivityStatusLabel(activity.status)}`;
-    entries.push(activityText.length > 180 ? `${activityText.slice(0, 177)}...` : activityText);
-  }
-  if (entries.length === 0) entries.push("当前消息暂未进入多节点执行，等待主智能体继续处理。");
-  return entries;
-});
-
-const multiAgentStatusText = computed(() => {
-  if (!multiAgentMode.value) return "未开启";
-  const route = multiAgentRuntimeRoute.value;
-  if (!route) return chatStore.isStreaming ? "规划中" : "等待下一条消息";
-  if (route.currentNodeId === "understand") return "主智能体分析中";
-  if (route.currentNodeId === "route") return "执行路径规划中";
-  if (route.status === "failed") return "执行失败";
-  if (route.status === "completed") return "已完成";
-  if (route.currentNodeId === "respond") return "结果汇总中";
-  if (route.mode === "delegate_subagent") return "子智能体执行中";
-  if (route.status === "running") return "主链路执行中";
-  return "等待下一条消息";
-});
 
 function multiAgentTaskStatusLabel(status: MultiAgentPlanNodeState["status"]) {
   switch (status) {
@@ -203,17 +210,21 @@ function multiAgentTaskStatusLabel(status: MultiAgentPlanNodeState["status"]) {
   }
 }
 
-function multiAgentActivityStatusLabel(status: MultiAgentExecutionEventState["status"]) {
+function multiAgentPlannerStatusLabel(status: MultiAgentPlannerStep["status"]) {
   switch (status) {
     case "running":
-      return "运行中";
+      return "进行中";
     case "done":
       return "已完成";
-    case "error":
-      return "失败";
     default:
-      return "已记录";
+      return "待执行";
   }
+}
+
+function multiAgentTaskAgentLabel(task: MultiAgentPlanTask) {
+  return task.executorType === "subagent"
+    ? `子智能体：${task.agentName}`
+    : `主智能体：${task.agentName}`;
 }
 
 function multiAgentConnectorState(taskIndex: number, direction: "before" | "after") {
@@ -564,7 +575,7 @@ const newChatLoading = ref(false);
 const CODING_AGENT_AUTH_PROVIDER_KEYS = new Set(["openai-codex", "copilot", "xai-oauth", "nous", "google-gemini-cli", "claude-oauth"]);
 
 const newChatAgentOptions = computed(() => [
-  { label: "Hermes", value: "hermes" },
+  { label: "主智能体", value: "hermes" },
   { label: "Claude Code", value: "claude-code" },
   { label: "Codex", value: "codex" },
 ]);
@@ -1515,7 +1526,6 @@ async function handleSessionModelCustomSubmit() {
           </svg>
           <span>{{ t("sidebar.settings") }}</span>
         </button>
-        <SettingsCircuitBadge />
       </div>
     </aside>
 
@@ -1975,7 +1985,7 @@ async function handleSessionModelCustomSubmit() {
                 <span class="multi-agent-plan-dot" />
                 <div>
                   <strong>多智能体协作模式</strong>
-                  <span>{{ multiAgentStatusText }}</span>
+                  <span class="multi-agent-header-status">{{ multiAgentPanelStatusText }}</span>
                 </div>
               </div>
               <button class="multi-agent-side-close" type="button" @click="toggleMultiAgentMode">
@@ -1984,20 +1994,28 @@ async function handleSessionModelCustomSubmit() {
             </div>
             <div class="multi-agent-side-body">
               <div v-if="!multiAgentRuntimeRoute" class="multi-agent-placeholder" data-testid="multi-agent-placeholder">
-                <strong>多智能体画布已展开</strong>
-                <span>发送需求后，这里会按执行顺序展示规划节点和当前进度。</span>
+                <strong>多智能体协作已展开</strong>
+                <span>发送需求后，右侧会先展示规划清单，再展示实际执行节点。</span>
               </div>
               <template v-else>
                 <div class="multi-agent-summary">
                   <span>任务目标</span>
-                  <p>{{ multiAgentObjectiveText }}</p>
+                  <div class="multi-agent-scrollable">
+                    <template v-if="multiAgentObjectiveLines.length">
+                      <p v-for="(line, index) in multiAgentObjectiveLines" :key="`${index}-${line}`">{{ line }}</p>
+                    </template>
+                    <p v-else>发送消息后，这里会展示本轮任务目标、范围和预期交付。</p>
+                  </div>
                 </div>
-                <div class="multi-agent-side-meta">
-                  <span>{{ multiAgentRuntimeRoute.category }}</span>
-                  <span>{{ multiAgentRouteModeLabel }}</span>
-                  <span v-if="multiAgentRuntimeRoute.selectedAgentName">
-                    {{ multiAgentRuntimeRoute.selectedAgentName }}
-                  </span>
+                <div
+                  class="multi-agent-status-strip"
+                  :class="`is-${multiAgentRuntimeRoute.status}`"
+                >
+                  <span class="multi-agent-status-pulse" aria-hidden="true"></span>
+                  <div>
+                    <strong>{{ multiAgentPrimaryActorText }}</strong>
+                    <small>{{ activeExecutionTask?.summary || multiAgentRuntimeRoute.reason || multiAgentRuntimeRoute.text || "正在更新协作状态" }}</small>
+                  </div>
                 </div>
                 <div class="multi-agent-metrics">
                   <div>
@@ -2005,41 +2023,33 @@ async function handleSessionModelCustomSubmit() {
                     <strong>{{ displayedMultiAgentTasks.length }}</strong>
                   </div>
                   <div>
-                    <span>当前节点</span>
-                    <strong>{{ activePlanTask?.index || "-" }}</strong>
+                    <span>已完成</span>
+                    <strong>{{ multiAgentExecutionDoneCount }}/{{ displayedMultiAgentTasks.length || 0 }}</strong>
                   </div>
                   <div>
-                    <span>执行状态</span>
-                    <strong>{{ multiAgentStatusText }}</strong>
+                    <span>当前状态</span>
+                    <strong>{{ multiAgentPanelStatusText }}</strong>
                   </div>
                 </div>
-                <div v-if="displayedMultiAgentTasks.length" class="multi-agent-canvas-shell">
+                <section class="multi-agent-planner-shell">
                   <div class="multi-agent-canvas-head">
-                    <strong>协作画布</strong>
-                    <span>{{ activePlanTask ? `节点 ${activePlanTask.index}` : "等待执行" }}</span>
+                    <strong>任务清单</strong>
+                    <span>
+                      {{ multiAgentTodoSteps.length ? `${multiAgentPlannerDoneCount}/${multiAgentTodoSteps.length}` : "等待生成" }}
+                    </span>
                   </div>
-                  <div class="multi-agent-task-list">
-                  <article
-                    v-for="(task, taskIndex) in displayedMultiAgentTasks"
-                    :key="task.id"
-                    class="multi-agent-task"
-                    :data-testid="`multi-agent-task-${task.id}`"
-                    :class="{
-                      active: task.id === multiAgentRuntimeRoute.currentNodeId,
-                      done: task.status === 'done',
-                      blocked: task.status === 'blocked',
-                    }"
-                  >
-                    <div class="multi-agent-task-rail" aria-hidden="true">
-                      <div
-                        class="multi-agent-task-line-segment before"
-                        :class="`is-${multiAgentConnectorState(taskIndex, 'before')}`"
-                      ></div>
-                      <div class="multi-agent-task-glyph" :class="`is-${task.status}`">
-                        <span v-if="task.status === 'todo'" class="multi-agent-task-index">{{ task.index }}</span>
-                        <span v-else-if="task.status === 'doing'" class="multi-agent-task-spinner"></span>
+                  <div v-if="multiAgentTodoSteps.length" class="multi-agent-planner-list">
+                    <article
+                      v-for="(step, stepIndex) in multiAgentTodoSteps"
+                      :key="step.id"
+                      class="multi-agent-planner-item"
+                      :class="`is-${step.status}`"
+                    >
+                      <div class="multi-agent-planner-badge" :class="`is-${step.status}`" aria-hidden="true">
+                        <span v-if="step.status === 'pending'">{{ stepIndex + 1 }}</span>
+                        <span v-else-if="step.status === 'running'" class="multi-agent-task-spinner"></span>
                         <svg
-                          v-else-if="task.status === 'done'"
+                          v-else
                           class="multi-agent-task-icon"
                           viewBox="0 0 20 20"
                           fill="none"
@@ -2050,84 +2060,110 @@ async function handleSessionModelCustomSubmit() {
                         >
                           <path d="M4 10.5 8 14.5 16 6.5" />
                         </svg>
-                        <svg
-                          v-else
-                          class="multi-agent-task-icon"
-                          viewBox="0 0 20 20"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2"
-                          stroke-linecap="round"
-                        >
-                          <path d="M6 6 14 14" />
-                          <path d="M14 6 6 14" />
-                        </svg>
                       </div>
-                      <div
-                        class="multi-agent-task-line-segment after"
-                        :class="`is-${multiAgentConnectorState(taskIndex, 'after')}`"
-                      ></div>
-                    </div>
-                    <div class="multi-agent-task-card">
-                      <div class="multi-agent-task-main">
+                      <div class="multi-agent-planner-copy">
                         <div class="multi-agent-task-line">
-                          <strong>{{ task.title }}</strong>
-                          <span>{{ task.phase }}</span>
+                          <strong>{{ step.title }}</strong>
+                          <span>{{ multiAgentPlannerStatusLabel(step.status) }}</span>
                         </div>
-                        <p>{{ task.summary }}</p>
+                        <div class="multi-agent-step-scroll">
+                          <p>{{ step.detail }}</p>
+                        </div>
                       </div>
-                      <div
-                        class="multi-agent-task-agent"
-                        :class="[
-                          `is-${task.status}`,
-                          { empty: !task.agentId && task.executorType !== 'hermes' },
-                        ]"
-                      >
-                        <span>{{ task.agentName }}</span>
-                        <small>{{ multiAgentTaskStatusLabel(task.status) }}</small>
-                      </div>
-                    </div>
-                  </article>
-                </div>
-                </div>
-                <section class="multi-agent-process-box" data-testid="multi-agent-current-node">
-                  <div class="multi-agent-process-head">
-                    <strong>执行过程</strong>
-                    <span>{{ activePlanTask?.agentName || "Hermes" }}</span>
-                  </div>
-                  <div class="multi-agent-process-console">
-                    <p v-for="(entry, entryIndex) in multiAgentProcessEntries" :key="`${entryIndex}-${entry}`">
-                      {{ entry }}
-                    </p>
-                  </div>
-                </section>
-                <section v-if="multiAgentActivity.length" class="multi-agent-activity" data-testid="multi-agent-activity">
-                  <div class="multi-agent-activity-head">
-                    <strong>子智能体回传</strong>
-                    <span>{{ multiAgentActivity.length }} 条</span>
-                  </div>
-                  <div class="multi-agent-activity-list">
-                    <article
-                      v-for="activity in multiAgentActivity"
-                      :key="activity.id"
-                      class="multi-agent-activity-item"
-                      :class="`is-${activity.status}`"
-                    >
-                      <div class="multi-agent-activity-title">
-                        <strong>{{ activity.title }}</strong>
-                        <span>{{ multiAgentActivityStatusLabel(activity.status) }}</span>
-                      </div>
-                      <div class="multi-agent-activity-meta">
-                        <span v-if="activity.agentName">{{ activity.agentName }}</span>
-                        <span v-if="activity.toolName">{{ activity.toolName }}</span>
-                      </div>
-                      <p>{{ activity.text }}</p>
                     </article>
                   </div>
+                  <div v-else class="multi-agent-plain">
+                    主智能体完成路由后，这里会展示真实生成的待办清单和关键约束。
+                  </div>
                 </section>
-                <div v-else class="multi-agent-plain">
-                  当前消息暂不需要拆解执行节点，仍由 Hermes 直接处理。
-                </div>
+                <section class="multi-agent-canvas-shell">
+                  <div class="multi-agent-canvas-head">
+                    <strong>执行画布</strong>
+                    <span>{{ activeExecutionTask ? `节点 ${activeExecutionTask.index}` : "等待执行" }}</span>
+                  </div>
+                  <template v-if="displayedMultiAgentTasks.length">
+                    <div class="multi-agent-task-list">
+                      <article
+                        v-for="(task, taskIndex) in displayedMultiAgentTasks"
+                        :key="task.id"
+                        class="multi-agent-task"
+                        :data-testid="`multi-agent-task-${task.id}`"
+                        :class="{
+                          active: task.id === multiAgentRuntimeRoute.currentNodeId,
+                          done: task.status === 'done',
+                          blocked: task.status === 'blocked',
+                        }"
+                      >
+                        <div class="multi-agent-task-rail" aria-hidden="true">
+                          <div
+                            class="multi-agent-task-line-segment before"
+                            :class="`is-${multiAgentConnectorState(taskIndex, 'before')}`"
+                          ></div>
+                          <div class="multi-agent-task-glyph" :class="`is-${task.status}`">
+                            <span v-if="task.status === 'todo'" class="multi-agent-task-index">{{ task.index }}</span>
+                            <span v-else-if="task.status === 'doing'" class="multi-agent-task-spinner"></span>
+                            <svg
+                              v-else-if="task.status === 'done'"
+                              class="multi-agent-task-icon"
+                              viewBox="0 0 20 20"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="2"
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                            >
+                              <path d="M4 10.5 8 14.5 16 6.5" />
+                            </svg>
+                            <svg
+                              v-else
+                              class="multi-agent-task-icon"
+                              viewBox="0 0 20 20"
+                              fill="none"
+                              stroke="currentColor"
+                              stroke-width="2"
+                              stroke-linecap="round"
+                            >
+                              <path d="M6 6 14 14" />
+                              <path d="M14 6 6 14" />
+                            </svg>
+                          </div>
+                          <div
+                            class="multi-agent-task-line-segment after"
+                            :class="`is-${multiAgentConnectorState(taskIndex, 'after')}`"
+                          ></div>
+                        </div>
+                        <div class="multi-agent-task-card">
+                          <div class="multi-agent-task-main">
+                            <div class="multi-agent-task-line">
+                              <strong>{{ task.title }}</strong>
+                              <span>{{ task.phase }}</span>
+                            </div>
+                            <div class="multi-agent-task-summary-scroll">
+                              <p>{{ task.summary }}</p>
+                            </div>
+                          </div>
+                          <div
+                            class="multi-agent-task-agent"
+                            :class="[
+                              `is-${task.status}`,
+                              { empty: !task.agentId && task.executorType !== 'hermes' },
+                            ]"
+                          >
+                            <span>{{ multiAgentTaskAgentLabel(task) }}</span>
+                            <small>{{ multiAgentTaskStatusLabel(task.status) }}</small>
+                          </div>
+                        </div>
+                      </article>
+                    </div>
+                    <div class="multi-agent-canvas-status">
+                      <span>当前节点</span>
+                      <strong>{{ activeExecutionTask?.title || (multiAgentRuntimeRoute.currentNodeId === "respond" ? "汇总阶段成果" : "等待执行") }}</strong>
+                    </div>
+                  </template>
+                  <div v-else class="multi-agent-plain">
+                    规划节点生成后，会在这里按执行顺序展示，并依次更新状态。
+                  </div>
+                </section>
               </template>
             </div>
           </aside>
@@ -2812,6 +2848,10 @@ async function handleSessionModelCustomSubmit() {
   }
 }
 
+.multi-agent-header-status {
+  font-weight: 500;
+}
+
 .multi-agent-plan-dot {
   width: 9px;
   height: 9px;
@@ -2883,25 +2923,124 @@ async function handleSessionModelCustomSubmit() {
     color: $text-secondary;
     font-size: 13px;
     line-height: 1.45;
-    display: -webkit-box;
-    -webkit-line-clamp: 3;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
 }
 
-.multi-agent-side-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+.multi-agent-scrollable {
+  min-height: 96px;
+  max-height: 120px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
 
-  span {
-    padding: 3px 8px;
-    border-radius: 999px;
-    background: $bg-secondary;
+.multi-agent-task-summary-scroll,
+.multi-agent-step-scroll {
+  min-height: 72px;
+  max-height: 72px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.multi-agent-status-strip {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
+  gap: 9px;
+  padding: 10px 12px;
+  border: 1px solid rgba(var(--accent-info-rgb), 0.18);
+  border-radius: 8px;
+  background: rgba(var(--accent-info-rgb), 0.035);
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(var(--accent-info-rgb), 0.1) 45%,
+      transparent 100%
+    );
+    animation: multi-agent-strip-scan 2.4s ease-in-out infinite;
+    pointer-events: none;
+  }
+
+  &.is-completed {
+    border-color: rgba(var(--success-rgb), 0.2);
+    background: rgba(var(--success-rgb), 0.035);
+
+    &::after {
+      animation: none;
+      opacity: 0;
+    }
+
+    .multi-agent-status-pulse {
+      background: $success;
+      box-shadow: 0 0 0 5px rgba(var(--success-rgb), 0.08);
+    }
+  }
+
+  &.is-failed {
+    border-color: rgba(var(--accent-error-rgb), 0.22);
+    background: rgba(var(--accent-error-rgb), 0.035);
+
+    &::after {
+      animation: none;
+      opacity: 0;
+    }
+
+    .multi-agent-status-pulse {
+      background: var(--accent-error);
+      box-shadow: 0 0 0 5px rgba(var(--accent-error-rgb), 0.08);
+    }
+  }
+
+  strong {
+    display: block;
+    color: $text-primary;
+    font-size: 12px;
+    line-height: 17px;
+    font-weight: 650;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  small {
+    display: -webkit-box;
+    margin-top: 3px;
     color: $text-secondary;
     font-size: 11px;
-    line-height: 16px;
+    line-height: 1.45;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+  }
+}
+
+.multi-agent-status-pulse {
+  position: relative;
+  z-index: 1;
+  width: 9px;
+  height: 9px;
+  margin-top: 4px;
+  border-radius: 999px;
+  background: var(--accent-info);
+  box-shadow: 0 0 0 5px rgba(var(--accent-info-rgb), 0.08);
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset: -6px;
+    border-radius: inherit;
+    border: 1px solid currentColor;
+    opacity: 0.18;
+    animation: multi-agent-pulse-ring 1.4s ease-out infinite;
   }
 }
 
@@ -2934,8 +3073,32 @@ async function handleSessionModelCustomSubmit() {
   }
 }
 
-.multi-agent-canvas-shell,
-.multi-agent-process-box {
+.multi-agent-flow-meter {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 3px;
+  min-height: 18px;
+
+  i {
+    width: 13px;
+    height: 3px;
+    border-radius: 999px;
+    background: rgba(var(--accent-info-rgb), 0.55);
+    transform-origin: center;
+    animation: multi-agent-bar-wave 1s ease-in-out infinite;
+
+    &:nth-child(2) {
+      animation-delay: 0.12s;
+    }
+
+    &:nth-child(3) {
+      animation-delay: 0.24s;
+    }
+  }
+}
+
+.multi-agent-planner-shell,
+.multi-agent-canvas-shell {
   padding: 12px;
   border: 1px solid $border-light;
   border-radius: 8px;
@@ -2944,8 +3107,7 @@ async function handleSessionModelCustomSubmit() {
   gap: 10px;
 }
 
-.multi-agent-canvas-head,
-.multi-agent-process-head {
+.multi-agent-canvas-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -2962,6 +3124,70 @@ async function handleSessionModelCustomSubmit() {
     color: $text-muted;
     font-size: 11px;
     line-height: 16px;
+  }
+}
+
+.multi-agent-planner-list {
+  display: grid;
+  gap: 8px;
+}
+
+.multi-agent-planner-item {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 10px 12px;
+  border: 1px solid $border-light;
+  border-radius: 7px;
+  background: $bg-card;
+
+  &.is-running {
+    border-color: rgba(var(--accent-info-rgb), 0.22);
+    background: rgba(var(--accent-info-rgb), 0.03);
+  }
+
+  &.is-done {
+    border-color: rgba(var(--success-rgb), 0.2);
+  }
+}
+
+.multi-agent-planner-badge {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: $bg-secondary;
+  border: 1px solid $border-light;
+  color: $text-secondary;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+
+  &.is-running {
+    color: var(--accent-info);
+    border-color: rgba(var(--accent-info-rgb), 0.24);
+    background: rgba(var(--accent-info-rgb), 0.06);
+  }
+
+  &.is-done {
+    color: $success;
+    border-color: rgba(var(--success-rgb), 0.24);
+    background: rgba(var(--success-rgb), 0.06);
+  }
+}
+
+.multi-agent-planner-copy {
+  min-width: 0;
+
+  p {
+    margin: 0;
+    color: $text-secondary;
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
 }
 
@@ -2989,7 +3215,7 @@ async function handleSessionModelCustomSubmit() {
 
 .multi-agent-task-list {
   display: grid;
-  gap: 6px;
+  gap: 10px;
 }
 
 .multi-agent-task {
@@ -3127,14 +3353,12 @@ async function handleSessionModelCustomSubmit() {
   min-width: 0;
 
   p {
-    margin: 4px 0 0;
+    margin: 0;
     color: $text-secondary;
     font-size: 12px;
     line-height: 1.45;
-    display: -webkit-box;
-    -webkit-line-clamp: 3;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
 }
 
@@ -3173,7 +3397,7 @@ async function handleSessionModelCustomSubmit() {
   background: $bg-secondary;
   color: $text-secondary;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
 
@@ -3211,39 +3435,13 @@ async function handleSessionModelCustomSubmit() {
   }
 
   span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
 
   small {
     flex-shrink: 0;
     font-variant-numeric: tabular-nums;
-  }
-}
-
-.multi-agent-process-console {
-  padding: 10px 12px;
-  border-radius: 6px;
-  background: #111318;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  max-height: 190px;
-  overflow-y: auto;
-
-  p {
-    margin: 0;
-    color: #d9dee7;
-    font-family: $font-code;
-    font-size: 11px;
-    line-height: 1.6;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-  }
-
-  p + p {
-    margin-top: 6px;
-    padding-top: 6px;
-    border-top: 1px dashed rgba(255, 255, 255, 0.08);
   }
 }
 
@@ -3256,28 +3454,27 @@ async function handleSessionModelCustomSubmit() {
   line-height: 1.5;
 }
 
-.multi-agent-activity {
+.multi-agent-canvas-status {
   display: grid;
-  gap: 8px;
-}
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 7px;
+  background: $bg-secondary;
 
-.multi-agent-activity-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  span {
+    color: $text-muted;
+    font-size: 11px;
+    line-height: 15px;
+  }
 
   strong {
     color: $text-primary;
     font-size: 13px;
     line-height: 18px;
-    font-weight: 650;
-  }
-
-  span {
-    color: $text-muted;
-    font-size: 11px;
-    line-height: 16px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }
 
@@ -3297,78 +3494,54 @@ async function handleSessionModelCustomSubmit() {
   }
 }
 
-.multi-agent-activity-list {
-  display: grid;
-  gap: 8px;
-}
-
-.multi-agent-activity-item {
-  display: grid;
-  gap: 6px;
-  padding: 10px 12px;
-  border: 1px solid $border-light;
-  border-radius: 7px;
-  background: $bg-card;
-
-  &.is-running {
-    border-color: rgba(var(--accent-info-rgb), 0.22);
+@keyframes multi-agent-dot-wave {
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.32;
   }
 
-  &.is-done {
-    border-color: rgba(var(--success-rgb), 0.2);
-  }
-
-  &.is-error {
-    border-color: rgba(var(--accent-error-rgb), 0.22);
-  }
-
-  p {
-    margin: 0;
-    color: $text-secondary;
-    font-size: 12px;
-    line-height: 1.5;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-    display: -webkit-box;
-    -webkit-line-clamp: 4;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
+  40% {
+    transform: translateY(-3px);
+    opacity: 0.9;
   }
 }
 
-.multi-agent-activity-title {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
-
-  strong {
-    color: $text-primary;
-    font-size: 12px;
-    line-height: 17px;
-    font-weight: 600;
+@keyframes multi-agent-strip-scan {
+  0% {
+    transform: translateX(-100%);
   }
 
-  span {
-    flex-shrink: 0;
-    color: $text-muted;
-    font-size: 11px;
-    line-height: 16px;
+  55%,
+  100% {
+    transform: translateX(100%);
   }
 }
 
-.multi-agent-activity-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
+@keyframes multi-agent-pulse-ring {
+  0% {
+    transform: scale(0.7);
+    opacity: 0.24;
+  }
 
-  span {
-    padding: 2px 8px;
-    border-radius: 999px;
-    background: $bg-secondary;
-    color: $text-secondary;
-    font-size: 11px;
-    line-height: 16px;
+  100% {
+    transform: scale(1.45);
+    opacity: 0;
+  }
+}
+
+@keyframes multi-agent-bar-wave {
+  0%,
+  80%,
+  100% {
+    transform: scaleY(0.65);
+    opacity: 0.45;
+  }
+
+  40% {
+    transform: scaleY(1.8);
+    opacity: 0.95;
   }
 }
 
@@ -3456,6 +3629,16 @@ async function handleSessionModelCustomSubmit() {
 
   .multi-agent-metrics {
     grid-template-columns: 1fr;
+  }
+
+  .multi-agent-planner-item {
+    grid-template-columns: 24px minmax(0, 1fr);
+    padding: 10px;
+  }
+
+  .multi-agent-planner-badge {
+    width: 24px;
+    height: 24px;
   }
 
   .multi-agent-task {

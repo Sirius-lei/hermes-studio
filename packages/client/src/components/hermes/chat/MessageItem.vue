@@ -1,15 +1,14 @@
 <script setup lang="ts">
 import type { Message, ContentBlock } from "@/stores/hermes/chat";
-import { computed, onBeforeUnmount, onMounted, ref, watchEffect } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { useMessage } from "naive-ui";
 import { downloadFile, getDownloadUrl } from "@/api/hermes/download";
 import { copyToClipboard } from "@/utils/clipboard";
 import MarkdownRenderer from "./MarkdownRenderer.vue";
-import { parseThinking, countThinkingChars } from "@/utils/thinking-parser";
+import { parseThinking } from "@/utils/thinking-parser";
 import { useChatStore } from "@/stores/hermes/chat";
 import { useProfilesStore } from "@/stores/hermes/profiles";
-import { useSettingsStore } from "@/stores/hermes/settings";
 import ProfileAvatar from "@/components/hermes/profiles/ProfileAvatar.vue";
 import {
   copyTextToClipboard,
@@ -36,6 +35,7 @@ const { t } = useI18n();
 const toast = useMessage();
 
 const isSystem = computed(() => props.message.role === "system");
+const isWorkflowMessage = computed(() => props.message.systemType === "workflow" && !!props.message.workflow);
 const isAgentError = computed(() => props.message.role === "assistant" && props.message.systemType === "error");
 
 const effectiveHeadingIdPrefix = computed(() => props.headingIdPrefix || `msg-${props.message.id}`);
@@ -179,11 +179,11 @@ function getContentFileUrl(file: DisplayContentFile): string {
 }
 
 const toolExpanded = ref(false);
+const workflowExpanded = ref(false);
 const previewUrl = ref<string | null>(null);
 
 const chatStore = useChatStore();
 const profilesStore = useProfilesStore();
-const settingsStore = useSettingsStore();
 const speech = useGlobalSpeech();
 const voiceSettings = useVoiceSettings();
 const assistantProfileName = computed(() => chatStore.activeSession?.profile || profilesStore.activeProfileName || "default");
@@ -192,6 +192,7 @@ const assistantProfileAvatar = computed(() => profilesStore.profiles.find(profil
 // Copy entire bubble content
 const copyableContent = computed(() => {
   if (props.message.role === 'tool') return null
+  if (isWorkflowMessage.value) return null
   const content = props.message.content || ''
   if (!content.trim()) return null
   return content
@@ -217,89 +218,19 @@ const parsedThinking = computed(() =>
   parseThinking(props.message.content || "", { streaming: !!props.message.isStreaming }),
 );
 
-// 优先使用来自 reasoning 字段/事件的思考文本；否则回退到从 content 解析的 <think> 标签。
-// 若两者共存，则拼接展示（罕见，但保持信息不丢）。
-const hasReasoningField = computed(() => !!(props.message.reasoning && props.message.reasoning.length > 0));
-
-const hasThinking = computed(() => hasReasoningField.value || parsedThinking.value.hasThinking);
-
-const thinkingFullText = computed(() => {
-  const parts: string[] = [];
-  if (props.message.reasoning) parts.push(props.message.reasoning);
-  parts.push(...parsedThinking.value.segments);
-  if (parsedThinking.value.pending) parts.push(parsedThinking.value.pending);
-  return parts.join("\n\n");
-});
-
-const thinkingCharCount = computed(() => {
-  let count = countThinkingChars(parsedThinking.value);
-  if (props.message.reasoning) count += props.message.reasoning.length;
-  return count;
-});
-
-// 流式思考态：仍有未闭合 <think> 标签，或 reasoning 有内容但正文尚未开始。
-const thinkingStreamingNow = computed(() => {
-  if (!props.message.isStreaming) return false;
-  if (parsedThinking.value.pending !== null) return true;
-  if (hasReasoningField.value && !props.message.content) return true;
-  return false;
-});
-
-const thinkingOverride = ref<boolean | null>(null);
-
-const thinkingExpanded = computed(() => {
-  if (thinkingStreamingNow.value) return true;
-  if (thinkingOverride.value !== null) return thinkingOverride.value;
-  return !!settingsStore.display.show_reasoning;
-});
-
-function toggleThinking() {
-  thinkingOverride.value = !thinkingExpanded.value;
-}
-
-const nowTick = ref(Date.now());
-let tickTimer: number | null = null;
-
-function ensureTick() {
-  const ob = chatStore.getThinkingObservation(props.message.id);
-  const shouldTick = !!(
-    props.message.isStreaming &&
-    ob?.startedAt !== undefined &&
-    ob.endedAt === undefined
-  );
-  if (shouldTick && tickTimer === null) {
-    tickTimer = window.setInterval(() => {
-      nowTick.value = Date.now();
-    }, 1000);
-  } else if (!shouldTick && tickTimer !== null) {
-    window.clearInterval(tickTimer);
-    tickTimer = null;
-  }
-}
-
-watchEffect(ensureTick);
-
-onBeforeUnmount(() => {
-  if (tickTimer !== null) window.clearInterval(tickTimer);
-});
-
-const thinkingDurationMs = computed<number | null>(() => {
-  const ob = chatStore.getThinkingObservation(props.message.id);
-  if (!ob?.startedAt) return null;
-  const startedAt = ob.startedAt!; // Non-null assertion after check
-  const end = ob?.endedAt ?? (props.message.isStreaming ? nowTick.value : startedAt);
-  return Math.max(0, end - startedAt);
-});
-
-function formatDuration(ms: number): string {
-  const s = Math.floor(ms / 1000);
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  const r = s % 60;
-  return r === 0 ? `${m}m` : `${m}m ${r}s`;
-}
-
 const timeStr = computed(() => formatChatTimestamp(props.message.timestamp));
+
+function workflowStatusLabel(status: string): string {
+  if (status === "done") return "已完成";
+  if (status === "error") return "失败";
+  if (status === "running") return "进行中";
+  return "等待中";
+}
+
+const displayToolName = computed(() => {
+  if (props.message.toolName === "delegate_task") return "子智能体协作";
+  return props.message.toolName || "";
+});
 
 function isImage(type: string): boolean {
   return type.startsWith("image/");
@@ -810,7 +741,7 @@ onBeforeUnmount(() => {
             d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"
           />
         </svg>
-        <span class="tool-name">{{ message.toolName }}</span>
+        <span class="tool-name">{{ displayToolName }}</span>
         <span
           v-if="message.toolPreview && !toolExpanded"
           class="tool-preview"
@@ -849,12 +780,112 @@ onBeforeUnmount(() => {
             class="message-bubble"
             :class="{
               system: isSystem,
+              workflow: isWorkflowMessage,
               'agent-error': isAgentError,
               command: isCommandMessage,
               'command-error': isCommandError,
               'speech-playing': isPlayingThisMessage && !isPausedThisMessage,
             }"
           >
+            <div v-if="isWorkflowMessage && message.workflow" class="workflow-card">
+              <button
+                type="button"
+                class="workflow-card-head"
+                :aria-expanded="workflowExpanded"
+                @click="workflowExpanded = !workflowExpanded"
+              >
+                <span class="workflow-status-dot" :class="`is-${message.workflow.status}`"></span>
+                <span class="workflow-title-wrap">
+                  <strong>{{ message.workflow.title }}</strong>
+                  <small>{{ message.workflow.subtitle }}</small>
+                </span>
+                <span class="workflow-current">{{ message.workflow.current }}</span>
+                <svg
+                  class="workflow-chevron"
+                  :class="{ rotated: workflowExpanded }"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
+              </button>
+              <div class="workflow-steps" aria-label="协作工作流阶段">
+                <div
+                  v-for="step in message.workflow.steps"
+                  :key="step.id"
+                  class="workflow-step"
+                  :class="`is-${step.status}`"
+                >
+                  <span class="workflow-step-glyph" aria-hidden="true">
+                    <span v-if="step.status === 'running'" class="workflow-spinner"></span>
+                    <svg
+                      v-else-if="step.status === 'done'"
+                      viewBox="0 0 20 20"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <path d="M4 10.5 8 14.5 16 6.5" />
+                    </svg>
+                    <svg
+                      v-else-if="step.status === 'error'"
+                      viewBox="0 0 20 20"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                    >
+                      <path d="M6 6 14 14" />
+                      <path d="M14 6 6 14" />
+                    </svg>
+                    <span v-else></span>
+                  </span>
+                  <span class="workflow-step-text">
+                    <strong>{{ step.title }}</strong>
+                    <small>{{ workflowStatusLabel(step.status) }}</small>
+                  </span>
+                </div>
+              </div>
+              <div class="workflow-live-text">
+                <span>当前</span>
+                <p>{{ message.workflow.current || "等待下一步事件。" }}</p>
+              </div>
+              <div v-if="workflowExpanded" class="workflow-expanded">
+                <div v-if="message.workflow.objective" class="workflow-section">
+                  <strong>任务目标</strong>
+                  <p>{{ message.workflow.objective }}</p>
+                </div>
+                <div v-if="message.workflow.reasoningText" class="workflow-section">
+                  <strong>规划流</strong>
+                  <pre>{{ message.workflow.reasoningText }}</pre>
+                </div>
+                <div v-if="message.workflow.events.length" class="workflow-section">
+                  <strong>执行事件</strong>
+                  <div class="workflow-event-list">
+                    <div
+                      v-for="event in message.workflow.events"
+                      :key="event.id"
+                      class="workflow-event"
+                      :class="`is-${event.status}`"
+                    >
+                      <span class="workflow-event-dot"></span>
+                      <div>
+                        <strong>{{ event.title }}</strong>
+                        <p>{{ event.text }}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
             <div v-if="hasAttachments" class="msg-attachments">
               <div
                 v-for="att in message.attachments"
@@ -894,43 +925,6 @@ onBeforeUnmount(() => {
                     </svg>
                   </div>
                 </template>
-              </div>
-            </div>
-            <div
-              v-if="hasThinking"
-              class="thinking-block"
-              :class="{ expanded: thinkingExpanded }"
-            >
-              <div class="thinking-header" @click="toggleThinking">
-                <svg
-                  width="10"
-                  height="10"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  class="thinking-chevron"
-                  :class="{ rotated: thinkingExpanded }"
-                >
-                  <polyline points="9 18 15 12 9 6" />
-                </svg>
-                <span class="thinking-icon">💭</span>
-                <span class="thinking-label">
-                  {{
-                    thinkingStreamingNow
-                      ? t('chat.thinkingInProgress')
-                      : t('chat.thinkingLabel')
-                  }}
-                </span>
-                <span v-if="thinkingDurationMs !== null && thinkingDurationMs > 0" class="thinking-meta">
-                  · {{ t('chat.thinkingDuration', { duration: formatDuration(thinkingDurationMs) }) }}
-                </span>
-                <span class="thinking-meta">
-                  · {{ t('chat.thinkingChars', { count: thinkingCharCount }) }}
-                </span>
-              </div>
-              <div v-if="thinkingExpanded" class="thinking-body">
-                <MarkdownRenderer :content="thinkingFullText" />
               </div>
             </div>
             <MarkdownRenderer
@@ -989,7 +983,7 @@ onBeforeUnmount(() => {
 
             <!-- Render system message content -->
             <MarkdownRenderer
-              v-if="message.role === 'system' && message.content && !isCommandMessage"
+              v-if="message.role === 'system' && message.content && !isCommandMessage && !isWorkflowMessage"
               :content="message.content"
             />
             <div v-if="isStatusCommand" class="command-result command-status">
@@ -1133,6 +1127,10 @@ onBeforeUnmount(() => {
 
   &.system {
     align-items: flex-start;
+
+    .msg-body {
+      max-width: min(88%, 920px);
+    }
   }
 
   &.command {
@@ -1208,6 +1206,20 @@ onBeforeUnmount(() => {
     background-color: rgba(var(--warning-rgb), 0.06);
   }
 
+  &.workflow {
+    width: min(100%, 860px);
+    max-width: min(100%, 860px);
+    padding: 0;
+    border: 1px solid rgba(var(--accent-primary-rgb), 0.14);
+    background: $bg-secondary;
+    overflow: hidden;
+
+    .dark & {
+      background: rgba(255, 255, 255, 0.035);
+      border-color: rgba(255, 255, 255, 0.1);
+    }
+  }
+
   &.agent-error {
     color: $error;
     background-color: rgba(var(--error-rgb), 0.06);
@@ -1228,6 +1240,285 @@ onBeforeUnmount(() => {
       0 0 10px rgba(255, 107, 107, 0.4),
       0 0 20px rgba(255, 107, 107, 0.2);
     animation: rainbow-glow 4s linear infinite;
+  }
+}
+
+.workflow-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.workflow-card-head {
+  display: grid;
+  grid-template-columns: auto minmax(112px, auto) minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 0;
+  border-bottom: 1px solid $border-light;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.workflow-status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: $text-muted;
+  box-shadow: 0 0 0 4px rgba(0, 0, 0, 0.035);
+
+  &.is-running {
+    background: $accent-primary;
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  &.is-done {
+    background: $success;
+  }
+
+  &.is-error {
+    background: $error;
+  }
+}
+
+.workflow-title-wrap {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+
+  strong {
+    font-size: 13px;
+    color: $text-primary;
+  }
+
+  small {
+    font-size: 11px;
+    color: $text-muted;
+  }
+}
+
+.workflow-current {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: $text-secondary;
+  font-size: 12px;
+}
+
+.workflow-chevron {
+  color: $text-muted;
+  transition: transform 0.16s ease;
+
+  &.rotated {
+    transform: rotate(90deg);
+  }
+}
+
+.workflow-steps {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0;
+  border-bottom: 1px solid $border-light;
+}
+
+.workflow-step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 52px;
+  padding: 9px 10px;
+  border-right: 1px solid $border-light;
+
+  &:last-child {
+    border-right: 0;
+  }
+
+  &.is-running {
+    background: rgba(var(--accent-primary-rgb), 0.045);
+  }
+
+  &.is-done {
+    color: $success;
+  }
+
+  &.is-error {
+    color: $error;
+  }
+}
+
+.workflow-step-glyph {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  color: $text-muted;
+
+  .workflow-step.is-running & {
+    color: $accent-primary;
+  }
+
+  .workflow-step.is-done & {
+    color: $success;
+    background: rgba(var(--success-rgb), 0.08);
+  }
+
+  .workflow-step.is-error & {
+    color: $error;
+    background: rgba(var(--error-rgb), 0.08);
+  }
+
+  svg {
+    width: 13px;
+    height: 13px;
+  }
+}
+
+.workflow-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+}
+
+.workflow-step-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+
+  strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: $text-primary;
+    font-size: 12px;
+  }
+
+  small {
+    color: $text-muted;
+    font-size: 11px;
+  }
+}
+
+.workflow-live-text {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 8px;
+  padding: 10px 12px;
+  min-height: 46px;
+  color: $text-secondary;
+
+  span {
+    color: $text-muted;
+    font-size: 11px;
+    line-height: 1.7;
+  }
+
+  p {
+    margin: 0;
+    max-height: 44px;
+    overflow-y: auto;
+    font-size: 12px;
+    line-height: 1.55;
+    scrollbar-width: thin;
+  }
+}
+
+.workflow-expanded {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 12px 12px;
+}
+
+.workflow-section {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+
+  > strong {
+    color: $text-primary;
+    font-size: 12px;
+  }
+
+  p,
+  pre {
+    margin: 0;
+    max-height: 120px;
+    overflow: auto;
+    border-radius: 6px;
+    background: rgba(0, 0, 0, 0.035);
+    color: $text-secondary;
+    font-size: 12px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    padding: 8px;
+    scrollbar-width: thin;
+  }
+}
+
+.workflow-event-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 180px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.workflow-event {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  min-width: 0;
+
+  strong {
+    display: block;
+    color: $text-primary;
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  p {
+    margin: 2px 0 0;
+    color: $text-secondary;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+}
+
+.workflow-event-dot {
+  width: 7px;
+  height: 7px;
+  margin-top: 5px;
+  border-radius: 999px;
+  background: $text-muted;
+
+  .workflow-event.is-running & {
+    background: $accent-primary;
+  }
+
+  .workflow-event.is-done & {
+    background: $success;
+  }
+
+  .workflow-event.is-error & {
+    background: $error;
   }
 }
 
@@ -1389,63 +1680,6 @@ onBeforeUnmount(() => {
     color: $text-muted;
     font-size: 11px;
     flex-shrink: 0;
-  }
-}
-
-.thinking-block {
-  margin-bottom: 8px;
-  padding: 4px 0;
-  border-bottom: 1px dashed $border-light;
-
-  .thinking-header {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 11px;
-    color: $text-muted;
-    cursor: pointer;
-    padding: 2px 4px;
-    border-radius: $radius-sm;
-    user-select: none;
-
-    &:hover {
-      background: rgba(0, 0, 0, 0.03);
-    }
-  }
-
-  .thinking-chevron {
-    flex-shrink: 0;
-    transition: transform 0.15s ease;
-
-    &.rotated {
-      transform: rotate(90deg);
-    }
-  }
-
-  .thinking-icon {
-    font-size: 11px;
-    flex-shrink: 0;
-  }
-
-  .thinking-label {
-    font-weight: 500;
-    flex-shrink: 0;
-  }
-
-  .thinking-meta {
-    color: $text-muted;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .thinking-body {
-    margin-top: 6px;
-    padding: 6px 10px;
-    border-left: 2px solid $border-light;
-    font-size: 13px;
-    opacity: 0.85;
-    font-style: italic;
-
-    :deep(p) { margin: 0.3em 0; }
   }
 }
 
@@ -1730,6 +1964,30 @@ onBeforeUnmount(() => {
 
   .message.system .msg-body {
     max-width: 100%;
+  }
+
+  .workflow-card-head {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+
+    .workflow-current {
+      grid-column: 2 / 3;
+      white-space: normal;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+  }
+
+  .workflow-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .workflow-step {
+    border-bottom: 1px solid $border-light;
+
+    &:nth-child(2n) {
+      border-right: 0;
+    }
   }
 }
 </style>

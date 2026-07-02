@@ -348,7 +348,7 @@ function defaultAgentsMd(name: string, description: string): string {
     `# ${name || 'subAgent-pi 子智能体'}`,
     '',
     '## Agent Instructions',
-    `- ${description || '根据 Hermes Studio 管理后台注入的配置、skills 和 extensions 完成任务。'}`,
+    `- ${description || '根据管理后台注入的配置、skills 和 extensions 完成任务。'}`,
     '- Operate within the mounted workspace unless the user explicitly asks otherwise.',
     '- Use available skills and extensions when they are relevant.',
     '- Before destructive operations, external sends, or permission changes, ask for confirmation.',
@@ -381,7 +381,7 @@ function createSeedAgent(input: {
     agentsMd: defaultAgentsMd(input.name, input.description),
     packages: input.tools.map(tool => tool.name),
     runtimeConfig: input.runtimeConfig || cloneRuntimeConfig({
-      source: 'Hermes Studio draft',
+      source: '控制台草稿',
       configPath: 'localStorage',
       configSection: 'frontend draft',
       enabled: input.status !== 'draft',
@@ -707,7 +707,7 @@ function createAgent() {
     lastRun: '尚未同步',
     lastPublishedAt: null,
     runtimeConfig: cloneRuntimeConfig({
-      source: baseUrl ? 'subAgent-pi runtime' : 'Hermes Studio draft',
+      source: baseUrl ? 'subAgent-pi runtime' : '控制台草稿',
       enabled: Boolean(baseUrl),
     }),
   })

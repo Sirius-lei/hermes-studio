@@ -1,4 +1,12 @@
-import { generateTaskPlan, type GeneratedTaskPlan, type TaskPlanAgentRoute, type TaskPlanTask } from '../../task-planner'
+import {
+  generateTaskPlan,
+  generateTaskRouteDecision,
+  streamTaskRouteReasoning,
+  type GeneratedTaskPlan,
+  type GeneratedTaskRouteDecision,
+  type TaskPlanAgentRoute,
+  type TaskPlanTask,
+} from '../../task-planner'
 import { contentBlocksToString, extractTextForPreview } from './content-blocks'
 import type { ContentBlock } from './types'
 
@@ -44,6 +52,7 @@ export interface MultiAgentRouteDecision {
   enabled: boolean
   shouldPlan: boolean
   summary: string
+  intent: string
   category: string
   confidence: number
   reason: string
@@ -52,8 +61,21 @@ export interface MultiAgentRouteDecision {
   routeText: string
   hermesInstructions: string | null
   inputText: string
+  todo: string[]
+  constraints: string[]
   plan: MultiAgentExecutionPlan | null
   delegatedNodeIds: string[]
+}
+
+export interface MultiAgentRouteProgressEvent {
+  stage: 'understand' | 'route' | 'match_agents'
+  status: 'running' | 'done'
+  text: string
+}
+
+export interface MultiAgentRouteReasoningEvent {
+  stage: 'understand' | 'route' | 'match_agents'
+  text: string
 }
 
 function uniqueTerms(values: string[]) {
@@ -208,10 +230,17 @@ function buildHermesInstructions(decision: MultiAgentRouteDecision) {
   lines.push(
     'Execution policy:',
     '- Treat this as a general task portal, not a coding-only workflow.',
+    `- Router intent: ${decision.intent}.`,
     '- Before using unrelated built-in skills, validate whether the preferred sub-agent should handle the request.',
     '- If direct delegation is unavailable in the current runtime, stay in orchestrator mode and explain the chosen path clearly.',
     '- Keep the final answer aligned with the selected execution path instead of silently falling back to arbitrary skills.',
   )
+  if (decision.todo.length > 0) {
+    lines.push(`- Router todo: ${decision.todo.join(' -> ')}`)
+  }
+  if (decision.constraints.length > 0) {
+    lines.push(`- Router constraints: ${decision.constraints.join('；')}`)
+  }
   return lines.join('\n')
 }
 
@@ -436,6 +465,7 @@ function buildBaseRouteDecision(input: {
       enabled: false,
       shouldPlan: false,
       summary: summarizeText(inputText),
+      intent: 'disabled',
       category: '普通对话',
       confidence: 0,
       reason: '多智能体协作模式未开启。',
@@ -444,6 +474,8 @@ function buildBaseRouteDecision(input: {
       routeText: '多智能体协作未开启，继续由 Hermes 默认链路处理。',
       hermesInstructions: null,
       inputText,
+      todo: [],
+      constraints: [],
       plan: null,
       delegatedNodeIds: [],
     }
@@ -493,6 +525,7 @@ function buildBaseRouteDecision(input: {
     enabled,
     shouldPlan,
     summary: summarizeText(inputText),
+    intent: casual ? 'casual_chat' : 'general_request',
     category: shouldPlan ? category : '普通对话',
     confidence,
     reason,
@@ -503,6 +536,7 @@ function buildBaseRouteDecision(input: {
       enabled,
       shouldPlan,
       summary: summarizeText(inputText),
+      intent: casual ? 'casual_chat' : 'general_request',
       category,
       confidence,
       reason,
@@ -511,14 +545,159 @@ function buildBaseRouteDecision(input: {
       routeText,
       hermesInstructions: null,
       inputText,
+      todo: [],
+      constraints: [],
       plan: null,
       delegatedNodeIds: [],
     }) : null,
     inputText,
+    todo: shouldPlan ? ['理解需求', '选择执行路径'] : [],
+    constraints: [],
     plan: shouldPlan ? buildFallbackExecutionPlan(summarizeText(inputText), routeText) : null,
     delegatedNodeIds: [],
   }
   return decision
+}
+
+function selectCandidateFromRouter(args: {
+  normalizedCandidates: MultiAgentRouteCandidate[]
+  routed: GeneratedTaskRouteDecision
+  fallback: MultiAgentRouteCandidate | null
+}) {
+  const byId = args.normalizedCandidates.find(candidate =>
+    normalizeKey(candidate.id) === normalizeKey(args.routed.selected_agent_id),
+  )
+  if (byId) return byId
+  const byName = args.normalizedCandidates.find(candidate =>
+    args.routed.selected_agent_name && normalizeKey(candidate.name) === normalizeKey(args.routed.selected_agent_name),
+  )
+  if (byName) return byName
+  return args.fallback
+}
+
+function mapRouterExecutionMode(mode: GeneratedTaskRouteDecision['execution_mode'], selectedAgent: MultiAgentRouteCandidate | null, confidence: number, category: string) {
+  if (mode === 'subagent' && canDirectDelegate(selectedAgent, confidence, category)) return 'delegate_subagent' as const
+  return 'hermes_native' as const
+}
+
+function shouldUseRuntimeDelegateOverride(args: {
+  base: MultiAgentRouteDecision
+  routed: GeneratedTaskRouteDecision
+  selectedAgent: MultiAgentRouteCandidate | null
+  category: string
+  confidence: number
+}) {
+  if (!args.base.shouldPlan) return false
+  if (!args.selectedAgent) return false
+  if (args.selectedAgent.enabled === false) return false
+  if (!args.selectedAgent.baseUrl) return false
+  if (args.routed.execution_mode === 'subagent') return false
+  if (isCasualChatMessage(args.base.inputText)) return false
+  if (args.base.executionMode === 'delegate_subagent') return true
+  if (args.category === '通用任务') return false
+  if (!args.base.selectedAgent) return false
+  return normalizeKey(args.base.selectedAgent.id) === normalizeKey(args.selectedAgent.id) && args.confidence >= 88
+}
+
+function fallbackDelegateTodo(agent: MultiAgentRouteCandidate) {
+  return [
+    '确认用户查询目标与可用数据源',
+    `将任务交给${agent.name}执行`,
+    '接收子智能体阶段结果并汇总回复',
+  ]
+}
+
+function mergeDelegateOverrideConstraints(constraints: string[]) {
+  const cleaned = constraints
+    .map(item => String(item || '').trim())
+    .filter(Boolean)
+    .filter(item => !/(不能|无法|拒绝|不允许|不提供|直接回答)/.test(item))
+    .slice(0, 4)
+  if (!cleaned.some(item => /权限|合规|授权|数据源/.test(item))) {
+    cleaned.push('由子智能体返回数据源权限、缺失参数或合规校验结果。')
+  }
+  return cleaned
+}
+
+function buildRouterRouteText(args: {
+  mode: GeneratedTaskRouteDecision['execution_mode']
+  selectedAgent: MultiAgentRouteCandidate | null
+  category: string
+  confidence: number
+  needClarify: boolean
+}) {
+  if (args.mode === 'direct') {
+    return `多智能体协作：识别为普通对话，继续由 Hermes 直接回答。`
+  }
+  if (args.needClarify || args.mode === 'clarify') {
+    return '多智能体协作：当前信息不足，先向用户澄清后再继续执行。'
+  }
+  if (args.mode === 'subagent' && args.selectedAgent) {
+    return `多智能体协作：已匹配子智能体「${args.selectedAgent.name}」(${args.category}，置信度 ${args.confidence}%)，优先交由其执行。`
+  }
+  return `多智能体协作：当前由 Hermes 编排执行(${args.category}，置信度 ${args.confidence}%)。`
+}
+
+function fallbackTaskCount(decision: MultiAgentRouteDecision) {
+  return Math.max(2, Math.min(5, decision.todo.length || 2))
+}
+
+function buildExecutionPlanFromRouterTodo(decision: MultiAgentRouteDecision): MultiAgentExecutionPlan | null {
+  if (!decision.shouldPlan || decision.executionMode === 'hermes_native' && decision.intent === 'casual_chat') return null
+  const hermesExecutor: MultiAgentPlanNodeExecutor = { type: 'hermes', name: 'Hermes' }
+  const selectedExecutor: MultiAgentPlanNodeExecutor = decision.executionMode === 'delegate_subagent' && decision.selectedAgent
+    ? { type: 'subagent', id: decision.selectedAgent.id, name: decision.selectedAgent.name }
+    : hermesExecutor
+  const todo = decision.todo.length > 0
+    ? decision.todo.slice(0, 5)
+    : Array.from({ length: fallbackTaskCount(decision) }, (_, index) => `执行步骤 ${index + 1}`)
+  const taskNodes = todo.map((item, index): MultiAgentPlanNode => ({
+    id: `task_router_${index + 1}`,
+    title: item,
+    phase: index === 0 ? '分析' : index === todo.length - 1 ? '汇总' : '执行',
+    status: 'todo',
+    executor: selectedExecutor,
+    summary: decision.constraints[index] || decision.reason || '等待执行。',
+  }))
+  return {
+    objective: decision.summary,
+    status: 'running',
+    currentNodeId: 'route',
+    nodes: [
+      {
+        id: 'understand',
+        title: '理解需求与约束',
+        phase: '分析',
+        status: 'done',
+        executor: hermesExecutor,
+        summary: '已接收用户需求并抽取当前目标。',
+      },
+      {
+        id: 'route',
+        title: '确认执行路径',
+        phase: '路由',
+        status: 'doing',
+        executor: hermesExecutor,
+        summary: decision.routeText,
+      },
+      ...taskNodes,
+      {
+        id: 'respond',
+        title: '汇总阶段成果并回复用户',
+        phase: '汇总',
+        status: 'todo',
+        executor: hermesExecutor,
+        summary: '等待前置步骤完成后由 Hermes 组织最终回复。',
+      },
+    ],
+  }
+}
+
+function delegatedNodeIdsFromPlan(plan: MultiAgentExecutionPlan | null, selectedAgent: MultiAgentRouteCandidate | null) {
+  if (!plan || !selectedAgent) return []
+  return plan.nodes
+    .filter(node => node.executor.type === 'subagent' && normalizeKey(node.executor.id) === normalizeKey(selectedAgent.id))
+    .map(node => node.id)
 }
 
 export async function resolveMultiAgentRoute(input: {
@@ -528,12 +707,138 @@ export async function resolveMultiAgentRoute(input: {
   profile: string
   provider?: string
   model?: string
+  onProgress?: (event: MultiAgentRouteProgressEvent) => void
+  onReasoning?: (event: MultiAgentRouteReasoningEvent) => void
 }): Promise<MultiAgentRouteDecision> {
   const base = buildBaseRouteDecision(input)
   if (!base.enabled || !base.shouldPlan) return base
 
   const normalizedCandidates = normalizeCandidates(input.candidates || [])
   try {
+    input.onProgress?.({
+      stage: 'understand',
+      status: 'done',
+      text: '主智能体已完成基础需求理解。',
+    })
+    input.onProgress?.({
+      stage: 'route',
+      status: 'running',
+      text: '主智能体正在生成路由决策。',
+    })
+    const routeReasoningPromise = streamTaskRouteReasoning({
+      profile: input.profile,
+      requirement: base.inputText,
+      provider: input.provider,
+      model: input.model,
+      agents: normalizedCandidates,
+      onChunk: (chunk) => {
+        const cleaned = summarizeText(String(chunk.text || '').replace(/\s+/g, ' ').trim(), 180)
+        if (!cleaned) return
+        input.onReasoning?.({
+          stage: 'route',
+          text: cleaned,
+        })
+      },
+    }).catch(() => null)
+    const routed = await generateTaskRouteDecision({
+      profile: input.profile,
+      requirement: base.inputText,
+      provider: input.provider,
+      model: input.model,
+      agents: normalizedCandidates,
+    })
+    await routeReasoningPromise
+    const selectedAgent = selectCandidateFromRouter({
+      normalizedCandidates,
+      routed,
+      fallback: base.selectedAgent,
+    })
+    const category = routed.category !== '通用任务'
+      ? routed.category
+      : (base.category !== '通用任务' ? base.category : inferCategoryFromAgent(selectedAgent))
+    const confidence = Math.max(base.confidence, Math.round(Math.max(0, Math.min(1, routed.confidence)) * 100))
+    const runtimeDelegateOverride = shouldUseRuntimeDelegateOverride({
+      base,
+      routed,
+      selectedAgent,
+      category,
+      confidence,
+    })
+    const effectiveRouteMode: GeneratedTaskRouteDecision['execution_mode'] = runtimeDelegateOverride
+      ? 'subagent'
+      : routed.execution_mode
+    const effectiveNeedClarify = runtimeDelegateOverride ? false : routed.need_clarify
+    const executionMode = mapRouterExecutionMode(effectiveRouteMode, selectedAgent, confidence, category)
+    const routeText = buildRouterRouteText({
+      mode: effectiveRouteMode,
+      selectedAgent,
+      category,
+      confidence,
+      needClarify: effectiveNeedClarify,
+    })
+    const routerReason = runtimeDelegateOverride && selectedAgent
+      ? `路由模型返回 ${routed.execution_mode}，但运行时能力匹配已确认 ${selectedAgent.name} 更适合作为主执行方。`
+      : routed.reason
+    const todo = runtimeDelegateOverride && selectedAgent
+      ? fallbackDelegateTodo(selectedAgent)
+      : routed.todo
+    const constraints = runtimeDelegateOverride
+      ? mergeDelegateOverrideConstraints(routed.constraints)
+      : routed.constraints
+    const decisionFromRouter: MultiAgentRouteDecision = {
+      ...base,
+      summary: summarizeText(base.inputText),
+      intent: routed.intent,
+      category,
+      confidence,
+      reason: routerReason,
+      executionMode,
+      selectedAgent,
+      routeText,
+      inputText: base.inputText,
+      todo,
+      constraints,
+      hermesInstructions: null,
+      plan: null,
+      delegatedNodeIds: [],
+    }
+    input.onProgress?.({
+      stage: 'route',
+      status: 'done',
+      text: effectiveNeedClarify
+        ? '主智能体已判断当前信息不足，需要先澄清。'
+        : `主智能体已完成路由决策，执行模式：${effectiveRouteMode}。`,
+    })
+
+    if (effectiveNeedClarify || effectiveRouteMode === 'clarify' || effectiveRouteMode === 'direct') {
+      const plan = buildExecutionPlanFromRouterTodo(decisionFromRouter)
+      return {
+        ...decisionFromRouter,
+        shouldPlan: effectiveRouteMode !== 'direct',
+        plan,
+        delegatedNodeIds: delegatedNodeIdsFromPlan(plan, selectedAgent),
+        hermesInstructions: buildHermesInstructions({
+          ...decisionFromRouter,
+          shouldPlan: effectiveRouteMode !== 'direct',
+          plan,
+          delegatedNodeIds: delegatedNodeIdsFromPlan(plan, selectedAgent),
+        }),
+      }
+    }
+
+    input.onProgress?.({
+      stage: 'match_agents',
+      status: 'running',
+      text: selectedAgent
+        ? `主智能体正在校验子智能体「${selectedAgent.name}」是否适合作为主执行方。`
+        : '主智能体未命中高置信度子智能体，准备由 Hermes 编排执行。',
+    })
+    input.onReasoning?.({
+      stage: 'match_agents',
+      text: selectedAgent
+        ? `正在比对子智能体能力与任务目标，确认是否交由 ${selectedAgent.name} 主执行。`
+        : '未命中可直接委派对象，开始生成由 Hermes 编排的执行清单。',
+    })
     const generated = await generateTaskPlan({
       profile: input.profile,
       requirement: base.inputText,
@@ -542,65 +847,76 @@ export async function resolveMultiAgentRoute(input: {
       agents: normalizedCandidates,
     })
     const plannedPick = pickDominantPlannedAgent(generated.plan, normalizedCandidates)
-    const selectedAgent = plannedPick?.agent || base.selectedAgent
-    const category = base.category !== '通用任务' ? base.category : inferCategoryFromAgent(selectedAgent)
-    const confidence = plannedPick
-      ? Math.max(base.confidence, plannedConfidencePercent(plannedPick.averageConfidence, plannedPick.taskIds.length))
-      : base.confidence
-    const executionMode = canDirectDelegate(selectedAgent, confidence, category)
-      ? 'delegate_subagent'
-      : 'hermes_native'
+    const dominantAgent = plannedPick?.agent || selectedAgent
+    const plannedCategory = category !== '通用任务' ? category : inferCategoryFromAgent(dominantAgent)
+    const plannedConfidence = plannedPick
+      ? Math.max(confidence, plannedConfidencePercent(plannedPick.averageConfidence, plannedPick.taskIds.length))
+      : confidence
+    const plannedExecutionMode = mapRouterExecutionMode(effectiveRouteMode, dominantAgent, plannedConfidence, plannedCategory)
 
-    let reason = base.reason
-    let routeText = base.routeText
-    if (plannedPick?.agent && executionMode === 'delegate_subagent') {
-      reason = `主智能体已完成任务规划，识别出 ${plannedPick.agent.name} 是主要执行方。`
-      routeText = `多智能体协作：主智能体已完成任务规划，主执行子智能体为「${plannedPick.agent.name}」(${category}，置信度 ${confidence}%)，将优先直连其运行时。`
+    let reason = decisionFromRouter.reason
+    let finalRouteText = routeText
+    if (plannedPick?.agent && plannedExecutionMode === 'delegate_subagent') {
+      reason = runtimeDelegateOverride
+        ? `${decisionFromRouter.reason} 主智能体已完成任务规划，识别出 ${plannedPick.agent.name} 是主要执行方。`
+        : `主智能体已完成任务规划，识别出 ${plannedPick.agent.name} 是主要执行方。`
+      finalRouteText = `多智能体协作：主智能体已完成任务规划，主执行子智能体为「${plannedPick.agent.name}」(${plannedCategory}，置信度 ${plannedConfidence}%)，将优先直连其运行时。`
     } else if (plannedPick?.agent) {
-      reason = `主智能体已完成任务规划，匹配到 ${plannedPick.agent.name}，当前改由 Hermes 编排执行。`
-      routeText = `多智能体协作：主智能体已完成任务规划，匹配到子智能体「${plannedPick.agent.name}」(${category}，置信度 ${confidence}%)，当前由 Hermes 编排执行。`
+      reason = runtimeDelegateOverride
+        ? `${decisionFromRouter.reason} 主智能体已完成任务规划，匹配到 ${plannedPick.agent.name}，当前改由 Hermes 编排执行。`
+        : `主智能体已完成任务规划，匹配到 ${plannedPick.agent.name}，当前改由 Hermes 编排执行。`
+      finalRouteText = `多智能体协作：主智能体已完成任务规划，匹配到子智能体「${plannedPick.agent.name}」(${plannedCategory}，置信度 ${plannedConfidence}%)，当前由 Hermes 编排执行。`
     } else {
       reason = '主智能体已完成任务规划，当前由 Hermes 继续编排。'
-      routeText = '多智能体协作：主智能体已完成任务规划，未匹配到可直连子智能体，继续由 Hermes 编排执行。'
+      finalRouteText = '多智能体协作：主智能体已完成任务规划，未匹配到可直连子智能体，继续由 Hermes 编排执行。'
     }
 
-    const delegatedNodeIds = executionMode === 'delegate_subagent'
+    const executionPlan = buildExecutionPlanFromTaskPlanner({
+      generated,
+      routeText: finalRouteText,
+      candidates: normalizedCandidates,
+    })
+    const delegatedNodeIds = plannedExecutionMode === 'delegate_subagent'
       ? (plannedPick?.taskIds.length
           ? plannedPick.taskIds.map((taskId, index) => planTaskNodeId(taskId, index))
           : (generated.plan.tasks[0] ? [planTaskNodeId(generated.plan.tasks[0].id, 0)] : []))
       : []
+    input.onProgress?.({
+      stage: 'match_agents',
+      status: 'done',
+      text: dominantAgent
+        ? `主智能体已确认主执行方：${dominantAgent.name}。`
+        : '主智能体已确认由 Hermes 主链路继续执行。',
+    })
 
     return {
-      ...base,
-      category,
-      confidence,
+      ...decisionFromRouter,
+      category: plannedCategory,
+      confidence: plannedConfidence,
       reason,
-      executionMode,
-      selectedAgent,
-      routeText,
+      executionMode: plannedExecutionMode,
+      selectedAgent: dominantAgent,
+      routeText: finalRouteText,
       hermesInstructions: `${buildHermesInstructions({
-        ...base,
-        category,
-        confidence,
+        ...decisionFromRouter,
+        category: plannedCategory,
+        confidence: plannedConfidence,
         reason,
-        executionMode,
-        selectedAgent,
-        routeText,
+        executionMode: plannedExecutionMode,
+        selectedAgent: dominantAgent,
+        routeText: finalRouteText,
         hermesInstructions: null,
         plan: null,
         delegatedNodeIds,
       })}\n\n${formatPlanForInstructions(generated)}`,
-      plan: buildExecutionPlanFromTaskPlanner({
-        generated,
-        routeText,
-        candidates: normalizedCandidates,
-      }),
+      plan: executionPlan,
       delegatedNodeIds,
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     return {
       ...base,
+      intent: base.intent || 'fallback_skill',
       reason: `${base.reason} 任务规划生成失败：${message}`,
       routeText: `${base.routeText} 任务规划生成失败，当前不展示伪造节点。`,
       hermesInstructions: base.hermesInstructions

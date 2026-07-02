@@ -50,7 +50,7 @@ const sessionAgentLogo = computed(() => {
     }
     return { label: 'Claude Code', src: '/coding-agents/claude-code.svg' }
   }
-  return { label: 'Hermes', src: '/coding-agents/hermes.png' }
+  return { label: '主智能体', src: '/coding-agents/assistant-badge.svg' }
 })
 
 let longPressTimer: ReturnType<typeof setTimeout> | null = null

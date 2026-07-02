@@ -1,7 +1,7 @@
 {
-  "name": "Hermes Studio",
-  "short_name": "Hermes",
-  "description": "Self-hosted AI chat dashboard for Hermes Agent",
+  "name": "智能体工作台",
+  "short_name": "Agent",
+  "description": "通用多智能体协作与对话工作台",
   "start_url": "/#/hermes/chat",
   "scope": "/",
   "display": "standalone",
@@ -9,9 +9,9 @@
   "theme_color": "#f7f7f4",
   "icons": [
     {
-      "src": "/logo.png",
-      "sizes": "1254x1254",
-      "type": "image/png",
+      "src": "/coding-agents/assistant-badge.svg",
+      "sizes": "96x96",
+      "type": "image/svg+xml",
       "purpose": "any maskable"
     }
   ]

@@ -22,6 +22,17 @@ describe('handle subagent run helpers', () => {
     })).toBe('这里是子智能体的最终答复')
   })
 
+  it('does not treat a prefatory one-liner as the final answer when real activity followed', () => {
+    expect(resolveSubagentAssistantContent({
+      output: '好的，我先查阅元数据。',
+      agentName: '问数智能体',
+      goal: '查询 8 月月报',
+      toolCount: 2,
+      hadActivity: true,
+      lastEventText: '已读取 8 月数据并完成汇总',
+    })).toBe('好的，我先查阅元数据。 子智能体「问数智能体」已完成当前任务。 阶段结果：已读取 8 月数据并完成汇总。 详细过程见右侧协作面板。')
+  })
+
   it('synthesizes a minimal summary when only structured activity events are returned', () => {
     expect(resolveSubagentAssistantContent({
       output: '',

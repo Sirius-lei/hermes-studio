@@ -1,7 +1,7 @@
 export default {
 
   login: {
-    title: 'Hermes Web UI',
+    title: 'Agent Workspace',
     description: 'Введите имя пользователя и пароль для продолжения.',
     placeholder: 'Токен доступа',
     submit: 'Войти',
@@ -340,7 +340,7 @@ export default {
     contextEditInvalid: 'Введите корректный размер контекста',
     contextEditSuccess: 'Размер контекста обновлён',
     contextEditFailed: 'Ошибка обновления',
-    emptyState: 'Начните диалог с Hermes Agent',
+    emptyState: 'Начните диалог с главным агентом',
     viewOlderInHistory: 'Посмотреть более ранние сообщения в истории',
     scrollToBottom: 'Прокрутить вниз',
     cliEmptyState: 'Начните CLI-диалог',

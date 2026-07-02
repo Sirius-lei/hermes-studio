@@ -74,8 +74,44 @@ export interface MultiAgentExecutionEventState {
   output?: string
 }
 
+export interface MultiAgentThinkingStepState {
+  id: string
+  title: string
+  detail: string
+  status: 'pending' | 'running' | 'done'
+}
+
+export interface MultiAgentWorkflowStepState {
+  id: string
+  title: string
+  detail: string
+  status: 'pending' | 'running' | 'done' | 'error'
+}
+
+export interface MultiAgentWorkflowEventState {
+  id: string
+  title: string
+  text: string
+  status: 'info' | 'running' | 'done' | 'error'
+  timestamp: number
+  agentName?: string
+  toolName?: string
+}
+
+export interface MultiAgentWorkflowMessageState {
+  title: string
+  subtitle: string
+  objective: string
+  current: string
+  status: 'running' | 'done' | 'error'
+  reasoningText: string
+  steps: MultiAgentWorkflowStepState[]
+  events: MultiAgentWorkflowEventState[]
+}
+
 export interface MultiAgentRouteState {
   mode: 'delegate_subagent' | 'hermes_native'
+  intent: string
   category: string
   reason: string
   text: string
@@ -84,8 +120,11 @@ export interface MultiAgentRouteState {
   currentNodeId: string | null
   selectedAgentId: string
   selectedAgentName: string
+  todo: string[]
+  constraints: string[]
   planNodes: MultiAgentPlanNodeState[]
   activity: MultiAgentExecutionEventState[]
+  thinkingSteps: MultiAgentThinkingStepState[]
 }
 
 function summarizeMultiAgentObjectiveText(value: string, maxLength = 160) {
@@ -95,6 +134,12 @@ function summarizeMultiAgentObjectiveText(value: string, maxLength = 160) {
 }
 
 const RESERVED_MULTI_AGENT_NODE_IDS = new Set(['understand', 'route', 'respond'])
+const WORKFLOW_ARCHIVE_PREFIX = '__HERMES_MULTI_AGENT_WORKFLOW__'
+const WORKFLOW_ARCHIVE_STORAGE_KEY = 'hermes.multiAgent.workflowArchives.v1'
+
+function isReservedMultiAgentNodeId(nodeId?: string | null): boolean {
+  return !!nodeId && RESERVED_MULTI_AGENT_NODE_IDS.has(nodeId)
+}
 
 export interface Message {
   id: string
@@ -116,11 +161,21 @@ export interface Message {
   // 不含 <think> 包裹标签；内容自身可以为多段纯文本。
   reasoning?: string
   queued?: boolean
-  systemType?: 'command' | 'error' | 'fork-divider'
+  systemType?: 'command' | 'error' | 'fork-divider' | 'workflow'
   commandAction?: string
   commandData?: Record<string, unknown>
+  workflow?: MultiAgentWorkflowMessageState
   finishReason?: string | null
   runMarker?: string | null
+}
+
+interface MultiAgentWorkflowArchiveRecord {
+  id: string
+  sessionId: string
+  messageId: string
+  createdAt: number
+  updatedAt: number
+  workflow: MultiAgentWorkflowMessageState
 }
 
 export interface PendingApproval {
@@ -235,6 +290,115 @@ function errorMessageText(error: unknown): string {
 
 function sanitizeMultiAgentText(value: unknown): string {
   return sanitizeAgentDisplayText(typeof value === 'string' ? value : String(value ?? ''))
+}
+
+function latestMultiAgentReasoningText(value: unknown, maxLength = 220): string {
+  const normalized = sanitizeMultiAgentText(value).replace(/\s+/g, ' ').trim()
+  if (!normalized) return ''
+  const segments = normalized
+    .split(/[\n。！？!?]+/)
+    .map(segment => segment.trim())
+    .filter(Boolean)
+  const latest = segments[segments.length - 1] || normalized
+  return latest.length > maxLength ? `${latest.slice(0, maxLength - 3).trimEnd()}...` : latest
+}
+
+function compactSubagentEventKey(value: unknown, maxLength = 48): string {
+  const normalized = sanitizeMultiAgentText(typeof value === 'string' ? value : String(value ?? ''))
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLength)
+  if (!normalized) return 'none'
+  return normalized
+    .replace(/[^a-zA-Z0-9\u4e00-\u9fff_-]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    || 'none'
+}
+
+function buildSubagentEventToolCallId(input: {
+  runId?: unknown
+  subagentId?: unknown
+  eventName: string
+  toolName?: unknown
+  preview?: unknown
+}) {
+  const runId = compactSubagentEventKey(input.runId || 'run', 24)
+  const subagentId = compactSubagentEventKey(input.subagentId || 'subagent', 24)
+  const toolName = compactSubagentEventKey(input.toolName || '', 20)
+  const preview = compactSubagentEventKey(input.preview || '', 40)
+  return `subagent:${runId}:${subagentId}:${input.eventName}:${toolName}:${preview}`
+}
+
+function appendedMultiAgentDelta(existing: string, next: string): string {
+  if (!existing || !next) return next
+  if (next.startsWith(existing)) return next.slice(existing.length)
+  const max = Math.min(existing.length, next.length)
+  for (let length = max; length >= 6; length -= 1) {
+    if (existing.endsWith(next.slice(0, length))) return next.slice(length)
+  }
+  return next
+}
+
+function needsReasoningSeparator(existing: string, next: string): boolean {
+  if (!existing || !next) return false
+  return /[A-Za-z0-9]$/.test(existing) && /^[A-Za-z0-9]/.test(next)
+}
+
+function mergeMultiAgentReasoningText(existing: unknown, next: unknown, maxLength = 2200): string {
+  const base = sanitizeMultiAgentText(typeof existing === 'string' ? existing : String(existing ?? ''))
+    .replace(/\s+/g, ' ')
+    .trim()
+  const incoming = sanitizeMultiAgentText(typeof next === 'string' ? next : String(next ?? ''))
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!incoming) return base
+  const delta = appendedMultiAgentDelta(base, incoming)
+  if (!delta) return base
+  const merged = `${base}${base && needsReasoningSeparator(base, delta) ? ' ' : ''}${delta}`.trim()
+  return merged.length > maxLength ? merged.slice(merged.length - maxLength) : merged
+}
+
+function encodeWorkflowArchive(workflow: MultiAgentWorkflowMessageState): string {
+  return `${WORKFLOW_ARCHIVE_PREFIX}${JSON.stringify(workflow)}`
+}
+
+function decodeWorkflowArchive(value: unknown): MultiAgentWorkflowMessageState | null {
+  if (typeof value !== 'string') return null
+  if (!value.startsWith(WORKFLOW_ARCHIVE_PREFIX)) return null
+  try {
+    const parsed = JSON.parse(value.slice(WORKFLOW_ARCHIVE_PREFIX.length)) as Partial<MultiAgentWorkflowMessageState>
+    if (!parsed || typeof parsed !== 'object') return null
+    return {
+      title: sanitizeMultiAgentText(parsed.title || '协作详情') || '协作详情',
+      subtitle: sanitizeMultiAgentText(parsed.subtitle || '历史协作详情') || '历史协作详情',
+      objective: sanitizeMultiAgentText(parsed.objective || ''),
+      current: sanitizeMultiAgentText(parsed.current || ''),
+      status: parsed.status === 'done' || parsed.status === 'error' ? parsed.status : 'running',
+      reasoningText: sanitizeMultiAgentText(parsed.reasoningText || ''),
+      steps: Array.isArray(parsed.steps)
+        ? parsed.steps.map((step, index) => ({
+            id: sanitizeMultiAgentText(step?.id || `step_${index + 1}`) || `step_${index + 1}`,
+            title: sanitizeMultiAgentText(step?.title || `阶段 ${index + 1}`) || `阶段 ${index + 1}`,
+            detail: sanitizeMultiAgentText(step?.detail || ''),
+            status: step?.status === 'running' || step?.status === 'done' || step?.status === 'error' ? step.status : 'pending',
+          }))
+        : [],
+      events: Array.isArray(parsed.events)
+        ? parsed.events.map((event, index) => ({
+            id: sanitizeMultiAgentText(event?.id || `event_${index + 1}`) || `event_${index + 1}`,
+            title: sanitizeMultiAgentText(event?.title || `事件 ${index + 1}`) || `事件 ${index + 1}`,
+            text: sanitizeMultiAgentText(event?.text || ''),
+            status: event?.status === 'running' || event?.status === 'done' || event?.status === 'error' ? event.status : 'info',
+            timestamp: Number.isFinite(Number(event?.timestamp)) ? Number(event?.timestamp) : Date.now(),
+            agentName: sanitizeMultiAgentText(event?.agentName || '') || undefined,
+            toolName: sanitizeMultiAgentText(event?.toolName || '') || undefined,
+          }))
+        : [],
+    }
+  } catch {
+    return null
+  }
 }
 
 async function uploadFiles(attachments: Attachment[]): Promise<{ name: string; path: string }[]> {
@@ -496,6 +660,20 @@ function mapHermesMessages(msgs: HermesMessage[]): Message[] {
     // Normal user/assistant/command messages
     const displayRole = msg.display_role || msg.role
     const displayContent = msg.display_content ?? msg.content
+    const archivedWorkflow = decodeWorkflowArchive(displayContent)
+    if (archivedWorkflow) {
+      result.push({
+        id: String(msg.id),
+        role: 'system',
+        content: encodeWorkflowArchive(archivedWorkflow),
+        timestamp: Math.round(msg.timestamp * 1000),
+        systemType: 'workflow',
+        workflow: archivedWorkflow,
+        finishReason: readFinishReason(msg),
+        runMarker: readRunMarker(msg),
+      })
+      continue
+    }
     result.push({
       id: String(msg.id),
       role: displayRole,
@@ -684,6 +862,58 @@ function removeItem(key: string) {
   }
 }
 
+function readWorkflowArchives(): MultiAgentWorkflowArchiveRecord[] {
+  const raw = getItemBestEffort(WORKFLOW_ARCHIVE_STORAGE_KEY)
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.flatMap((item): MultiAgentWorkflowArchiveRecord[] => {
+      const sessionId = sanitizeMultiAgentText(item?.sessionId || '')
+      const messageId = sanitizeMultiAgentText(item?.messageId || '')
+      const workflow = item?.workflow && typeof item.workflow === 'object'
+        ? decodeWorkflowArchive(encodeWorkflowArchive(item.workflow as MultiAgentWorkflowMessageState))
+        : null
+      if (!sessionId || !messageId || !workflow) return []
+      const createdAt = Number.isFinite(Number(item?.createdAt)) ? Number(item.createdAt) : Date.now()
+      const updatedAt = Number.isFinite(Number(item?.updatedAt)) ? Number(item.updatedAt) : createdAt
+      return [{
+        id: sanitizeMultiAgentText(item?.id || messageId) || messageId,
+        sessionId,
+        messageId,
+        createdAt,
+        updatedAt,
+        workflow,
+      }]
+    })
+  } catch {
+    return []
+  }
+}
+
+function writeWorkflowArchives(records: MultiAgentWorkflowArchiveRecord[]) {
+  const compact = [...records]
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .slice(0, 80)
+  setItemBestEffort(WORKFLOW_ARCHIVE_STORAGE_KEY, JSON.stringify(compact))
+}
+
+function persistWorkflowArchive(record: MultiAgentWorkflowArchiveRecord) {
+  const records = readWorkflowArchives()
+  const index = records.findIndex(item => item.messageId === record.messageId)
+  if (index >= 0) {
+    records[index] = {
+      ...records[index],
+      ...record,
+      createdAt: records[index].createdAt || record.createdAt,
+      updatedAt: record.updatedAt,
+    }
+  } else {
+    records.push(record)
+  }
+  writeWorkflowArchives(records)
+}
+
 // Strip the circular `file: File` reference from attachments before caching —
 // File objects don't serialize and we only need name/type/size/url for display.
 
@@ -691,6 +921,7 @@ export const useChatStore = defineStore('chat', () => {
   const runtimeMode = ref<ChatRuntimeMode>(activeRuntimeMode)
   const seenSessionCommandEvents = new WeakSet<RunEvent>()
   const sessions = ref<Session[]>([])
+  const activeWorkflowMessageIds = ref<Map<string, string>>(new Map())
   const activeSessionId = ref<string | null>(null)
   const focusMessageId = ref<string | null>(null)
   const streamStates = ref<Map<string, { abort: () => void }>>(new Map())
@@ -1002,6 +1233,7 @@ export const useChatStore = defineStore('chat', () => {
       if (!detail) return false
       const mapped = mapHermesMessages(detail.messages || [])
       target.messages = mapped
+      restoreWorkflowArchiveMessages(sid)
       target.loadedMessageCount = detail.messages.length
       target.messageTotal = detail.total
       target.messageCount = detail.total
@@ -1143,6 +1375,7 @@ export const useChatStore = defineStore('chat', () => {
           target.parentLastMessageRole = (data as any).parentLastMessageRole || target.parentLastMessageRole || null
           if (data.messages?.length) {
             target.messages = mapHermesMessages(data.messages as any[])
+            restoreWorkflowArchiveMessages(sessionId)
             target.loadedMessageCount = data.messageLoadedCount ?? data.messages.length
             target.messageTotal = data.messageTotal ?? target.messageCount ?? target.loadedMessageCount
             target.messageCount = target.messageTotal
@@ -1277,6 +1510,7 @@ export const useChatStore = defineStore('chat', () => {
       const existingIds = new Set(target.messages.map(message => message.id))
       const olderMessages = mapHermesMessages(page.messages).filter(message => !existingIds.has(message.id))
       target.messages = [...olderMessages, ...target.messages]
+      restoreWorkflowArchiveMessages(sessionId)
       target.loadedMessageCount = offset + page.messages.length
       target.messageTotal = page.total
       target.messageCount = page.total
@@ -1412,6 +1646,294 @@ export const useChatStore = defineStore('chat', () => {
     s.messages = s.messages.filter(m => m.commandAction !== 'agent.event')
   }
 
+  function createWorkflowMessageId(sessionId: string) {
+    return `multi-agent-workflow:${sessionId}:${uid()}`
+  }
+
+  function workflowMessageId(sessionId: string) {
+    return activeWorkflowMessageIds.value.get(sessionId) || `multi-agent-workflow:${sessionId}`
+  }
+
+  function defaultWorkflowSteps(): MultiAgentWorkflowStepState[] {
+    return [
+      {
+        id: 'understand',
+        title: '理解需求',
+        detail: '主智能体正在提取任务目标、约束和交付物。',
+        status: 'running',
+      },
+      {
+        id: 'route',
+        title: '规划路径',
+        detail: '等待路由模型生成执行策略。',
+        status: 'pending',
+      },
+      {
+        id: 'match',
+        title: '匹配智能体',
+        detail: '等待确认是否需要调用子智能体。',
+        status: 'pending',
+      },
+      {
+        id: 'execute',
+        title: '执行节点',
+        detail: '等待实际执行节点启动。',
+        status: 'pending',
+      },
+      {
+        id: 'respond',
+        title: '汇总回复',
+        detail: '等待阶段成果返回后汇总。',
+        status: 'pending',
+      },
+    ]
+  }
+
+  function createWorkflowState(objective: string): MultiAgentWorkflowMessageState {
+    const normalizedObjective = summarizeMultiAgentObjectiveText(objective)
+    return {
+      title: '协作详情',
+      subtitle: '主智能体正在生成执行路径',
+      objective: normalizedObjective,
+      current: '主智能体已接收需求，正在识别目标与执行路径。',
+      status: 'running',
+      reasoningText: '',
+      steps: defaultWorkflowSteps(),
+      events: [],
+    }
+  }
+
+  function persistWorkflowMessage(sessionId: string, message: Message) {
+    if (!message.workflow) return
+    persistWorkflowArchive({
+      id: message.id,
+      sessionId,
+      messageId: message.id,
+      createdAt: message.timestamp,
+      updatedAt: Date.now(),
+      workflow: message.workflow,
+    })
+  }
+
+  function persistWorkflowMessages(sessionId: string) {
+    getSessionMsgs(sessionId)
+      .filter(message => message.systemType === 'workflow' && !!message.workflow)
+      .forEach(message => persistWorkflowMessage(sessionId, message))
+  }
+
+  function syncActiveWorkflowMessageId(sessionId: string) {
+    const session = sessions.value.find(item => item.id === sessionId)
+    if (!session) return
+    const latestRunningWorkflow = [...session.messages]
+      .reverse()
+      .find(message => message.systemType === 'workflow' && message.workflow?.status === 'running')
+    if (!latestRunningWorkflow) return
+    const nextMap = new Map(activeWorkflowMessageIds.value)
+    nextMap.set(sessionId, latestRunningWorkflow.id)
+    activeWorkflowMessageIds.value = nextMap
+  }
+
+  function restoreWorkflowArchiveMessages(sessionId: string) {
+    const session = sessions.value.find(item => item.id === sessionId)
+    if (!session) return
+    const existingIds = new Set(session.messages.map(message => message.id))
+    const archived = readWorkflowArchives()
+      .filter(record => record.sessionId === sessionId && !existingIds.has(record.messageId))
+      .map<Message>(record => ({
+        id: record.messageId,
+        role: 'system',
+        content: encodeWorkflowArchive(record.workflow),
+        timestamp: record.createdAt,
+        systemType: 'workflow',
+        workflow: record.workflow,
+      }))
+    if (archived.length) {
+      session.messages = [...session.messages, ...archived].sort((a, b) => a.timestamp - b.timestamp)
+    }
+    syncActiveWorkflowMessageId(sessionId)
+  }
+
+  function startMultiAgentWorkflowMessage(sessionId: string, objective = '') {
+    persistWorkflowMessages(sessionId)
+    const id = createWorkflowMessageId(sessionId)
+    const nextMap = new Map(activeWorkflowMessageIds.value)
+    nextMap.set(sessionId, id)
+    activeWorkflowMessageIds.value = nextMap
+    const workflow = createWorkflowState(objective)
+    addMessage(sessionId, {
+      id,
+      role: 'system',
+      content: encodeWorkflowArchive(workflow),
+      timestamp: Date.now(),
+      systemType: 'workflow',
+      workflow,
+    })
+    const message = getSessionMsgs(sessionId).find(item => item.id === id)
+    if (message) persistWorkflowMessage(sessionId, message)
+  }
+
+  function ensureMultiAgentWorkflowMessage(sessionId: string, objective = '') {
+    const id = workflowMessageId(sessionId)
+    const msgs = getSessionMsgs(sessionId)
+    const existing = msgs.find(message => message.id === id)
+    if (existing) {
+      if (!existing.workflow) {
+        const workflow = createWorkflowState(objective || existing.content)
+        updateMessage(sessionId, id, {
+          content: encodeWorkflowArchive(workflow),
+          workflow,
+          systemType: 'workflow',
+        })
+        const updated = getSessionMsgs(sessionId).find(message => message.id === id)
+        if (updated) persistWorkflowMessage(sessionId, updated)
+      }
+      return
+    }
+    const workflow = createWorkflowState(objective)
+    addMessage(sessionId, {
+      id,
+      role: 'system',
+      content: encodeWorkflowArchive(workflow),
+      timestamp: Date.now(),
+      systemType: 'workflow',
+      workflow,
+    })
+    const created = getSessionMsgs(sessionId).find(message => message.id === id)
+    if (created) persistWorkflowMessage(sessionId, created)
+  }
+
+  function patchWorkflow(sessionId: string, updater: (workflow: MultiAgentWorkflowMessageState) => MultiAgentWorkflowMessageState) {
+    ensureMultiAgentWorkflowMessage(sessionId)
+    const id = workflowMessageId(sessionId)
+    const message = getSessionMsgs(sessionId).find(item => item.id === id)
+    const current = message?.workflow || createWorkflowState('')
+    const workflow = updater(current)
+    updateMessage(sessionId, id, {
+      content: encodeWorkflowArchive(workflow),
+      workflow,
+    })
+    const updated = getSessionMsgs(sessionId).find(item => item.id === id)
+    if (updated) persistWorkflowMessage(sessionId, updated)
+  }
+
+  function patchWorkflowStep(
+    sessionId: string,
+    stepId: string,
+    patch: Partial<MultiAgentWorkflowStepState>,
+  ) {
+    patchWorkflow(sessionId, workflow => ({
+      ...workflow,
+      steps: workflow.steps.map(step => step.id === stepId ? { ...step, ...patch } : step),
+    }))
+  }
+
+  function appendWorkflowStepDetail(
+    sessionId: string,
+    stepId: string,
+    text: unknown,
+    status: MultiAgentWorkflowStepState['status'] = 'running',
+  ) {
+    patchWorkflow(sessionId, workflow => ({
+      ...workflow,
+      steps: workflow.steps.map(step => {
+        if (step.id !== stepId) return step
+        const mergedDetail = mergeMultiAgentReasoningText(step.detail, text, 320)
+        return {
+          ...step,
+          detail: latestMultiAgentReasoningText(mergedDetail) || step.detail,
+          status,
+        }
+      }),
+    }))
+  }
+
+  function appendWorkflowReasoning(sessionId: string, text: unknown) {
+    const mergedPreview = mergeMultiAgentReasoningText('', text, 320)
+    if (!mergedPreview) return
+    patchWorkflow(sessionId, workflow => {
+      const reasoningText = mergeMultiAgentReasoningText(workflow.reasoningText, text, 2200)
+      return {
+        ...workflow,
+        current: latestMultiAgentReasoningText(reasoningText) || workflow.current,
+        reasoningText,
+      }
+    })
+  }
+
+  function upsertWorkflowEvent(sessionId: string, event: MultiAgentWorkflowEventState) {
+    patchWorkflow(sessionId, workflow => {
+      const index = workflow.events.findIndex(item => item.id === event.id)
+      const events = [...workflow.events]
+      if (index >= 0) {
+        events[index] = {
+          ...events[index],
+          ...event,
+        }
+      } else {
+        events.push(event)
+      }
+      return {
+        ...workflow,
+        events: events.slice(-16),
+      }
+    })
+  }
+
+  function setWorkflowTerminalState(sessionId: string, outcome: 'completed' | 'failed') {
+    patchWorkflow(sessionId, workflow => ({
+      ...workflow,
+      subtitle: outcome === 'completed' ? '已完成' : '执行失败',
+      current: outcome === 'completed'
+        ? '最终回复已返回到对话区。'
+        : '任务执行中断，请查看失败节点或工具错误。',
+      status: outcome === 'completed' ? 'done' : 'error',
+      steps: workflow.steps.map(step => ({
+        ...step,
+        status: outcome === 'completed'
+          ? 'done'
+          : step.status === 'running'
+            ? 'error'
+            : step.status,
+      })),
+    }))
+  }
+
+  function updateWorkflowToolEvent(sessionId: string, args: {
+    id?: string
+    name?: unknown
+    preview?: unknown
+    status: 'running' | 'done' | 'error'
+    output?: unknown
+  }) {
+    if (!multiAgentRoutes.value.get(sessionId)) return
+    const toolName = sanitizeMultiAgentText(args.name || 'tool') || 'tool'
+    const preview = sanitizeMultiAgentText(args.preview || args.output || '')
+    const title = args.status === 'running'
+      ? `调用工具：${toolName}`
+      : args.status === 'done'
+        ? `工具完成：${toolName}`
+        : `工具失败：${toolName}`
+    patchWorkflow(sessionId, workflow => ({
+      ...workflow,
+      subtitle: '工具执行中',
+      current: preview || title,
+      status: args.status === 'error' ? 'error' : 'running',
+    }))
+    patchWorkflowStep(sessionId, 'execute', {
+      title: '执行工具',
+      detail: preview || title,
+      status: args.status === 'error' ? 'error' : args.status === 'done' ? 'done' : 'running',
+    })
+    upsertWorkflowEvent(sessionId, {
+      id: `tool:${args.id || toolName}`,
+      title,
+      text: preview || title,
+      status: args.status,
+      timestamp: Date.now(),
+      toolName,
+    })
+  }
+
   function setMultiAgentRouteState(sessionId: string, route: MultiAgentRouteState | null) {
     const next = new Map(multiAgentRoutes.value)
     if (route) next.set(sessionId, route)
@@ -1431,7 +1953,8 @@ export const useChatStore = defineStore('chat', () => {
   function resetMultiAgentRouteState(sessionId: string, objective: string, mode: 'delegate_subagent' | 'hermes_native' = 'hermes_native') {
     setMultiAgentRouteState(sessionId, {
       mode,
-      category: '规划中',
+      intent: '',
+      category: '协作分析',
       reason: '主智能体正在分析用户需求。',
       text: '主智能体正在生成任务规划，请稍候。',
       objective: summarizeMultiAgentObjectiveText(objective),
@@ -1439,13 +1962,15 @@ export const useChatStore = defineStore('chat', () => {
       currentNodeId: 'understand',
       selectedAgentId: '',
       selectedAgentName: '',
+      todo: [],
+      constraints: [],
       planNodes: [
         {
           id: 'understand',
           title: '理解需求与约束',
           phase: '分析',
           status: 'doing',
-          executor: { type: 'hermes', name: 'Hermes' },
+          executor: { type: 'hermes', name: '主智能体' },
           summary: '主智能体正在读取消息、提取目标与约束。',
         },
         {
@@ -1453,7 +1978,7 @@ export const useChatStore = defineStore('chat', () => {
           title: '确认执行路径',
           phase: '路由',
           status: 'todo',
-          executor: { type: 'hermes', name: 'Hermes' },
+          executor: { type: 'hermes', name: '主智能体' },
           summary: '等待主智能体完成意图分析与任务拆解。',
         },
         {
@@ -1461,7 +1986,7 @@ export const useChatStore = defineStore('chat', () => {
           title: '汇总阶段成果并回复用户',
           phase: '汇总',
           status: 'todo',
-          executor: { type: 'hermes', name: 'Hermes' },
+          executor: { type: 'hermes', name: '主智能体' },
           summary: '等待前置节点完成后生成最终回复。',
         },
       ],
@@ -1470,9 +1995,29 @@ export const useChatStore = defineStore('chat', () => {
           id: `route:reset:${sessionId}:${Date.now()}`,
           kind: 'route',
           title: '主智能体开始规划',
-          text: '已清空上一轮协作画布，正在生成新的任务规划。',
+          text: '已清空上一轮协作状态，正在生成新的任务路径。',
           status: 'running',
           timestamp: Date.now(),
+        },
+      ],
+      thinkingSteps: [
+        {
+          id: 'understand',
+          title: '理解用户需求',
+          detail: '正在接收消息并提炼任务目标。',
+          status: 'running',
+        },
+        {
+          id: 'route',
+          title: '生成路由决策',
+          detail: '等待主智能体判断执行模式与候选智能体。',
+          status: 'pending',
+        },
+        {
+          id: 'match',
+          title: '确认执行路径',
+          detail: '等待主智能体确认主执行方与下一步动作。',
+          status: 'pending',
         },
       ],
     })
@@ -1486,6 +2031,84 @@ export const useChatStore = defineStore('chat', () => {
       ...current,
       activity: [...current.activity, event].slice(-24),
     }))
+  }
+
+  function upsertMultiAgentActivity(
+    sessionId: string,
+    event: MultiAgentExecutionEventState,
+  ) {
+    mutateMultiAgentRouteState(sessionId, current => {
+      const index = current.activity.findIndex(item => item.id === event.id)
+      const activity = [...current.activity]
+      if (index >= 0) {
+        activity[index] = {
+          ...activity[index],
+          ...event,
+        }
+      } else {
+        activity.push(event)
+      }
+      return {
+        ...current,
+        activity: activity.slice(-24),
+      }
+    })
+  }
+
+  function patchMultiAgentThinkingSteps(
+    sessionId: string,
+    patcher: (steps: MultiAgentThinkingStepState[]) => MultiAgentThinkingStepState[],
+  ) {
+    mutateMultiAgentRouteState(sessionId, current => ({
+      ...current,
+      thinkingSteps: patcher([...current.thinkingSteps]),
+    }))
+  }
+
+  function appendMultiAgentThinkingDetail(
+    sessionId: string,
+    stepId: string,
+    text: unknown,
+    status: MultiAgentThinkingStepState['status'] = 'running',
+  ) {
+    patchMultiAgentThinkingSteps(sessionId, steps => steps.map(step => {
+      if (step.id !== stepId) return step
+      const mergedDetail = mergeMultiAgentReasoningText(step.detail, text, 320)
+      return {
+        ...step,
+        detail: latestMultiAgentReasoningText(mergedDetail) || step.detail,
+        status,
+      }
+    }))
+  }
+
+  function resolveMultiAgentReasoningStepId(route: MultiAgentRouteState): string {
+    const runningStep = route.thinkingSteps.find(step => step.status === 'running')
+    if (runningStep) return runningStep.id
+    if (route.currentNodeId === 'understand' || route.currentNodeId === 'route' || route.currentNodeId === 'match') {
+      return route.currentNodeId
+    }
+    return 'route'
+  }
+
+  function handleMultiAgentReasoningChunk(sessionId: string, stepId: string, text: unknown) {
+    const currentRoute = multiAgentRoutes.value.get(sessionId)
+    const currentStep = currentRoute?.thinkingSteps.find(step => step.id === stepId) || null
+    const mergedDetail = latestMultiAgentReasoningText(
+      mergeMultiAgentReasoningText(currentStep?.detail || '', text, 320),
+    )
+    if (!mergedDetail) return
+    appendWorkflowReasoning(sessionId, text)
+    appendWorkflowStepDetail(sessionId, stepId, text, 'running')
+    appendMultiAgentThinkingDetail(sessionId, stepId, text, 'running')
+    upsertMultiAgentActivity(sessionId, {
+      id: `route:reasoning:${stepId}`,
+      kind: 'route',
+      title: '主智能体思考',
+      text: mergedDetail,
+      status: 'running',
+      timestamp: Date.now(),
+    })
   }
 
   function patchMultiAgentPlanNodes(
@@ -1598,6 +2221,7 @@ export const useChatStore = defineStore('chat', () => {
   }) {
     const current = multiAgentRoutes.value.get(sessionId)
     if (!current) return
+    const requestedCurrentNodeId = patch.currentNodeId !== undefined ? patch.currentNodeId : current.currentNodeId
     const targetNodeId = patch.nodeId !== undefined
       ? patch.nodeId
       : patch.currentNodeId !== undefined
@@ -1611,10 +2235,21 @@ export const useChatStore = defineStore('chat', () => {
         summary: patch.currentNodeSummary || node.summary,
       }
     })
+    const nextCurrentNodeId = requestedCurrentNodeId !== undefined ? requestedCurrentNodeId : current.currentNodeId
+    const normalizedCurrentNodeId = nextCurrentNodeId && isReservedMultiAgentNodeId(nextCurrentNodeId)
+      ? nextCurrentNodeId
+      : (nextCurrentNodeId && nodes.some(node => node.id === nextCurrentNodeId)
+          ? nextCurrentNodeId
+          : (() => {
+              const nextNode = nodes.find(node => !isReservedMultiAgentNodeId(node.id) && node.status === 'doing')
+              if (nextNode) return nextNode.id
+              if (current.status === 'completed') return 'respond'
+              return current.currentNodeId
+            })())
     setMultiAgentRouteState(sessionId, {
       ...current,
       status: patch.status || current.status,
-      currentNodeId: patch.currentNodeId !== undefined ? patch.currentNodeId : current.currentNodeId,
+      currentNodeId: normalizedCurrentNodeId,
       planNodes: nodes,
       activity: current.activity,
     })
@@ -1652,23 +2287,19 @@ export const useChatStore = defineStore('chat', () => {
     const currentNodeId = current.currentNodeId
     const finalNodes: MultiAgentPlanNodeState[] = current.planNodes.map((node): MultiAgentPlanNodeState => {
       if (outcome === 'completed') {
-        if (node.id === 'understand' || node.id === 'route') {
+        if (node.id === 'understand' || node.id === 'route' || node.id === 'respond') {
           return {
             ...node,
             status: 'done',
+            summary: node.id === 'respond'
+              ? '主智能体已汇总阶段成果并回复用户。'
+              : node.summary,
           }
         }
-        if (node.status === 'doing') {
+        if (node.status !== 'blocked') {
           return {
             ...node,
             status: 'done',
-          }
-        }
-        if (node.id === 'respond') {
-          return {
-            ...node,
-            status: 'done',
-            summary: '主智能体已汇总阶段成果并回复用户。',
           }
         }
         return {
@@ -1704,6 +2335,14 @@ export const useChatStore = defineStore('chat', () => {
       status: outcome,
       currentNodeId: outcome === 'completed' ? 'respond' : current.currentNodeId,
       planNodes: finalNodes,
+      thinkingSteps: current.thinkingSteps.map(step => ({
+        ...step,
+        status: outcome === 'completed'
+          ? 'done'
+          : step.status === 'running'
+            ? 'done'
+            : step.status,
+      })),
       activity: current.activity,
     })
 
@@ -1717,6 +2356,7 @@ export const useChatStore = defineStore('chat', () => {
       status: outcome === 'completed' ? 'done' : 'error',
       timestamp: Date.now(),
     })
+    setWorkflowTerminalState(sessionId, outcome)
   }
 
   function handleSubagentEvent(sessionId: string, evt: RunEvent) {
@@ -1728,12 +2368,10 @@ export const useChatStore = defineStore('chat', () => {
       ? ((evt as any).plan_node_ids as unknown[]).map(item => String(item || '').trim()).filter(Boolean)
       : []
     const planNodeIds = resolveSubagentPlanNodeIds(sessionId, subagentId, explicitPlanNodeIds)
-    const toolCallId = `subagent:${evt.run_id || 'run'}:${subagentId}`
     const taskIndex = Number((evt as any).task_index ?? 0)
     const taskCount = Number((evt as any).task_count ?? 1)
     const label = `${taskIndex + 1}/${Math.max(1, taskCount || 1)}`
     const toolName = sanitizeMultiAgentText((evt as any).tool || (evt as any).tool_name || (evt as any).name || '')
-    const toolCount = Number((evt as any).tool_count || 0)
     const goal = sanitizeMultiAgentText((evt as any).goal || '')
     const text = sanitizeMultiAgentText(evt.text || evt.preview || '')
     const summary = sanitizeMultiAgentText((evt as any).summary || '')
@@ -1743,16 +2381,25 @@ export const useChatStore = defineStore('chat', () => {
 
     let preview = text || summary || goal
     if (eventName === 'subagent.start') {
-      preview = `subagent ${label} started${goal ? `: ${goal}` : ''}`
+      preview = goal ? `开始执行：${goal}` : `子任务 ${label} 已启动`
     } else if (eventName === 'subagent.tool') {
-      const prefix = `subagent ${label}${toolCount ? ` turn ${toolCount}` : ''}`
-      preview = `${prefix}${toolName ? `: ${toolName}` : ''}${text ? ` - ${text}` : ''}`
+      preview = `${toolName ? `调用工具 ${toolName}` : `子任务 ${label} 调用工具`}${text ? `：${text}` : ''}`
     } else if (eventName === 'subagent.progress') {
-      preview = `subagent ${label}: ${text || 'working'}`
+      preview = text || `子任务 ${label} 执行中`
     } else if (eventName === 'subagent.complete') {
       const status = String((evt as any).status || 'completed')
-      preview = `subagent ${label} ${status}${summary ? `: ${summary}` : ''}`
+      preview = status === 'completed'
+        ? (summary || text || goal || `子任务 ${label} 已完成`)
+        : (summary || text || `子任务 ${label} 执行失败`)
     }
+
+    const toolCallId = buildSubagentEventToolCallId({
+      runId: evt.run_id,
+      subagentId,
+      eventName,
+      toolName: toolName || agentName || 'delegate',
+      preview,
+    })
 
     const msgs = getSessionMsgs(sessionId)
     const existing = msgs.find(m => m.role === 'tool' && m.toolCallId === toolCallId)
@@ -1791,7 +2438,7 @@ export const useChatStore = defineStore('chat', () => {
       status: 'todo',
       executor: {
         type: 'hermes',
-        name: 'Hermes',
+        name: '主智能体',
       },
       summary: '等待执行节点完成后组织最终回复。',
     })
@@ -1816,11 +2463,11 @@ export const useChatStore = defineStore('chat', () => {
       id: `${toolCallId}:${eventName}:${Date.now()}`,
       kind: eventName as MultiAgentExecutionEventState['kind'],
       title: eventName === 'subagent.start'
-        ? '子智能体已启动'
+        ? '子智能体启动'
         : eventName === 'subagent.tool'
-          ? `调用工具${toolName ? `：${toolName}` : ''}`
+          ? `工具调用${toolName ? `：${toolName}` : ''}`
           : eventName === 'subagent.progress'
-            ? '阶段进展'
+            ? '执行进展'
             : '子智能体完成',
       text: summary || text || goal || preview,
       status: eventName === 'subagent.complete'
@@ -1833,6 +2480,34 @@ export const useChatStore = defineStore('chat', () => {
       output: eventName === 'subagent.complete' ? summary || text || preview : undefined,
     })
 
+    if (eventName === 'subagent.tool' || eventName === 'subagent.progress') {
+      const title = eventName === 'subagent.tool'
+        ? `工具调用${toolName ? `：${toolName}` : ''}`
+        : '子智能体进展'
+      patchWorkflow(sessionId, workflow => ({
+        ...workflow,
+        subtitle: agentName ? `${agentName} 执行中` : '子智能体执行中',
+        current: summary || text || preview,
+        status: 'running',
+      }))
+      patchWorkflowStep(sessionId, 'execute', {
+        title: agentName ? `执行：${agentName}` : '执行子智能体',
+        detail: summary || text || preview,
+        status: 'running',
+      })
+      upsertWorkflowEvent(sessionId, {
+        id: eventName === 'subagent.tool'
+          ? `${toolCallId}:tool:${toolName || 'tool'}`
+          : `${toolCallId}:progress`,
+        title,
+        text: summary || text || preview,
+        status: 'running',
+        timestamp: Date.now(),
+        agentName: agentName || undefined,
+        toolName: toolName || undefined,
+      })
+    }
+
     if (eventName === 'subagent.start') {
       recordSubAgentInvocationStart({
         sessionId,
@@ -1840,6 +2515,25 @@ export const useChatStore = defineStore('chat', () => {
         agentId: subagentId,
         agentName,
         task: goal || preview,
+      })
+      patchWorkflow(sessionId, workflow => ({
+        ...workflow,
+        subtitle: agentName ? `${agentName} 执行中` : '子智能体执行中',
+        current: goal || preview,
+        status: 'running',
+      }))
+      patchWorkflowStep(sessionId, 'execute', {
+        title: agentName ? `执行：${agentName}` : '执行子智能体',
+        detail: goal || preview,
+        status: 'running',
+      })
+      upsertWorkflowEvent(sessionId, {
+        id: `subagent:${evt.run_id || 'run'}:start`,
+        title: '子智能体已启动',
+        text: goal || preview,
+        status: 'running',
+        timestamp: Date.now(),
+        agentName: agentName || undefined,
       })
       setMultiAgentNodeStatus(sessionId, 'understand', { status: 'done' })
       setMultiAgentNodeStatus(sessionId, 'route', { status: 'done' })
@@ -1862,6 +2556,30 @@ export const useChatStore = defineStore('chat', () => {
         summary: summary || text || preview,
         durationSeconds: Number.isFinite(duration) ? duration : undefined,
       })
+      patchWorkflowStep(sessionId, 'execute', {
+        detail: summary || text || preview,
+        status: toolStatus === 'done' ? 'done' : 'error',
+      })
+      patchWorkflowStep(sessionId, 'respond', {
+        detail: toolStatus === 'done'
+          ? '子智能体已返回阶段成果，等待主智能体汇总。'
+          : '子智能体执行失败，等待错误处理。',
+        status: toolStatus === 'done' ? 'running' : 'error',
+      })
+      upsertWorkflowEvent(sessionId, {
+        id: `subagent:${evt.run_id || 'run'}:complete`,
+        title: toolStatus === 'done' ? '子智能体完成' : '子智能体失败',
+        text: summary || text || preview,
+        status: toolStatus === 'done' ? 'done' : 'error',
+        timestamp: Date.now(),
+        agentName: agentName || undefined,
+      })
+      patchWorkflow(sessionId, workflow => ({
+        ...workflow,
+        subtitle: toolStatus === 'done' ? '阶段成果已返回' : '子智能体失败',
+        current: summary || text || preview,
+        status: toolStatus === 'done' ? 'running' : 'error',
+      }))
       setMultiAgentNodeStatus(sessionId, 'route', {
         summary: '任务路径已确认，执行控制权已交给当前节点。',
       })
@@ -1869,59 +2587,16 @@ export const useChatStore = defineStore('chat', () => {
 
     if (existing) {
       updateMessage(sessionId, existing.id, update)
-      if (eventName === 'subagent.complete' && toolStatus === 'done') {
-        const route = multiAgentRoutes.value.get(sessionId)
-        const nextNode = route ? nextRunnableMultiAgentNode(route, { excludeNodeIds: [targetNodeId] }) : null
-        updateMultiAgentExecutionState(sessionId, {
-          status: 'running',
-          nodeId: targetNodeId,
-          currentNodeSummary: summary || preview,
-          currentNodeStatus: 'done',
-        })
-        if (nextNode) {
-          updateMultiAgentExecutionState(sessionId, {
-            currentNodeId: nextNode.id,
-            nodeId: nextNode.id,
-            currentNodeSummary: `上一节点已完成，等待开始：${nextNode.title}`,
-            currentNodeStatus: nextNode.status,
-          })
-          appendMultiAgentActivity(sessionId, {
-            id: `${toolCallId}:queue:${Date.now()}`,
-            kind: 'subagent.complete',
-            title: '节点完成，等待下一节点',
-            text: `已完成：${summary || goal || preview}；下一节点：${nextNode.title}`,
-            status: 'done',
-            timestamp: Date.now(),
-            agentId: subagentId,
-            agentName: agentName || undefined,
-          })
-        } else {
-          updateMultiAgentExecutionState(sessionId, {
-            currentNodeId: 'respond',
-            nodeId: 'respond',
-            currentNodeSummary: '子智能体已返回阶段成果，Hermes 正在组织最终回复。',
-            currentNodeStatus: 'doing',
-          })
-        }
-      } else {
-        updateMultiAgentExecutionState(sessionId, {
-          currentNodeId: targetNodeId,
-          nodeId: targetNodeId,
-          status: toolStatus === 'error' ? 'failed' : 'running',
-          currentNodeSummary: preview,
-          currentNodeStatus: toolStatus === 'error' ? 'blocked' : 'doing',
-        })
-      }
-      return
+    } else {
+      addMessage(sessionId, {
+        id: uid(),
+        role: 'tool',
+        content: '',
+        timestamp: Date.now(),
+        ...update,
+      })
     }
 
-    addMessage(sessionId, {
-      id: uid(),
-      role: 'tool',
-      content: '',
-      timestamp: Date.now(),
-      ...update,
-    })
     if (eventName === 'subagent.complete' && toolStatus === 'done') {
       const route = multiAgentRoutes.value.get(sessionId)
       const nextNode = route ? nextRunnableMultiAgentNode(route, { excludeNodeIds: [targetNodeId] }) : null
@@ -1952,7 +2627,7 @@ export const useChatStore = defineStore('chat', () => {
         updateMultiAgentExecutionState(sessionId, {
           currentNodeId: 'respond',
           nodeId: 'respond',
-          currentNodeSummary: '子智能体已返回阶段成果，Hermes 正在组织最终回复。',
+          currentNodeSummary: '子智能体已返回阶段成果，主智能体正在组织最终回复。',
           currentNodeStatus: 'doing',
         })
       }
@@ -2118,8 +2793,141 @@ export const useChatStore = defineStore('chat', () => {
     const sid = evt.session_id
     if (!sid) return
     if ((evt as any).source === 'coding_agent' && (evt as any).kind === 'status') return
+    if ((evt as any).kind === 'multi_agent_progress') {
+      const stage = String((evt as any).stage || '').trim()
+      const text = sanitizeMultiAgentText((evt as any).text || (evt as any).message || '')
+      const status = String((evt as any).status || 'running') === 'done' ? 'done' : 'running'
+      const current = multiAgentRoutes.value.get(sid)
+      if (current) {
+        if (stage === 'understand') {
+          patchWorkflow(sid, workflow => ({
+            ...workflow,
+            subtitle: '理解需求中',
+            current: text || '主智能体正在分析用户需求。',
+            status: 'running',
+          }))
+          patchWorkflowStep(sid, 'understand', {
+            detail: text || '正在理解任务目标。',
+            status,
+          })
+          patchMultiAgentThinkingSteps(sid, steps => steps.map(step =>
+            step.id === 'understand'
+              ? { ...step, status, detail: text || '正在理解任务目标。' }
+              : step
+          ))
+          mutateMultiAgentRouteState(sid, route => ({
+            ...route,
+            reason: text || route.reason,
+          }))
+          updateMultiAgentExecutionState(sid, {
+            status: 'running',
+            currentNodeId: 'understand',
+            nodeId: 'understand',
+            currentNodeSummary: text || '主智能体正在分析用户需求。',
+            currentNodeStatus: 'doing',
+          })
+        } else if (stage === 'route') {
+          patchWorkflow(sid, workflow => ({
+            ...workflow,
+            subtitle: '规划路径中',
+            current: text || '主智能体正在生成任务规划。',
+            status: 'running',
+          }))
+          patchWorkflowStep(sid, 'understand', {
+            detail: '已完成需求理解。',
+            status: 'done',
+          })
+          patchWorkflowStep(sid, 'route', {
+            detail: text || '正在生成路由决策。',
+            status,
+          })
+          setMultiAgentNodeStatus(sid, 'understand', {
+            status: 'done',
+            summary: '已提取任务目标、约束和预期输出。',
+          })
+          patchMultiAgentThinkingSteps(sid, steps => steps.map(step => {
+            if (step.id === 'understand') return { ...step, status: 'done', detail: '已完成需求理解。' }
+            if (step.id === 'route') return { ...step, status, detail: text || '正在生成路由决策。' }
+            return step
+          }))
+          mutateMultiAgentRouteState(sid, route => ({
+            ...route,
+            text: text || route.text,
+          }))
+          updateMultiAgentExecutionState(sid, {
+            status: 'running',
+            currentNodeId: 'route',
+            nodeId: 'route',
+            currentNodeSummary: text || '主智能体正在生成任务规划。',
+            currentNodeStatus: 'doing',
+          })
+        } else if (stage === 'match_agents') {
+          patchWorkflow(sid, workflow => ({
+            ...workflow,
+            subtitle: status === 'done' ? '执行路径已确认' : '匹配智能体中',
+            current: text || '主智能体正在确认主执行方。',
+            status: 'running',
+          }))
+          patchWorkflowStep(sid, 'route', {
+            detail: '已生成路由决策。',
+            status: 'done',
+          })
+          patchWorkflowStep(sid, 'match', {
+            detail: text || '正在确认执行路径。',
+            status,
+          })
+          patchMultiAgentThinkingSteps(sid, steps => steps.map(step => {
+            if (step.id === 'route') return { ...step, status: 'done', detail: '已生成路由决策。' }
+            if (step.id === 'match') return { ...step, status, detail: text || '正在确认执行路径。' }
+            return step
+          }))
+          mutateMultiAgentRouteState(sid, route => ({
+            ...route,
+            reason: text || route.reason,
+          }))
+          updateMultiAgentExecutionState(sid, {
+            status: 'running',
+            currentNodeId: 'route',
+            nodeId: 'route',
+            currentNodeSummary: text || '主智能体正在确认主执行方。',
+            currentNodeStatus: status === 'done' ? 'done' : 'doing',
+          })
+        }
+      }
+      upsertMultiAgentActivity(sid, {
+        id: `route:progress:${stage || 'unknown'}`,
+        kind: 'route',
+        title:
+          stage === 'understand' ? '理解需求'
+            : stage === 'match_agents' ? '确认路径'
+              : '生成路由',
+        text: text || (
+          stage === 'understand' ? '正在提炼任务目标。'
+            : stage === 'match_agents' ? '正在选择执行路径。'
+              : '正在生成路由决策。'
+        ),
+        status,
+        timestamp: Date.now(),
+      })
+      return
+    }
+    if ((evt as any).kind === 'multi_agent_reasoning') {
+      const stage = String((evt as any).stage || 'route').trim()
+      const text = sanitizeMultiAgentText((evt as any).text || '')
+      if (!text) return
+      const stepId = stage === 'match_agents' ? 'match' : stage === 'understand' ? 'understand' : 'route'
+      handleMultiAgentReasoningChunk(sid, stepId, text)
+      return
+    }
     if ((evt as any).kind === 'multi_agent_route') {
       const selectedAgent = ((evt as any).selected_agent || {}) as { id?: string; name?: string }
+      const todo = Array.isArray((evt as any).todo)
+        ? ((evt as any).todo as unknown[]).map(item => sanitizeMultiAgentText(item)).filter(Boolean)
+        : []
+      const constraints = Array.isArray((evt as any).constraints)
+        ? ((evt as any).constraints as unknown[]).map(item => sanitizeMultiAgentText(item)).filter(Boolean)
+        : []
+      const intent = sanitizeMultiAgentText((evt as any).intent || '')
       const rawPlan = Array.isArray((evt as any).plan?.nodes) ? (evt as any).plan.nodes as Array<Record<string, any>> : []
       const existing = multiAgentRoutes.value.get(sid)
       const planNodes: MultiAgentPlanNodeState[] = rawPlan.map((node, index) => ({
@@ -2130,7 +2938,7 @@ export const useChatStore = defineStore('chat', () => {
         executor: {
           type: node.executor?.type === 'subagent' ? 'subagent' : 'hermes',
           id: typeof node.executor?.id === 'string' ? node.executor.id : undefined,
-          name: sanitizeMultiAgentText(node.executor?.name || 'Hermes') || 'Hermes',
+          name: sanitizeMultiAgentText(node.executor?.name || '主智能体') || '主智能体',
         },
         summary: sanitizeMultiAgentText(node.summary || ''),
       }))
@@ -2152,12 +2960,48 @@ export const useChatStore = defineStore('chat', () => {
       })
       const objective = sanitizeMultiAgentText((evt as any).plan?.objective || (evt as any).reason || '')
       const routeText = sanitizeMultiAgentText((evt as any).text || (evt as any).reason || '')
+      patchWorkflow(sid, workflow => ({
+        ...workflow,
+        subtitle: selectedAgent.name
+          ? `已匹配 ${sanitizeMultiAgentText(selectedAgent.name)}`
+          : '执行路径已生成',
+        objective: objective || workflow.objective,
+        current: routeText || '主智能体已生成任务路径。',
+        status: 'running',
+        steps: workflow.steps.map(step => {
+          if (step.id === 'understand') return { ...step, status: 'done', detail: '已提取任务目标。' }
+          if (step.id === 'route') return { ...step, status: 'done', detail: todo.length > 0 ? `已生成 ${todo.length} 条任务清单。` : '已完成路由判断。' }
+          if (step.id === 'match') return {
+            ...step,
+            status: 'done',
+            detail: selectedAgent.name
+              ? `已匹配到 ${sanitizeMultiAgentText(selectedAgent.name)}。`
+              : constraints[0] || '由主智能体主链路继续执行。',
+          }
+          if (step.id === 'execute') return {
+            ...step,
+            status: executableCount > 0 ? 'pending' : 'done',
+            detail: executableCount > 0 ? `等待执行 ${executableCount} 个节点。` : '本轮无需额外执行节点。',
+          }
+          return step
+        }),
+      }))
+      upsertWorkflowEvent(sid, {
+        id: 'route:planned',
+        title: '任务路径已生成',
+        text: executableCount > 0
+          ? `已生成 ${executableCount} 个执行节点${selectedAgent.name ? `，主执行方为 ${sanitizeMultiAgentText(selectedAgent.name)}` : ''}。`
+          : (routeText || '本轮无需拆分执行节点。'),
+        status: executableCount > 0 ? 'running' : 'done',
+        timestamp: Date.now(),
+        agentName: sanitizeMultiAgentText(selectedAgent.name || '') || undefined,
+      })
       const activity: MultiAgentExecutionEventState[] = [
         ...(existing?.activity || []),
         {
           id: `route:understand:${sid}:${Date.now()}`,
           kind: 'route' as const,
-          title: '主智能体完成需求理解',
+          title: '需求已理解',
           text: objective || '已抽取本轮任务目标与约束。',
           status: 'done' as const,
           timestamp: Date.now(),
@@ -2165,7 +3009,7 @@ export const useChatStore = defineStore('chat', () => {
         {
           id: `route:planned:${sid}:${Date.now() + 1}`,
           kind: 'route' as const,
-          title: '主智能体生成任务路径',
+          title: '任务路径已生成',
           text: executableCount > 0
             ? `已生成 ${executableCount} 个执行节点${selectedAgent.name ? `，优先委派给 ${sanitizeMultiAgentText(selectedAgent.name)}` : ''}。`
             : (routeText || '本轮无需拆分子节点，直接进入回复阶段。'),
@@ -2175,8 +3019,33 @@ export const useChatStore = defineStore('chat', () => {
           agentName: sanitizeMultiAgentText(selectedAgent.name || '') || undefined,
         },
       ].slice(-24)
+      const thinkingSteps: MultiAgentThinkingStepState[] = [
+        {
+          id: 'understand',
+          title: '理解用户需求',
+          detail: '已提取本轮任务目标。',
+          status: 'done',
+        },
+        {
+          id: 'route',
+          title: '生成路由决策',
+          detail: intent
+            ? `已识别意图：${intent}。${todo.length > 0 ? `待办 ${todo.length} 项。` : ''}`
+            : (todo.length > 0 ? `已生成 ${todo.length} 条下一步动作。` : '已完成路由判断。'),
+          status: 'done',
+        },
+        {
+          id: 'match',
+          title: '匹配执行智能体',
+          detail: selectedAgent.name
+            ? `已匹配到 ${sanitizeMultiAgentText(selectedAgent.name)}。`
+            : constraints[0] || '未匹配到高置信度子智能体，改由主智能体继续执行。',
+          status: 'done',
+        },
+      ]
       setMultiAgentRouteState(sid, {
         mode: String((evt as any).mode || 'hermes_native') as 'delegate_subagent' | 'hermes_native',
+        intent,
         category: sanitizeMultiAgentText((evt as any).category || '通用任务') || '通用任务',
         reason: sanitizeMultiAgentText((evt as any).reason || ''),
         text: routeText,
@@ -2185,34 +3054,16 @@ export const useChatStore = defineStore('chat', () => {
         currentNodeId,
         selectedAgentId: String(selectedAgent.id || ''),
         selectedAgentName: sanitizeMultiAgentText(selectedAgent.name || ''),
+        todo,
+        constraints,
         planNodes: normalizedNodes,
         activity,
-      })
-    }
-    const text = sanitizeMultiAgentText((evt as any).text || (evt as any).message || '')
-    if (!text) return
-
-    const msgs = getSessionMsgs(sid)
-    const last = msgs[msgs.length - 1]
-    const commandData = { ...(evt as any) }
-    if (last?.role === 'system' && last.commandAction === 'agent.event') {
-      if (last.content === text) return
-      updateMessage(sid, last.id, {
-        content: text,
-        timestamp: Date.now(),
-        commandData,
+        thinkingSteps,
       })
       return
     }
-
-    addMessage(sid, {
-      id: uid(),
-      role: 'system',
-      content: text,
-      timestamp: Date.now(),
-      commandAction: 'agent.event',
-      commandData,
-    })
+    const text = sanitizeMultiAgentText((evt as any).text || (evt as any).message || '')
+    if (!text) return
   }
 
   function enqueueUserMessage(sessionId: string, message: Message) {
@@ -2536,7 +3387,7 @@ export const useChatStore = defineStore('chat', () => {
     if (codingAgentId === 'claude-code') {
       return { icon: '/coding-agents/claude-code.svg' }
     }
-    return { icon: '/coding-agents/hermes.png' }
+    return { icon: '/coding-agents/assistant-badge.svg' }
   }
 
   function completionNotificationBody(session: Session, message?: Message): string {
@@ -2556,7 +3407,7 @@ export const useChatStore = defineStore('chat', () => {
 
     const agent = completionNotificationAgent(session)
     void showCompletionNotification({
-      title: truncateNotificationText(session.title || 'Hermes', 80),
+      title: truncateNotificationText(session.title || '主智能体', 80),
       body: completionNotificationBody(session, message),
       icon: agent.icon,
       tag: `hermes-complete-${sessionId}-${message?.id || Date.now()}`,
@@ -2617,8 +3468,14 @@ export const useChatStore = defineStore('chat', () => {
 
     if (shouldQueue) {
       enqueueUserMessage(sid, userMsg)
+      if (multiAgent?.enabled) {
+        startMultiAgentWorkflowMessage(sid, trimmedContent)
+      }
     } else {
       addMessage(sid, userMsg)
+      if (multiAgent?.enabled) {
+        startMultiAgentWorkflowMessage(sid, trimmedContent)
+      }
       updateSessionTitle(sid)
       if (shouldOptimisticallyShowRunStatus) serverWorking.value.add(sid)
     }
@@ -2810,6 +3667,7 @@ export const useChatStore = defineStore('chat', () => {
           const previousReasoningAssistantMessageId = reasoningAssistantMessageId
           const replayRunMarker = getReplayRunMarker(data.events) ?? activeRunMarker
           target.messages = mapHermesMessages(data.messages as any[])
+          restoreWorkflowArchiveMessages(sid)
           target.loadedMessageCount = data.messageLoadedCount ?? data.messages.length
           target.messageTotal = data.messageTotal ?? target.messageCount ?? target.loadedMessageCount
           target.messageCount = target.messageTotal
@@ -3028,37 +3886,17 @@ export const useChatStore = defineStore('chat', () => {
               break
             }
 
-            case 'reasoning.delta':
-            case 'thinking.delta': {
-              const text = evt.text || evt.delta || ''
-              if (!text) break
-              runProducedAssistantText = true
-              const msgs = getSessionMsgs(sid)
-              const reasoningTargetId = reasoningAssistantMessageId || activeAssistantMessageId
-              const last = reasoningTargetId
-                ? msgs.find(m => m.id === reasoningTargetId)
-                : null
-              if (last?.role === 'assistant') {
-                last.reasoning = (last.reasoning || '') + text
-                reasoningAssistantMessageId = last.id
-                noteReasoningStart(last.id)
-              } else {
-                const newId = uid()
-                addMessage(sid, {
-                  id: newId,
-                  role: 'assistant',
-                  content: '',
-                  timestamp: Date.now(),
-                  isStreaming: true,
-                  reasoning: text,
-                })
-                activeAssistantMessageId = newId
-                reasoningAssistantMessageId = newId
-                noteReasoningStart(newId)
-              }
+        case 'reasoning.delta':
+        case 'thinking.delta': {
+          const text = evt.text || evt.delta || ''
+          if (!text) break
+          const currentRoute = multiAgentRoutes.value.get(sid)
+          if (currentRoute) {
+            handleMultiAgentReasoningChunk(sid, resolveMultiAgentReasoningStepId(currentRoute), text)
+          }
 
-              break
-            }
+          break
+        }
 
             case 'reasoning.available': {
               // Upstream run_agent.py fires reasoning.available with
@@ -3119,13 +3957,12 @@ export const useChatStore = defineStore('chat', () => {
               runHadToolActivity = true
               const msgs = getSessionMsgs(sid)
               const toolCallId = (evt as any).tool_call_id as string | undefined
-              const last = activeAssistantMessageId
-                ? msgs.find(m => m.id === activeAssistantMessageId)
-                : msgs[msgs.length - 1]
-              if (last?.isStreaming) {
-                updateMessage(sid, last.id, { isStreaming: false })
-              }
-              activeAssistantMessageId = null
+              updateWorkflowToolEvent(sid, {
+                id: toolCallId,
+                name: evt.tool || evt.name,
+                preview: evt.preview,
+                status: 'running',
+              })
               const existingTool = toolCallId
                 ? msgs.find(m => m.role === 'tool' && m.toolCallId === toolCallId)
                 : null
@@ -3165,6 +4002,13 @@ export const useChatStore = defineStore('chat', () => {
                 const output = runtimeToolPayloadOrUndefined((evt as any).output)
                 const hasError = (evt as any).error === true || runtimeToolOutputHasError(output)
                 const duration = (evt as any).duration
+                updateWorkflowToolEvent(sid, {
+                  id: toolCallId,
+                  name: (evt as any).tool || (evt as any).name || last.toolName,
+                  preview: evt.preview,
+                  status: hasError ? 'error' : 'done',
+                  output,
+                })
                 updateMessage(sid, last.id, {
                   toolStatus: hasError ? 'error' : 'done',
                   toolDuration: duration,
@@ -3457,7 +4301,6 @@ export const useChatStore = defineStore('chat', () => {
     let runProducedAssistantContent = false
     let runHadToolActivity = false
     let activeAssistantMessageId: string | null = null
-    let reasoningAssistantMessageId: string | null = null
     let activeRunMarker: string | null = null
 
     const cleanup = () => {
@@ -3477,7 +4320,6 @@ export const useChatStore = defineStore('chat', () => {
         }
       })
       activeAssistantMessageId = null
-      reasoningAssistantMessageId = null
       activeRunMarker = null
     }
 
@@ -3488,12 +4330,6 @@ export const useChatStore = defineStore('chat', () => {
         resumedAssistantState.activeAssistant.isStreaming = true
         activeAssistantMessageId = resumedAssistantState.activeAssistant.id
         if (resumedAssistantState.hadVisibleText) runProducedAssistantText = true
-      }
-      if (resumedAssistantState.reasoningAssistant) {
-        reasoningAssistantMessageId = resumedAssistantState.reasoningAssistant.id
-        if (resumedAssistantState.reasoningAssistant.reasoning) {
-          noteReasoningStart(resumedAssistantState.reasoningAssistant.id)
-        }
       }
     }
 
@@ -3617,29 +4453,9 @@ export const useChatStore = defineStore('chat', () => {
         case 'thinking.delta': {
           const text = evt.text || evt.delta || ''
           if (!text) break
-          runProducedAssistantText = true
-          const msgs = getSessionMsgs(sid)
-          const reasoningTargetId = reasoningAssistantMessageId || activeAssistantMessageId
-          const last = reasoningTargetId
-            ? msgs.find(m => m.id === reasoningTargetId)
-            : null
-          if (last?.role === 'assistant') {
-            last.reasoning = (last.reasoning || '') + text
-            reasoningAssistantMessageId = last.id
-            noteReasoningStart(last.id)
-          } else {
-            const newId = uid()
-            addMessage(sid, {
-              id: newId,
-              role: 'assistant',
-              content: '',
-              timestamp: Date.now(),
-              isStreaming: true,
-              reasoning: text,
-            })
-            activeAssistantMessageId = newId
-            reasoningAssistantMessageId = newId
-            noteReasoningStart(newId)
+          const currentRoute = multiAgentRoutes.value.get(sid)
+          if (currentRoute) {
+            handleMultiAgentReasoningChunk(sid, resolveMultiAgentReasoningStepId(currentRoute), text)
           }
 
           break
@@ -3696,13 +4512,12 @@ export const useChatStore = defineStore('chat', () => {
           runHadToolActivity = true
           const msgs = getSessionMsgs(sid)
           const toolCallId = (evt as any).tool_call_id as string | undefined
-          const last = activeAssistantMessageId
-            ? msgs.find(m => m.id === activeAssistantMessageId)
-            : msgs[msgs.length - 1]
-          if (last?.isStreaming) {
-            updateMessage(sid, last.id, { isStreaming: false })
-          }
-          activeAssistantMessageId = null
+          updateWorkflowToolEvent(sid, {
+            id: toolCallId,
+            name: evt.tool || evt.name,
+            preview: evt.preview,
+            status: 'running',
+          })
           const existingTool = toolCallId
             ? msgs.find(m => m.role === 'tool' && m.toolCallId === toolCallId)
             : null
@@ -3738,9 +4553,17 @@ export const useChatStore = defineStore('chat', () => {
             ? msgs.filter(m => m.role === 'tool' && m.toolCallId === toolCallId)
             : msgs.filter(m => m.role === 'tool' && m.toolStatus === 'running')
           if (toolMsgs.length > 0) {
+            const last = toolMsgs[toolMsgs.length - 1]
             const output = runtimeToolPayloadOrUndefined((evt as any).output)
             const hasError = (evt as any).error === true || runtimeToolOutputHasError(output)
-            updateMessage(sid, toolMsgs[toolMsgs.length - 1].id, {
+            updateWorkflowToolEvent(sid, {
+              id: toolCallId,
+              name: (evt as any).tool || (evt as any).name || last.toolName,
+              preview: evt.preview,
+              status: hasError ? 'error' : 'done',
+              output,
+            })
+            updateMessage(sid, last.id, {
               toolStatus: hasError ? 'error' : 'done',
               toolDuration: (evt as any).duration,
               toolResult: output,
@@ -3897,13 +4720,11 @@ export const useChatStore = defineStore('chat', () => {
             markSessionCompletedUnread(sid)
             cleanup()
             activeAssistantMessageId = null
-            reasoningAssistantMessageId = null
             activeRunMarker = null
           } else {
             markSessionCompletedUnread(sid, true)
             // More runs pending — reset for next run but don't cleanup
             activeAssistantMessageId = null
-            reasoningAssistantMessageId = null
             activeRunMarker = null
           }
           updateSessionTitle(sid)
@@ -3933,7 +4754,6 @@ export const useChatStore = defineStore('chat', () => {
             cleanup()
           }
           activeAssistantMessageId = null
-          reasoningAssistantMessageId = null
           activeRunMarker = null
           break
         }
@@ -4101,6 +4921,7 @@ export const useChatStore = defineStore('chat', () => {
             if (!data.isWorking) setCompressionState(sid, null)
             if (data.messages?.length && activeSession.value) {
               activeSession.value.messages = mapHermesMessages(data.messages as any[])
+              restoreWorkflowArchiveMessages(sid)
               activeSession.value.loadedMessageCount = data.messageLoadedCount ?? data.messages.length
               activeSession.value.messageTotal = data.messageTotal ?? activeSession.value.messageCount ?? activeSession.value.loadedMessageCount
               activeSession.value.messageCount = activeSession.value.messageTotal

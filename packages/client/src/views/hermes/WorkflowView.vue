@@ -165,7 +165,7 @@ let mobileQuery: MediaQueryList | null = null
 let applyingWorkflow = false
 
 const agentOptions = computed<WorkflowSelectOption[]>(() => [
-  { label: 'Hermes', value: 'hermes' },
+  { label: '主智能体', value: 'hermes' },
   { label: 'Claude Code', value: 'claude-code' },
   { label: 'Codex', value: 'codex' },
 ])

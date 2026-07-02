@@ -204,6 +204,28 @@ interface SubagentStreamSummary {
   lastEventText: string
 }
 
+function normalizeCompactText(value: string) {
+  return value.replace(/\s+/g, '').trim()
+}
+
+function looksLikePrefatorySubagentText(text: string) {
+  const normalized = normalizeCompactText(sanitizeSubagentDisplayText(text))
+  if (!normalized) return false
+  if (normalized.length > 80) return false
+  if (/^(好的?|收到|明白|了解|行|ok|okay|sure|alright|gotit|roger)[,，。.!！?？]*/i.test(normalized)) return true
+  if (
+    /^(我先|先|正在|马上|稍等|让我先|我先来|先来|先去|开始)(查阅|查看|核对|确认|分析|定位|检索|搜索|搜集|整理|读取|处理|执行|查询)/.test(normalized)
+  ) {
+    return true
+  }
+  if (
+    /(我先|先|正在)(查阅元数据|查看元数据|读取元数据|确认数据源|定位数据源|查数据源|看数据源|分析一下|先处理一下)/.test(normalized)
+  ) {
+    return true
+  }
+  return false
+}
+
 export function resolveSubagentAssistantContent(args: {
   output: string
   agentName: string
@@ -213,10 +235,16 @@ export function resolveSubagentAssistantContent(args: {
   lastEventText: string
 }) {
   const direct = sanitizeSubagentDisplayText(args.output)
-  if (direct) return direct
+  const useStructuredFallback =
+    !!direct
+    && args.hadActivity
+    && looksLikePrefatorySubagentText(direct)
+  if (direct && !useStructuredFallback) return direct
   if (!args.hadActivity) return ''
 
-  const segments = [`子智能体「${args.agentName}」已完成当前任务。`]
+  const segments: string[] = []
+  if (direct) segments.push(direct)
+  segments.push(`子智能体「${args.agentName}」已完成当前任务。`)
   if (args.lastEventText) {
     segments.push(`阶段结果：${args.lastEventText}。`)
   } else if (args.toolCount > 0) {

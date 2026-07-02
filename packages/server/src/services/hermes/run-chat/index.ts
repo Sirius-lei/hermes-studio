@@ -419,15 +419,46 @@ export class ChatRunSocket {
         profile,
         provider: data.provider,
         model: data.model,
+        onProgress: data.session_id
+          ? (progressEvent) => {
+              const payload = {
+                event: 'agent.event',
+                kind: 'multi_agent_progress',
+                ...progressEvent,
+              }
+              pushState(this.sessionMap, data.session_id!, 'agent.event', {
+                ...payload,
+                session_id: data.session_id,
+              })
+              this.emitToSession(socket, data.session_id!, 'agent.event', payload)
+            }
+          : undefined,
+        onReasoning: data.session_id
+          ? (reasoningEvent) => {
+              const payload = {
+                event: 'agent.event',
+                kind: 'multi_agent_reasoning',
+                ...reasoningEvent,
+              }
+              pushState(this.sessionMap, data.session_id!, 'agent.event', {
+                ...payload,
+                session_id: data.session_id,
+              })
+              this.emitToSession(socket, data.session_id!, 'agent.event', payload)
+            }
+          : undefined,
       })
       if (data.session_id && routeDecision.enabled) {
         const routeEvent = {
           event: 'agent.event',
           kind: 'multi_agent_route',
           mode: routeDecision.executionMode,
+          intent: routeDecision.intent,
           category: routeDecision.category,
           confidence: routeDecision.confidence,
           reason: routeDecision.reason,
+          todo: routeDecision.todo,
+          constraints: routeDecision.constraints,
           plan: routeDecision.plan,
           selected_agent: routeDecision.selectedAgent
             ? {

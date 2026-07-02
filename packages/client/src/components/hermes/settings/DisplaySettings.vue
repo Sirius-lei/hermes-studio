@@ -49,9 +49,9 @@ async function handleNotifyOnCompleteChange(value: boolean) {
   await save({ notify_on_complete: value })
   if (value) {
     void showCompletionNotification({
-      title: 'Hermes',
+      title: '主智能体',
       body: t('settings.display.notifyOnCompleteTest'),
-      icon: '/coding-agents/hermes.png',
+      icon: '/coding-agents/assistant-badge.svg',
       tag: `hermes-complete-test-${Date.now()}`,
     })
   }
@@ -64,9 +64,9 @@ async function testCompletionNotification() {
     return
   }
   const shown = await showCompletionNotification({
-    title: 'Hermes',
+    title: '主智能体',
     body: t('settings.display.notifyOnCompleteTest'),
-    icon: '/coding-agents/hermes.png',
+    icon: '/coding-agents/assistant-badge.svg',
     tag: `hermes-complete-test-${Date.now()}`,
   })
   if (!shown) {

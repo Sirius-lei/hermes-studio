@@ -1,7 +1,7 @@
 export default {
   // 登录
   login: {
-    title: 'Hermes Web UI',
+    title: '智能体工作台',
     description: '输入用户名和密码以继续。',
     placeholder: '访问令牌',
     submit: '登录',
@@ -415,7 +415,7 @@ export default {
     contextEditInvalid: '请输入有效的上下文长度',
     contextEditSuccess: '上下文长度已更新',
     contextEditFailed: '更新失败',
-    emptyState: '开始与 Hermes Agent 对话',
+    emptyState: '开始与主智能体对话',
     emptyStateAgent: '开始与 {agent} 对话',
     viewOlderInHistory: '前面的消息请到历史记录查看',
     scrollToBottom: '滚动到底部',

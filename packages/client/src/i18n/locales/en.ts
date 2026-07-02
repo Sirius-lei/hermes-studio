@@ -1,7 +1,7 @@
 export default {
   // Login
   login: {
-    title: 'Hermes Web UI',
+    title: 'Agent Workspace',
     description: 'Enter your username and password to continue.',
     placeholder: 'Access token',
     submit: 'Login',
@@ -415,7 +415,7 @@ export default {
     contextEditInvalid: 'Please enter a valid context length',
     contextEditSuccess: 'Context length updated',
     contextEditFailed: 'Update failed',
-    emptyState: 'Start a conversation with Hermes Agent',
+    emptyState: 'Start a conversation with the primary agent',
     emptyStateAgent: 'Start a conversation with {agent}',
     viewOlderInHistory: 'View earlier messages in History',
     scrollToBottom: 'Scroll to bottom',

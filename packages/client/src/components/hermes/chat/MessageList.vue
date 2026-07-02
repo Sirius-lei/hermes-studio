@@ -21,7 +21,6 @@ import { NButton, NInput } from "naive-ui";
 import VirtualMessageList from "./VirtualMessageList.vue";
 import MessageItem from "./MessageItem.vue";
 import { LIVE_CHAT_MAX_LOADED_MESSAGES, useChatStore, type Message } from "@/stores/hermes/chat";
-import thinkingImage from "@/assets/thinking.gif";
 import { useToolTraceVisibility } from "@/composables/useToolTraceVisibility";
 
 const chatStore = useChatStore();
@@ -30,10 +29,7 @@ const { toolTraceVisible } = useToolTraceVisibility();
 const listRef = ref<InstanceType<typeof VirtualMessageList> | null>(null);
 const pendingInitialScrollSessionId = ref<string | null>(null);
 const showScrollBottomButton = ref(false);
-const thinkingElapsedMs = ref(0);
 const initialBottomScrollOptions = { frames: 8, keepAliveMs: 1200 };
-let thinkingStartedAt = 0;
-let thinkingTimer: ReturnType<typeof setInterval> | null = null;
 
 function formatTokens(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
@@ -49,70 +45,25 @@ function formatToolDuration(seconds: number): string {
   return `${mins}m ${secs}s`
 }
 
-function toolPreviewText(preview?: string): string {
-  const text = String(preview || '')
-  return text.length > 160 ? `${text.slice(0, 157)}...` : text
-}
-
-function formatElapsed(ms: number): string {
-  const totalSeconds = Math.floor(ms / 1000);
-  const hours = Math.floor(totalSeconds / 3600);
-  const mins = Math.floor((totalSeconds % 3600) / 60);
-  const secs = totalSeconds % 60;
-  if (hours > 0) return `${hours}h${mins}m${secs}s`;
-  if (mins > 0) return `${mins}m${secs}s`;
-  return `${secs}s`;
-}
-
-function stopThinkingTimer() {
-  if (thinkingTimer) {
-    clearInterval(thinkingTimer);
-    thinkingTimer = null;
+function compactToolPreview(toolName?: string, preview?: string): string {
+  const text = String(preview || '').replace(/\s+/g, ' ').trim()
+  if (!text) return ''
+  if (toolName === 'delegate_task') return text.length > 84 ? `${text.slice(0, 81)}...` : text
+  const genericNoise = [
+    'json_path',
+    'cache_id',
+    'row_count',
+    'columns',
+    'data',
+    'cache',
+  ]
+  if (genericNoise.some(token => text.includes(token))) {
+    return '工具已返回结果'
   }
+  return text.length > 84 ? `${text.slice(0, 81)}...` : text
 }
 
 const isThinkingIndicatorVisible = computed(() => chatStore.isRunActive || !!chatStore.abortState);
-const formattedThinkingElapsed = computed(() => formatElapsed(thinkingElapsedMs.value));
-const activeThinkingPreview = computed(() => {
-  const messages = chatStore.messages;
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index];
-    if (message.role !== "assistant" || !message.isStreaming || !message.reasoning?.trim()) continue;
-    const normalized = message.reasoning
-      .split("\n")
-      .map(line => line.trim())
-      .filter(Boolean)
-      .slice(-3)
-      .join("\n");
-    if (!normalized) return "";
-    return normalized.length > 220 ? `${normalized.slice(0, 217)}...` : normalized;
-  }
-  const sid = chatStore.activeSessionId;
-  const route = sid ? chatStore.multiAgentRoutes.get(sid) || null : null;
-  if (route?.status === "running") {
-    const recentLines = route.activity
-      .slice(-3)
-      .map((entry) => {
-        const normalized = [entry.title, entry.text].filter(Boolean).join("：").trim();
-        return normalized;
-      })
-      .filter(Boolean);
-    const stageLine = route.currentNodeId === "understand"
-      ? "主智能体正在分析需求与约束。"
-      : route.currentNodeId === "route"
-        ? "主智能体正在拆解任务并确认执行路径。"
-        : route.currentNodeId === "respond"
-          ? "主智能体正在汇总阶段成果。"
-          : route.currentNodeId
-            ? `当前执行节点：${route.planNodes.find(node => node.id === route.currentNodeId)?.title || route.currentNodeId}`
-            : "";
-    const routePreview = [stageLine, ...recentLines].filter(Boolean).join("\n");
-    if (!routePreview) return "";
-    return routePreview.length > 220 ? `${routePreview.slice(0, 217)}...` : routePreview;
-  }
-  return "";
-});
-
 const currentToolCalls = computed(() => {
   const msgs = chatStore.messages;
   // Find the last user message index
@@ -130,6 +81,14 @@ const currentToolCalls = computed(() => {
 
 const visibleToolCalls = computed(() =>
   currentToolCalls.value.filter((tool) => !!tool.toolName),
+);
+
+const activeSubagentToolCall = computed(() =>
+  visibleToolCalls.value.find(tool => tool.toolName === 'delegate_task') || null,
+);
+
+const visibleSystemToolCalls = computed(() =>
+  visibleToolCalls.value.filter(tool => tool.toolName !== 'delegate_task'),
 );
 
 const emptyState = computed(() => {
@@ -150,8 +109,8 @@ const emptyState = computed(() => {
     };
   }
   return {
-    logo: "/coding-agents/hermes.png",
-    alt: "Hermes",
+    logo: "/coding-agents/assistant-badge.svg",
+    alt: "主智能体",
     text: t("chat.emptyState"),
   };
 });
@@ -160,7 +119,9 @@ const displayMessages = computed(() => {
   const currentToolIds = new Set(currentToolCalls.value.map((tool) => tool.id));
   return chatStore.messages.filter((m) => {
     if (m.role === "tool") {
-      return toolTraceVisible.value && !!m.toolName && !(chatStore.isRunActive && currentToolIds.has(m.id));
+      if (!toolTraceVisible.value || !m.toolName) return false;
+      if (m.toolName === "delegate_task") return true;
+      return !(chatStore.isRunActive && currentToolIds.has(m.id));
     }
     if (
       m.role === "assistant" &&
@@ -437,25 +398,6 @@ watch(
 );
 
 watch(
-  isThinkingIndicatorVisible,
-  (visible) => {
-    stopThinkingTimer();
-    if (!visible) {
-      thinkingStartedAt = 0;
-      thinkingElapsedMs.value = 0;
-      return;
-    }
-    thinkingStartedAt = Date.now();
-    thinkingElapsedMs.value = 0;
-    thinkingTimer = setInterval(() => {
-      thinkingElapsedMs.value = Date.now() - thinkingStartedAt;
-    }, 1000);
-  },
-  { immediate: true },
-);
-
-// During streaming, only auto-scroll if the user is already near the bottom
-watch(
   () => chatStore.messages[chatStore.messages.length - 1]?.content,
   () => {
     if (pendingInitialScrollSessionId.value === chatStore.activeSessionId) return;
@@ -491,7 +433,6 @@ watch(
 );
 
 onBeforeUnmount(() => {
-  stopThinkingTimer();
   saveSessionScrollPosition(chatStore.activeSessionId);
 });
 
@@ -565,23 +506,14 @@ defineExpose({
       </template>
       <template #after>
         <Transition name="fade">
-        <div v-if="isThinkingIndicatorVisible" class="streaming-indicator">
-          <div class="thinking-status">
-            <img
-              :src="thinkingImage"
-              alt=""
-              aria-hidden="true"
-              class="thinking-avatar"
-            >
-            <div class="thinking-status-copy">
-              <span class="thinking-status-label">{{ t("chat.thinkingInProgress") }}</span>
-              <span class="thinking-status-time">{{ formattedThinkingElapsed }}</span>
-              <div v-if="activeThinkingPreview" class="thinking-status-preview">
-                {{ activeThinkingPreview }}
-              </div>
-            </div>
-          </div>
-          <div v-if="visibleToolCalls.length > 0 || chatStore.compressionState || chatStore.abortState" class="tool-calls-panel">
+        <div
+          v-if="isThinkingIndicatorVisible && (activeSubagentToolCall || visibleSystemToolCalls.length > 0 || chatStore.compressionState || chatStore.abortState)"
+          class="streaming-indicator"
+        >
+          <div
+            v-if="activeSubagentToolCall || visibleSystemToolCalls.length > 0 || chatStore.compressionState || chatStore.abortState"
+            class="tool-calls-panel"
+          >
             <!-- Abort indicator -->
             <div v-if="chatStore.abortState" class="tool-call-item compression-item">
               <svg
@@ -664,9 +596,64 @@ defineExpose({
                 class="tool-call-spinner"
               ></span>
             </div>
+            <div
+              v-if="activeSubagentToolCall"
+              class="tool-call-item is-subagent-status"
+            >
+              <svg
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+                class="tool-call-icon"
+              >
+                <path d="M8 7V5a4 4 0 1 1 8 0v2" />
+                <path d="M6 10h12" />
+                <rect x="4" y="10" width="16" height="10" rx="2" />
+                <path d="M9 15h.01M15 15h.01" />
+              </svg>
+              <span class="tool-call-name">子智能体执行</span>
+              <span
+                v-if="activeSubagentToolCall.toolPreview"
+                class="tool-call-preview"
+                :title="activeSubagentToolCall.toolPreview"
+              >{{ compactToolPreview(activeSubagentToolCall.toolName, activeSubagentToolCall.toolPreview) }}</span>
+              <span
+                v-if="activeSubagentToolCall.toolDuration && activeSubagentToolCall.toolStatus !== 'running'"
+                class="tool-call-duration"
+              >{{ formatToolDuration(activeSubagentToolCall.toolDuration) }}</span>
+              <span
+                v-if="activeSubagentToolCall.toolStatus === 'running'"
+                class="tool-call-spinner"
+              ></span>
+              <svg
+                v-else-if="activeSubagentToolCall.toolStatus === 'done'"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                class="tool-call-success-icon"
+              >
+                <circle cx="12" cy="12" r="10" fill="currentColor" fill-opacity="0.15"/>
+                <path d="M8 12L11 15L16 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+              </svg>
+              <svg
+                v-else-if="activeSubagentToolCall.toolStatus === 'error'"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                class="tool-call-error-icon"
+              >
+                <circle cx="12" cy="12" r="10" fill="currentColor" fill-opacity="0.15"/>
+                <path d="M15 9L9 15M9 9L15 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+              </svg>
+            </div>
             <!-- Tool calls -->
             <div
-              v-for="tc in visibleToolCalls"
+              v-for="tc in visibleSystemToolCalls"
               :key="tc.id"
               class="tool-call-item"
             >
@@ -688,7 +675,7 @@ defineExpose({
                 v-if="tc.toolPreview"
                 class="tool-call-preview"
                 :title="tc.toolPreview"
-              >{{ toolPreviewText(tc.toolPreview) }}</span>
+              >{{ compactToolPreview(tc.toolName, tc.toolPreview) }}</span>
               <span
                 v-if="tc.toolDuration && tc.toolStatus !== 'running'"
                 class="tool-call-duration"
@@ -1472,96 +1459,6 @@ defineExpose({
   box-sizing: border-box;
 }
 
-.thinking-status {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  min-width: 0;
-  min-height: 40px;
-}
-
-.thinking-avatar {
-  width: 40px;
-  height: 40px;
-  border-radius: $radius-md;
-  object-fit: cover;
-  flex-shrink: 0;
-
-  .dark & {
-    filter: brightness(1.18) contrast(1.08) saturate(1.08);
-  }
-}
-
-.thinking-status-copy {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  column-gap: 8px;
-  row-gap: 2px;
-  min-width: 0;
-  min-height: 20px;
-}
-
-.thinking-status-preview {
-  width: 100%;
-  color: $text-secondary;
-  font-size: 12px;
-  line-height: 1.5;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-.thinking-status-label {
-  display: inline-flex;
-  align-items: center;
-  color: transparent;
-  background: linear-gradient(105deg, $text-secondary 0%, $text-secondary 39%, #ffffff 48%, #ffffff 52%, $text-secondary 61%, $text-secondary 100%);
-  background-size: 300% 100%;
-  background-position: 0% 0;
-  -webkit-background-clip: text;
-  background-clip: text;
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 20px;
-  animation: thinking-label-shimmer 2.2s linear infinite;
-  backface-visibility: hidden;
-  contain: paint;
-  transform: translateZ(0);
-  will-change: background-position;
-
-  .dark & {
-    background: linear-gradient(105deg, #f0f0f0 0%, #f0f0f0 37%, #2f3540 47%, #2f3540 53%, #f0f0f0 63%, #f0f0f0 100%);
-    background-size: 300% 100%;
-    background-position: 0% 0;
-    -webkit-background-clip: text;
-    background-clip: text;
-    filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.16));
-  }
-}
-
-.thinking-status-time {
-  display: inline-flex;
-  align-items: center;
-  margin-top: 2px;
-  color: $text-muted;
-  font-family: $font-code;
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-  line-height: 20px;
-  min-width: 44px;
-}
-
-@keyframes thinking-label-shimmer {
-  0% {
-    background-position: 100% 0;
-  }
-
-  100% {
-    background-position: 0% 0;
-  }
-}
-
 .tool-calls-panel {
   display: flex;
   flex-direction: column;
@@ -1634,6 +1531,11 @@ defineExpose({
     max-width: none;
     color: $text-muted;
   }
+}
+
+.tool-call-item.is-subagent-status {
+  border-color: rgba(var(--accent-primary-rgb), 0.22);
+  background: rgba(var(--accent-primary-rgb), 0.035);
 }
 
 .tool-call-spinner {

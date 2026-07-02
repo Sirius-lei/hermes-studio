@@ -135,7 +135,7 @@ describe('SessionListItem', () => {
     expect(wrapper.emitted('select')).toBeUndefined()
   })
 
-  it('renders the Hermes logo for Hermes sessions', () => {
+  it('renders the default primary-agent badge for native sessions', () => {
     const wrapper = mount(SessionListItem, {
       props: {
         session: { ...session, source: 'cli', agent: 'hermes' },
@@ -151,12 +151,12 @@ describe('SessionListItem', () => {
     })
 
     const logo = wrapper.get('.session-item-agent-logo')
-    expect(logo.attributes('src')).toBe('/coding-agents/hermes.png')
-    expect(logo.attributes('alt')).toBe('Hermes')
+    expect(logo.attributes('src')).toBe('/coding-agents/assistant-badge.svg')
+    expect(logo.attributes('alt')).toBe('主智能体')
     expect(wrapper.find('.session-item-agent-name').exists()).toBe(false)
   })
 
-  it('defaults old sessions without agent metadata to the Hermes logo', () => {
+  it('defaults old sessions without agent metadata to the primary-agent badge', () => {
     const wrapper = mount(SessionListItem, {
       props: {
         session: { ...session, source: undefined, agent: undefined, codingAgentId: undefined },
@@ -172,8 +172,8 @@ describe('SessionListItem', () => {
     })
 
     const logo = wrapper.get('.session-item-agent-logo')
-    expect(logo.attributes('src')).toBe('/coding-agents/hermes.png')
-    expect(logo.attributes('alt')).toBe('Hermes')
+    expect(logo.attributes('src')).toBe('/coding-agents/assistant-badge.svg')
+    expect(logo.attributes('alt')).toBe('主智能体')
     expect(wrapper.find('.session-item-agent-name').exists()).toBe(false)
   })
 
