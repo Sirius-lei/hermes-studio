@@ -15,6 +15,10 @@ import {
 import { ExportCompressor } from '../../lib/context-compressor/export-compressor'
 import { deleteUsage, getUsage, getUsageBatch } from '../../db/hermes/usage-store'
 import type { UsageStatsModelRow, UsageStatsDailyRow } from '../../db/hermes/usage-store'
+import {
+  getCollaborationRun as getStoredCollaborationRun,
+  listSessionCollaborationRuns,
+} from '../../db/hermes/collaboration-run-store'
 import { getModelContextLength } from '../../services/hermes/model-context'
 import { getActiveProfileName, listProfileNamesFromDisk } from '../../services/hermes/hermes-profile'
 import { isPathWithin } from '../../services/hermes/hermes-path'
@@ -97,6 +101,18 @@ function denySessionAccess(ctx: any, session: any | null | undefined): boolean {
   if (!session || canAccessProfile(ctx, session.profile)) return false
   ctx.status = 403
   ctx.body = { error: `Profile "${session.profile || 'default'}" is not available for this user` }
+  return true
+}
+
+function denyCollaborationRunAccess(ctx: any, record: { profile?: string | null; session_id?: string | null } | null | undefined): boolean {
+  if (!record) return false
+  if (record.session_id) {
+    const session = localGetSessionDetail(String(record.session_id)) || localGetSession(String(record.session_id))
+    if (session && denySessionAccess(ctx, session)) return true
+  }
+  if (canAccessProfile(ctx, record.profile)) return false
+  ctx.status = 403
+  ctx.body = { error: `Profile "${record.profile || 'default'}" is not available for this user` }
   return true
 }
 
@@ -433,6 +449,59 @@ export async function get(ctx: any) {
   }
   if (denySessionAccess(ctx, session)) return
   ctx.body = { session }
+}
+
+export async function listCollaborationRuns(ctx: any) {
+  const sessionId = String(ctx.params.id || '').trim()
+  if (!sessionId) {
+    ctx.status = 400
+    ctx.body = { error: 'session id is required' }
+    return
+  }
+  const session = localGetSessionDetail(sessionId) || localGetSession(sessionId)
+  if (session && denySessionAccess(ctx, session)) return
+  const limit = ctx.query.limit ? parseInt(ctx.query.limit as string, 10) : 50
+  const runs = listSessionCollaborationRuns(sessionId, limit)
+    .filter(record => canAccessProfile(ctx, record.profile))
+  ctx.body = { runs }
+}
+
+export async function getCollaborationRun(ctx: any) {
+  const runId = String(ctx.params.id || '').trim()
+  if (!runId) {
+    ctx.status = 400
+    ctx.body = { error: 'run id is required' }
+    return
+  }
+  const run = getStoredCollaborationRun(runId)
+  if (!run) {
+    ctx.status = 404
+    ctx.body = { error: 'Collaboration run not found' }
+    return
+  }
+  if (denyCollaborationRunAccess(ctx, run)) return
+  ctx.body = { run }
+}
+
+export async function getCollaborationRunEvents(ctx: any) {
+  const runId = String(ctx.params.id || '').trim()
+  if (!runId) {
+    ctx.status = 400
+    ctx.body = { error: 'run id is required' }
+    return
+  }
+  const run = getStoredCollaborationRun(runId)
+  if (!run) {
+    ctx.status = 404
+    ctx.body = { error: 'Collaboration run not found' }
+    return
+  }
+  if (denyCollaborationRunAccess(ctx, run)) return
+  ctx.body = {
+    run_id: run.id,
+    session_id: run.session_id,
+    events: run.events_json || [],
+  }
 }
 
 function cleanSessionContextMessages(messages: any[]): Array<{

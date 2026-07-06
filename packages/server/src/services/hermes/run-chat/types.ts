@@ -75,6 +75,7 @@ export interface SessionState {
   events: Array<{ event: string; data: any }>
   abortController?: AbortController
   runId?: string
+  collaborationRunId?: string
   activeRunMarker?: string
   profile?: string
   inputTokens?: number

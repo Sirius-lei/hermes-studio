@@ -284,6 +284,10 @@ Open **http://localhost:6060**
 
 For detailed notes and troubleshooting, see [`docs/docker.md`](./docs/docker.md).
 
+The Docker image carries the Hermes Agent runtime in the same container and the
+entrypoint auto-discovers the bundled Hermes CLI / bridge Python before the Web
+UI starts.
+
 ### Hermes Agent Runtime Discovery
 
 When Web UI starts backend chat features, it prefers a source checkout that
@@ -331,6 +335,9 @@ These variables configure Hermes Web UI, its local Hermes runtime integration, a
 | `HERMES_AGENT_BRIDGE_PLATFORM` | `cli` | Platform identity passed to Hermes Agent. |
 | `HERMES_AGENT_BRIDGE_WORKER_TRANSPORT` | platform default | Profile worker transport. Set `tcp` for loopback TCP or `ipc`/`unix` for Unix domain sockets; defaults to Windows TCP and macOS/Linux IPC. |
 | `HERMES_AGENT_BRIDGE_WORKER_PORT_BASE` | `18780` | Base port for TCP worker endpoints. |
+| `HERMES_AGENT_BRIDGE_WARM_PROFILES` | unset (`active` in Docker) | Prestart specific profile workers. Supports `active`, `default`, or comma-separated profile names. |
+| `HERMES_AGENT_BRIDGE_WORKER_IDLE_TIMEOUT_SECONDS` | `1800` (`86400` in Docker) | Worker idle timeout before the broker unloads an inactive profile worker. |
+| `HERMES_AGENT_BRIDGE_SESSION_IDLE_TIMEOUT_SECONDS` | `1800` (`86400` in Docker) | Session idle timeout before a worker unloads an inactive chat session. |
 | `HERMES_BRIDGE_PROVIDER` | profile/default | Provider override for bridge runs. |
 | `HERMES_BRIDGE_TOOLSETS` | profile/default | Toolset override for bridge runs. |
 | `HERMES_BRIDGE_MAX_TURNS` | profile/default | Maximum turn override for bridge runs. |
@@ -339,6 +346,7 @@ These variables configure Hermes Web UI, its local Hermes runtime integration, a
 | `HERMES_OPENROUTER_APP_TITLE` | `Hermes Web UI` | OpenRouter attribution title sent by bridge runs. |
 | `HERMES_OPENROUTER_APP_CATEGORIES` | `cli-agent,personal-agent` | OpenRouter attribution categories sent by bridge runs. |
 | `HERMES_WEB_UI_MANAGED_GATEWAY` | enabled | Controls Web UI-managed Hermes gateway process handling. Set `0`, `false`, `no`, or `off` to use `hermes gateway start` instead. |
+| `HERMES_WEB_UI_REQUIRE_AGENT_BRIDGE` | unset (`1` in Docker) | Fail startup when the Hermes agent bridge cannot start. Useful for integrated container deployments. |
 | `HERMES_WEB_UI_DISABLE_GATEWAY_AUTOSTART` | unset | Skip startup gateway checks/autostart. Set `1`, `true`, `yes`, or `on` for dashboard-only deployments where another service owns Hermes gateway lifecycle. |
 | `HERMES_WEB_UI_DISABLE_SKILL_INJECTION` | unset | Skip startup bundled skill injection. Set `1`, `true`, `yes`, or `on` when bundled skills are managed outside Hermes Web UI. When injection is enabled, Web UI updates only skills it previously installed or identical existing bundled copies; local edits and user-owned same-name skills are skipped. |
 | `HERMES_WEB_UI_STOP_GATEWAYS_ON_SHUTDOWN` | enabled in production | Controls whether Web UI shutdown also stops managed gateway processes. Set `0` or `false` to detach them. |

@@ -290,6 +290,9 @@ docker compose logs -f hermes-webui
 
 更详细的说明与排错见：[`docs/docker.md`](./docs/docker.md)
 
+Docker 镜像会把 Hermes Agent runtime 放在同一个容器内，入口脚本会在
+Web UI 启动前自动发现并导出容器内的 Hermes CLI / bridge Python。
+
 ### Hermes Agent 运行时发现
 
 Web UI 启动后端聊天能力时，会优先使用包含 `run_agent.py` 的源码目录，例如
@@ -336,6 +339,9 @@ Web UI 启动后端聊天能力时，会优先使用包含 `run_agent.py` 的源
 | `HERMES_AGENT_BRIDGE_PLATFORM` | `cli` | 传给 Hermes Agent 的 platform 标识。 |
 | `HERMES_AGENT_BRIDGE_WORKER_TRANSPORT` | 平台默认值 | Profile worker transport。设为 `tcp` 使用 loopback TCP；设为 `ipc`/`unix` 使用 Unix domain socket；默认 Windows TCP、macOS/Linux IPC。 |
 | `HERMES_AGENT_BRIDGE_WORKER_PORT_BASE` | `18780` | TCP worker endpoint 起始端口。 |
+| `HERMES_AGENT_BRIDGE_WARM_PROFILES` | 未设置（Docker 中默认为 `active`） | 启动时预热指定 profile worker。支持 `active`、`default` 或逗号分隔 profile 名。 |
+| `HERMES_AGENT_BRIDGE_WORKER_IDLE_TIMEOUT_SECONDS` | `1800`（Docker 中默认为 `86400`） | worker 空闲多久后由 broker 卸载。 |
+| `HERMES_AGENT_BRIDGE_SESSION_IDLE_TIMEOUT_SECONDS` | `1800`（Docker 中默认为 `86400`） | session 空闲多久后由 worker 卸载。 |
 | `HERMES_BRIDGE_PROVIDER` | profile/默认值 | bridge 运行时的 provider 覆盖。 |
 | `HERMES_BRIDGE_TOOLSETS` | profile/默认值 | bridge 运行时的 toolset 覆盖。 |
 | `HERMES_BRIDGE_MAX_TURNS` | profile/默认值 | bridge 运行时的最大轮数覆盖。 |
@@ -344,6 +350,7 @@ Web UI 启动后端聊天能力时，会优先使用包含 `run_agent.py` 的源
 | `HERMES_OPENROUTER_APP_TITLE` | `Hermes Web UI` | bridge 运行发送给 OpenRouter 的 attribution title。 |
 | `HERMES_OPENROUTER_APP_CATEGORIES` | `cli-agent,personal-agent` | bridge 运行发送给 OpenRouter 的 attribution categories。 |
 | `HERMES_WEB_UI_MANAGED_GATEWAY` | 默认开启 | 控制 Web UI 托管 Hermes gateway 进程；设为 `0`、`false`、`no` 或 `off` 时改用 `hermes gateway start`。 |
+| `HERMES_WEB_UI_REQUIRE_AGENT_BRIDGE` | 未设置（Docker 中默认为 `1`） | bridge 启动失败时让 Web UI 直接启动失败，适合集成式容器部署。 |
 | `HERMES_WEB_UI_DISABLE_GATEWAY_AUTOSTART` | 未设置 | 跳过启动时的 gateway 检查/自动启动；dashboard-only 部署中如果由其它服务管理 Hermes gateway，可设为 `1`、`true`、`yes` 或 `on`。 |
 | `HERMES_WEB_UI_DISABLE_SKILL_INJECTION` | 未设置 | 跳过启动时的内置 skill 注入；如果内置 skills 由 Hermes Web UI 外部管理，可设为 `1`、`true`、`yes` 或 `on`。启用注入时，Web UI 只更新自己此前安装的 skills 或内容完全相同的既有内置副本；本地修改和用户拥有的同名 skills 会跳过。 |
 | `HERMES_WEB_UI_STOP_GATEWAYS_ON_SHUTDOWN` | 生产环境默认开启 | Web UI 关闭时是否同时停止托管的 gateway 进程；设为 `0` 或 `false` 可让 gateway 分离运行。 |

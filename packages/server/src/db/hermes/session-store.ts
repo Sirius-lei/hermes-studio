@@ -161,6 +161,7 @@ export function createSession(data: {
   agent_mode?: string
   agent_session_id?: string
   agent_native_session_id?: string
+  user_id?: string | number | null
   model?: string
   provider?: string
   title?: string
@@ -175,7 +176,7 @@ export function createSession(data: {
       id: data.id, profile: data.profile || 'default', source, agent,
       agent_mode: data.agent_mode || '',
       agent_session_id: data.agent_session_id || '', agent_native_session_id: data.agent_native_session_id || '',
-      user_id: null, model: data.model || '', provider: data.provider || '', title: data.title || null,
+      user_id: data.user_id == null ? null : String(data.user_id), model: data.model || '', provider: data.provider || '', title: data.title || null,
       parent_session_id: data.parent_session_id || null,
       fork_point_message_id: null,
       started_at: now, ended_at: null, end_reason: null,
@@ -187,8 +188,8 @@ export function createSession(data: {
   }
   const db = getDb()!
   db.prepare(
-    `INSERT INTO ${SESSIONS_TABLE} (id, profile, source, agent, agent_mode, agent_session_id, agent_native_session_id, model, provider, title, parent_session_id, started_at, last_active, workspace)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO ${SESSIONS_TABLE} (id, profile, source, agent, agent_mode, agent_session_id, agent_native_session_id, user_id, model, provider, title, parent_session_id, started_at, last_active, workspace)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     data.id,
     data.profile || 'default',
@@ -197,6 +198,7 @@ export function createSession(data: {
     data.agent_mode || '',
     data.agent_session_id || '',
     data.agent_native_session_id || '',
+    data.user_id == null ? null : String(data.user_id),
     data.model || '',
     data.provider || '',
     data.title || null,

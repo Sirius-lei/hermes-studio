@@ -61,6 +61,7 @@ export interface StartRunResponse {
 export interface RunEvent {
   event: string
   run_id?: string
+  collaboration_run_id?: string
   delta?: string
   /** Payload text for `reasoning.delta` / `thinking.delta` / `reasoning.available` events. */
   text?: string

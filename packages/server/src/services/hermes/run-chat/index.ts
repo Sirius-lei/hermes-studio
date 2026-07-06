@@ -7,10 +7,16 @@
  * - compression.ts       → context window management
  */
 
+import { randomUUID } from 'crypto'
 import type { Server, Socket } from 'socket.io'
 import { logger } from '../../logger'
 import { getSystemPrompt } from '../../../lib/llm-prompt'
 import { clearSessionMessages, getSession, getSessionDetail  } from '../../../db/hermes/session-store'
+import {
+  createCollaborationRun,
+  getCollaborationRun,
+  updateCollaborationRun,
+} from '../../../db/hermes/collaboration-run-store'
 import { getActiveProfileName, getProfileDir, listProfileNamesFromDisk } from '../hermes-profile'
 import { AgentBridgeClient } from '../agent-bridge'
 import { getAgentBridgeManager } from '../agent-bridge/manager'
@@ -23,11 +29,20 @@ import { getOrCreateSession, pushState } from './compression'
 import { loadSessionStateFromDb, resolveRunSource } from './load-state'
 import { resolveMultiAgentRoute, type MultiAgentRouteCandidate } from './multi-agent-routing'
 import { handleSessionCommand, isSessionCommand, parseSessionCommand } from './session-command'
-import { contentBlocksToString } from './content-blocks'
+import { contentBlocksToString, extractTextForPreview } from './content-blocks'
 import type { ContentBlock, QueuedRun, SessionState } from './types'
 import { authenticateUserToken, isAuthEnabled, type AuthenticatedUser } from '../../../middleware/user-auth'
 import { userCanAccessProfile } from '../../../db/hermes/users-store'
 import { ensureHermesRunWorkspace } from './workspace'
+import {
+  applyProgressEvent,
+  applyReasoningEvent,
+  applyRouteEvent,
+  applySubagentEvent,
+  applyTerminalEvent,
+  createCollaborationSnapshot,
+  type CollaborationSnapshotState,
+} from './collaboration-state'
 
 export type { ContentBlock } from './types'
 
@@ -116,6 +131,92 @@ export class ChatRunSocket {
     this.nsp.use(this.authMiddleware.bind(this))
     this.nsp.on('connection', this.onConnection.bind(this))
     logger.info('[chat-run-socket] Socket.IO ready at /chat-run')
+  }
+
+  private syncCollaborationSnapshot(
+    collaborationRunId: string,
+    snapshot: CollaborationSnapshotState,
+    patch: {
+      run_id?: string | null
+      error?: string | null
+      status?: 'running' | 'completed' | 'failed'
+      route_json?: Record<string, unknown>
+    } = {},
+  ) {
+    const normalizedStatus = patch.status
+      ?? (snapshot.status === 'completed' ? 'completed' : snapshot.status === 'failed' ? 'failed' : 'running')
+    updateCollaborationRun(collaborationRunId, {
+      run_id: patch.run_id,
+      error: patch.error,
+      status: normalizedStatus,
+      mode: snapshot.mode,
+      intent: snapshot.intent,
+      category: snapshot.category,
+      reason: snapshot.reason,
+      text: snapshot.text,
+      objective: snapshot.objective,
+      selected_agent_id: snapshot.selectedAgentId,
+      selected_agent_name: snapshot.selectedAgentName,
+      current_node_id: snapshot.currentNodeId,
+      route_json: patch.route_json,
+      snapshot_json: snapshot as unknown as Record<string, unknown>,
+      events_json: snapshot.activity as unknown as Array<Record<string, unknown>>,
+      ended_at: snapshot.endedAt,
+    })
+  }
+
+  private appendCollaborationEvent(
+    collaborationRunId: string | null | undefined,
+    eventName: string,
+    payload: Record<string, unknown>,
+  ) {
+    if (!collaborationRunId) return
+    const record = getCollaborationRun(collaborationRunId)
+    if (!record) return
+    const currentSnapshot = (record.snapshot_json || {}) as unknown as CollaborationSnapshotState
+    let nextSnapshot = currentSnapshot && currentSnapshot.runId
+      ? currentSnapshot
+      : createCollaborationSnapshot({
+          runId: collaborationRunId,
+          sessionId: record.session_id,
+          objective: record.objective || record.text || '',
+          mode: record.mode === 'delegate_subagent' ? 'delegate_subagent' : 'hermes_native',
+        })
+    let routePatch = record.route_json
+    if (eventName === 'agent.event') {
+      const kind = String(payload.kind || '')
+      if (kind === 'multi_agent_reasoning') {
+        nextSnapshot = applyReasoningEvent(nextSnapshot, payload)
+      } else if (kind === 'multi_agent_progress') {
+        nextSnapshot = applyProgressEvent(nextSnapshot, payload)
+      } else if (kind === 'multi_agent_route') {
+        nextSnapshot = applyRouteEvent(nextSnapshot, payload)
+        routePatch = {
+          ...(record.route_json || {}),
+          mode: payload.mode,
+          intent: payload.intent,
+          category: payload.category,
+          reason: payload.reason,
+          text: payload.text,
+          todo: payload.todo,
+          constraints: payload.constraints,
+          plan: payload.plan,
+          selected_agent: payload.selected_agent,
+        }
+      }
+    } else if (eventName.startsWith('subagent.')) {
+      nextSnapshot = applySubagentEvent(nextSnapshot, eventName, payload)
+    } else if (eventName === 'run.completed') {
+      nextSnapshot = applyTerminalEvent(nextSnapshot, 'completed', payload)
+    } else if (eventName === 'run.failed') {
+      nextSnapshot = applyTerminalEvent(nextSnapshot, 'failed', payload)
+    }
+    this.syncCollaborationSnapshot(collaborationRunId, nextSnapshot, {
+      run_id: typeof payload.run_id === 'string' ? payload.run_id : record.run_id,
+      error: typeof payload.error === 'string' ? payload.error : record.error,
+      status: eventName === 'run.completed' ? 'completed' : eventName === 'run.failed' ? 'failed' : 'running',
+      route_json: routePatch,
+    })
   }
 
   // --- Auth middleware ---
@@ -288,6 +389,15 @@ export class ChatRunSocket {
       } catch (err) {
         if (data.session_id) {
           const state = this.sessionMap.get(data.session_id)
+          const error = err instanceof Error ? err.message : String(err)
+          if (data.multi_agent_mode === true && state?.collaborationRunId) {
+            this.appendCollaborationEvent(state.collaborationRunId, 'run.failed', {
+              event: 'run.failed',
+              session_id: data.session_id,
+              collaboration_run_id: state.collaborationRunId,
+              error,
+            })
+          }
           if (state && !state.runId && !state.abortController && !state.activeRunMarker) {
             state.isWorking = false
             state.profile = undefined
@@ -411,6 +521,46 @@ export class ChatRunSocket {
     const source = resolveRunSource(data.source, data.session_id)
     if (data.session_id && isBridgeRunSource(source) && isSessionCommand(data.input)) return
 
+    const sessionId = data.session_id ? String(data.session_id).trim() : ''
+    const objectiveText = extractTextForPreview(data.display_input ?? data.input)
+    const socketUser = socket.data.user as AuthenticatedUser | undefined
+    const collaborationRunId = sessionId && data.multi_agent_mode === true
+      ? randomUUID()
+      : null
+    const emitCollaborationEvent = (eventName: string, payload: Record<string, unknown>) => {
+      if (data.onEvent) data.onEvent(eventName, payload)
+      this.appendCollaborationEvent(collaborationRunId, eventName, payload)
+    }
+
+    if (collaborationRunId && sessionId) {
+      const existingRun = getCollaborationRun(collaborationRunId)
+      if (!existingRun) {
+        createCollaborationRun({
+          id: collaborationRunId,
+          session_id: sessionId,
+          user_id: socketUser?.id || null,
+          profile,
+          status: 'running',
+          mode: 'hermes_native',
+          objective: objectiveText,
+          text: objectiveText,
+          route_json: { enabled: true },
+          snapshot_json: createCollaborationSnapshot({
+            runId: collaborationRunId,
+            sessionId,
+            objective: objectiveText,
+            mode: 'hermes_native',
+          }) as unknown as Record<string, unknown>,
+          events_json: [],
+        })
+      }
+      const state = getOrCreateSession(this.sessionMap, sessionId)
+      state.collaborationRunId = collaborationRunId
+    } else if (sessionId) {
+      const state = getOrCreateSession(this.sessionMap, sessionId)
+      state.collaborationRunId = undefined
+    }
+
     if (!isCodingAgentExecution(source, data)) {
       const routeDecision = await resolveMultiAgentRoute({
         enabled: data.multi_agent_mode === true,
@@ -424,9 +574,14 @@ export class ChatRunSocket {
               const payload = {
                 event: 'agent.event',
                 kind: 'multi_agent_progress',
+                ...(collaborationRunId ? { collaboration_run_id: collaborationRunId } : {}),
                 ...progressEvent,
               }
               pushState(this.sessionMap, data.session_id!, 'agent.event', {
+                ...payload,
+                session_id: data.session_id,
+              })
+              emitCollaborationEvent('agent.event', {
                 ...payload,
                 session_id: data.session_id,
               })
@@ -438,9 +593,14 @@ export class ChatRunSocket {
               const payload = {
                 event: 'agent.event',
                 kind: 'multi_agent_reasoning',
+                ...(collaborationRunId ? { collaboration_run_id: collaborationRunId } : {}),
                 ...reasoningEvent,
               }
               pushState(this.sessionMap, data.session_id!, 'agent.event', {
+                ...payload,
+                session_id: data.session_id,
+              })
+              emitCollaborationEvent('agent.event', {
                 ...payload,
                 session_id: data.session_id,
               })
@@ -460,6 +620,7 @@ export class ChatRunSocket {
           todo: routeDecision.todo,
           constraints: routeDecision.constraints,
           plan: routeDecision.plan,
+          collaboration_run_id: collaborationRunId || undefined,
           selected_agent: routeDecision.selectedAgent
             ? {
                 id: routeDecision.selectedAgent.id,
@@ -473,18 +634,99 @@ export class ChatRunSocket {
           ...routeEvent,
           session_id: data.session_id,
         })
+        emitCollaborationEvent('agent.event', {
+          ...routeEvent,
+          session_id: data.session_id,
+        })
+        if (collaborationRunId) {
+          updateCollaborationRun(collaborationRunId, {
+            mode: routeDecision.executionMode,
+            intent: routeDecision.intent,
+            category: routeDecision.category,
+            reason: routeDecision.reason,
+            text: routeDecision.routeText,
+            objective: routeDecision.plan?.objective || objectiveText,
+            selected_agent_id: routeDecision.selectedAgent?.id || '',
+            selected_agent_name: routeDecision.selectedAgent?.name || '',
+            route_json: {
+              enabled: routeDecision.enabled,
+              should_plan: routeDecision.shouldPlan,
+              mode: routeDecision.executionMode,
+              confidence: routeDecision.confidence,
+              summary: routeDecision.summary,
+              intent: routeDecision.intent,
+              category: routeDecision.category,
+              reason: routeDecision.reason,
+              text: routeDecision.routeText,
+              todo: routeDecision.todo,
+              constraints: routeDecision.constraints,
+              delegated_node_ids: routeDecision.delegatedNodeIds,
+              plan: routeDecision.plan,
+              selected_agent: routeDecision.selectedAgent
+                ? {
+                    id: routeDecision.selectedAgent.id,
+                    name: routeDecision.selectedAgent.name,
+                    baseUrl: routeDecision.selectedAgent.baseUrl || '',
+                  }
+                : null,
+            },
+          })
+        }
         this.emitToSession(socket, data.session_id, 'agent.event', routeEvent)
       }
       if (routeDecision.executionMode === 'delegate_subagent' && routeDecision.selectedAgent) {
         await handleSubagentRun(
           this.nsp,
           socket,
-          data,
+          {
+            ...data,
+            collaboration_run_id: collaborationRunId || undefined,
+            onEvent: (eventName, payload) => {
+              emitCollaborationEvent(eventName, payload)
+            },
+          },
           profile,
           this.sessionMap,
           routeDecision,
           this.dequeueNextQueuedRun.bind(this),
           skipUserMessage,
+          {
+            continueWithHermes: async ({ input, instructions }) => {
+              const bridgeReady = await ensureBridgeReadyForChatRun()
+              if (!bridgeReady.ok) {
+                throw new Error(`Agent Bridge is not reachable: ${bridgeReady.error}`)
+              }
+              await handleBridgeRun(
+                this.nsp,
+                socket,
+                {
+                  input,
+                  display_input: null,
+                  display_role: 'command',
+                  storage_message: '',
+                  session_id: sessionId,
+                  model: data.model,
+                  provider: data.provider,
+                  model_groups: data.model_groups,
+                  instructions,
+                  workspace: data.workspace,
+                  source: data.source,
+                  session_source: data.session_source,
+                  peerExcludeSocketId: data.peerExcludeSocketId,
+                  collaboration_run_id: collaborationRunId || undefined,
+                  onEvent: (eventName, payload) => {
+                    emitCollaborationEvent(eventName, payload)
+                  },
+                },
+                profile,
+                this.sessionMap,
+                this.bridge,
+                true,
+                loadSessionStateFromDb,
+                this.dequeueNextQueuedRun.bind(this),
+              )
+            },
+          },
         )
         return
       }
@@ -518,9 +760,11 @@ export class ChatRunSocket {
         } = {
           event: 'run.failed',
           session_id: data.session_id,
+          ...(collaborationRunId ? { collaboration_run_id: collaborationRunId } : {}),
           error: `Agent Bridge is not reachable: ${bridgeReady.error}`,
         }
         if (queueRemaining > 0) payload.queue_remaining = queueRemaining
+        emitCollaborationEvent('run.failed', payload)
         socket.emit('run.failed', payload)
         if (data.session_id && shouldDequeueNext) {
           this.dequeueNextQueuedRun(socket, data.session_id, profile)
@@ -544,7 +788,14 @@ export class ChatRunSocket {
       }
 
       await handleBridgeRun(
-        this.nsp, socket, { ...data, instructions: fullInstructions }, profile,
+        this.nsp, socket, {
+          ...data,
+          instructions: fullInstructions,
+          collaboration_run_id: collaborationRunId || undefined,
+          onEvent: (eventName, payload) => {
+            emitCollaborationEvent(eventName, payload)
+          },
+        }, profile,
         this.sessionMap, this.bridge,
         skipUserMessage,
         loadSessionStateFromDb,
@@ -728,7 +979,23 @@ export class ChatRunSocket {
       api_mode: next.api_mode,
       multi_agent_mode: next.multiAgentMode,
       sub_agent_candidates: next.subAgentCandidates,
-    }, next.profile || fallbackProfile, skipUserMessage)
+    }, next.profile || fallbackProfile, skipUserMessage).catch((err) => {
+      const state = this.sessionMap.get(sessionId)
+      const error = err instanceof Error ? err.message : String(err)
+      if (next.multiAgentMode === true && state?.collaborationRunId) {
+        this.appendCollaborationEvent(state.collaborationRunId, 'run.failed', {
+          event: 'run.failed',
+          session_id: sessionId,
+          collaboration_run_id: state.collaborationRunId,
+          error,
+        })
+      }
+      this.nsp.to(`session:${sessionId}`).emit('run.failed', {
+        event: 'run.failed',
+        session_id: sessionId,
+        error,
+      })
+    })
   }
 
   // --- Helpers ---

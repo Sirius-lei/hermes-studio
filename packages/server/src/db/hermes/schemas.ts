@@ -186,6 +186,45 @@ export const TASK_PLANS_INDEXES = {
 }
 
 // ============================================================================
+// Collaboration Runs
+// ============================================================================
+
+export const COLLABORATION_RUNS_TABLE = 'collaboration_runs'
+
+export const COLLABORATION_RUNS_SCHEMA: Record<string, string> = {
+  id: 'TEXT PRIMARY KEY',
+  session_id: 'TEXT NOT NULL',
+  run_id: 'TEXT',
+  user_id: 'TEXT',
+  profile: "TEXT NOT NULL DEFAULT 'default'",
+  status: "TEXT NOT NULL DEFAULT 'running'",
+  mode: "TEXT NOT NULL DEFAULT ''",
+  intent: "TEXT NOT NULL DEFAULT ''",
+  category: "TEXT NOT NULL DEFAULT ''",
+  reason: "TEXT NOT NULL DEFAULT ''",
+  text: "TEXT NOT NULL DEFAULT ''",
+  objective: "TEXT NOT NULL DEFAULT ''",
+  selected_agent_id: "TEXT NOT NULL DEFAULT ''",
+  selected_agent_name: "TEXT NOT NULL DEFAULT ''",
+  current_node_id: 'TEXT',
+  route_json: "TEXT NOT NULL DEFAULT '{}'",
+  snapshot_json: "TEXT NOT NULL DEFAULT '{}'",
+  events_json: "TEXT NOT NULL DEFAULT '[]'",
+  error: 'TEXT',
+  started_at: 'INTEGER NOT NULL',
+  ended_at: 'INTEGER',
+  updated_at: 'INTEGER NOT NULL',
+}
+
+export const COLLABORATION_RUNS_INDEXES = {
+  idx_collaboration_runs_session: 'CREATE INDEX IF NOT EXISTS idx_collaboration_runs_session ON collaboration_runs(session_id)',
+  idx_collaboration_runs_user: 'CREATE INDEX IF NOT EXISTS idx_collaboration_runs_user ON collaboration_runs(user_id)',
+  idx_collaboration_runs_profile: 'CREATE INDEX IF NOT EXISTS idx_collaboration_runs_profile ON collaboration_runs(profile)',
+  idx_collaboration_runs_status: 'CREATE INDEX IF NOT EXISTS idx_collaboration_runs_status ON collaboration_runs(status)',
+  idx_collaboration_runs_updated_at: 'CREATE INDEX IF NOT EXISTS idx_collaboration_runs_updated_at ON collaboration_runs(updated_at)',
+}
+
+// ============================================================================
 // Compression Snapshot (compression-snapshot.ts)
 // ============================================================================
 
@@ -762,6 +801,11 @@ export function initAllHermesTables(): void {
     // Task plans
     syncTable(TASK_PLANS_TABLE, TASK_PLANS_SCHEMA, {
       indexes: TASK_PLANS_INDEXES,
+    })
+
+    // Collaboration runs
+    syncTable(COLLABORATION_RUNS_TABLE, COLLABORATION_RUNS_SCHEMA, {
+      indexes: COLLABORATION_RUNS_INDEXES,
     })
 
     // Compression snapshot

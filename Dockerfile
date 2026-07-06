@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     make \
     g++ \
+    tini \
     && rm -rf /var/lib/apt/lists/*
 
 RUN ARCH=$(dpkg --print-architecture) \
@@ -39,11 +40,27 @@ RUN npm run build && npm prune --omit=dev
 ENV NODE_ENV=production
 ENV HOME=/home/agent
 ENV HERMES_HOME=/home/agent/.hermes
+ENV HERMES_WEB_UI_HOME=/home/agent/.hermes-web-ui
 ENV HERMES_WEB_UI_MANAGED_GATEWAY=1
+ENV HERMES_WEB_UI_REQUIRE_AGENT_BRIDGE=1
+ENV PORT=6060
+ENV BIND_HOST=0.0.0.0
+ENV HERMES_AGENT_BRIDGE_ENDPOINT=tcp://127.0.0.1:18765
+ENV HERMES_AGENT_BRIDGE_WORKER_TRANSPORT=tcp
+ENV HERMES_AGENT_BRIDGE_WORKER_PORT_BASE=18780
+ENV HERMES_AGENT_BRIDGE_WARM_PROFILES=active
+ENV HERMES_AGENT_BRIDGE_WORKER_IDLE_TIMEOUT_SECONDS=86400
+ENV HERMES_AGENT_BRIDGE_SESSION_IDLE_TIMEOUT_SECONDS=86400
 ENV PATH=/opt/hermes/.venv/bin:$PATH
+
+COPY docker/entrypoint.sh /usr/local/bin/hermes-web-ui-entrypoint
+RUN chmod +x /usr/local/bin/hermes-web-ui-entrypoint
 
 EXPOSE 6060
 
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=5 \
+  CMD curl -fsS "http://127.0.0.1:${PORT:-6060}/health" >/dev/null || exit 1
+
 # 强制覆盖基础镜像的默认启动脚本，让镜像本身具备独立运行的能力
-ENTRYPOINT ["node", "dist/server/index.js"]
-CMD []
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/hermes-web-ui-entrypoint"]
+CMD ["node", "dist/server/index.js"]

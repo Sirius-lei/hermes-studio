@@ -1,9 +1,12 @@
 import {
   generateTaskPlan,
+  generateTaskReplanDecision,
   generateTaskRouteDecision,
   streamTaskRouteReasoning,
   type GeneratedTaskPlan,
+  type GeneratedTaskReplanDecision,
   type GeneratedTaskRouteDecision,
+  type TaskPlanDependency,
   type TaskPlanAgentRoute,
   type TaskPlanTask,
 } from '../../task-planner'
@@ -41,11 +44,18 @@ export interface MultiAgentPlanNode {
   summary: string
 }
 
+export interface MultiAgentPlanDependency {
+  from: string
+  to: string
+  type: 'blocks' | 'informs'
+}
+
 export interface MultiAgentExecutionPlan {
   objective: string
   status: 'idle' | 'running' | 'completed' | 'failed'
   currentNodeId: string | null
   nodes: MultiAgentPlanNode[]
+  dependencies: MultiAgentPlanDependency[]
 }
 
 export interface MultiAgentRouteDecision {
@@ -76,6 +86,13 @@ export interface MultiAgentRouteProgressEvent {
 export interface MultiAgentRouteReasoningEvent {
   stage: 'understand' | 'route' | 'match_agents'
   text: string
+}
+
+export interface MultiAgentReplanDecision {
+  continueExecution: boolean
+  routeDecision: MultiAgentRouteDecision | null
+  followUpInput: string | null
+  responseStrategy: string
 }
 
 function uniqueTerms(values: string[]) {
@@ -279,7 +296,17 @@ function buildFallbackExecutionPlan(summary: string, routeText: string): MultiAg
         summary: '等待执行完成后生成最终回复。',
       },
     ],
+    dependencies: [],
   }
+}
+
+function buildLinearDependencies(nodeIds: string[]): MultiAgentPlanDependency[] {
+  if (nodeIds.length <= 1) return []
+  return nodeIds.slice(1).map((nodeId, index) => ({
+    from: nodeIds[index],
+    to: nodeId,
+    type: 'blocks',
+  }))
 }
 
 function planTaskNodeId(taskId: string, index: number) {
@@ -388,10 +415,13 @@ export function buildExecutionPlanFromTaskPlanner(args: {
     name: 'Hermes',
   }
   const routes = args.generated.plan.agent_routes || []
+  const taskNodeIdByTaskId = new Map<string, string>()
   const taskNodes = args.generated.plan.tasks.map((task, index): MultiAgentPlanNode => {
     const route = findTaskRoute(task.id, routes)
+    const nodeId = planTaskNodeId(task.id, index)
+    taskNodeIdByTaskId.set(task.id, nodeId)
     return {
-      id: planTaskNodeId(task.id, index),
+      id: nodeId,
       title: String(task.title || `任务 ${index + 1}`).trim() || `任务 ${index + 1}`,
       phase: String(task.phase || `阶段 ${index + 1}`).trim() || `阶段 ${index + 1}`,
       status: 'todo',
@@ -399,6 +429,21 @@ export function buildExecutionPlanFromTaskPlanner(args: {
       summary: formatTaskSummary(task, route),
     }
   })
+  const mappedDependencies: MultiAgentPlanDependency[] = (args.generated.plan.dependencies || [])
+    .map((dependency: TaskPlanDependency): MultiAgentPlanDependency | null => {
+      const from = taskNodeIdByTaskId.get(dependency.from) || ''
+      const to = taskNodeIdByTaskId.get(dependency.to) || ''
+      if (!from || !to || from === to) return null
+      return {
+        from,
+        to,
+        type: dependency.type === 'informs' ? 'informs' : 'blocks',
+      }
+    })
+    .filter((item): item is MultiAgentPlanDependency => Boolean(item))
+  const taskDependencies = mappedDependencies.length > 0
+    ? mappedDependencies
+    : buildLinearDependencies(taskNodes.map(node => node.id))
 
   return {
     objective: args.generated.summary || args.generated.title || '已生成任务规划',
@@ -430,6 +475,14 @@ export function buildExecutionPlanFromTaskPlanner(args: {
         executor: hermesExecutor,
         summary: '等待前置任务完成后由 Hermes 组织最终回复。',
       },
+    ],
+    dependencies: [
+      ...taskDependencies,
+      ...taskNodes.map(node => ({
+        from: node.id,
+        to: 'respond',
+        type: 'informs' as const,
+      })),
     ],
   }
 }
@@ -659,6 +712,7 @@ function buildExecutionPlanFromRouterTodo(decision: MultiAgentRouteDecision): Mu
     executor: selectedExecutor,
     summary: decision.constraints[index] || decision.reason || '等待执行。',
   }))
+  const taskDependencies = buildLinearDependencies(taskNodes.map(node => node.id))
   return {
     objective: decision.summary,
     status: 'running',
@@ -690,6 +744,81 @@ function buildExecutionPlanFromRouterTodo(decision: MultiAgentRouteDecision): Mu
         summary: '等待前置步骤完成后由 Hermes 组织最终回复。',
       },
     ],
+    dependencies: [
+      ...taskDependencies,
+      ...taskNodes.map(node => ({
+        from: node.id,
+        to: 'respond',
+        type: 'informs' as const,
+      })),
+    ],
+  }
+}
+
+function activateExecutionPlan(plan: MultiAgentExecutionPlan): MultiAgentExecutionPlan {
+  const taskNodes = plan.nodes.filter(node => !['understand', 'route', 'respond'].includes(node.id))
+  const firstTaskNode = taskNodes[0] || null
+  const activeNodeId = firstTaskNode?.id || 'respond'
+
+  return {
+    ...plan,
+    currentNodeId: activeNodeId,
+    nodes: plan.nodes.map((node) => {
+      if (node.id === 'understand') return { ...node, status: 'done' as const }
+      if (node.id === 'route') return { ...node, status: 'done' as const }
+      if (node.id === activeNodeId) return { ...node, status: 'doing' as const }
+      if (node.id === 'respond' && activeNodeId === 'respond') {
+        return {
+          ...node,
+          status: 'doing' as const,
+          summary: '当前无需继续下发子任务，主智能体正在组织最终回复。',
+        }
+      }
+      return node.id === 'respond'
+        ? { ...node, status: 'todo' as const }
+        : { ...node, status: 'todo' as const }
+    }),
+  }
+}
+
+function summarizeObservation(text: string, maxLength = 360) {
+  const normalized = text.replace(/\s+/g, ' ').trim()
+  if (!normalized) return ''
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 3).trim()}...` : normalized
+}
+
+function buildReplanFollowUpInput(args: {
+  requirement: string
+  observation: string
+  todo: string[]
+  responseStrategy: string
+}) {
+  const remainingTodo = args.todo.map((item, index) => `${index + 1}. ${item}`).join('\n')
+  return [
+    '继续上一轮多智能体协作。',
+    `原始用户需求：${args.requirement}`,
+    `已收到的子智能体阶段成果：${summarizeObservation(args.observation, 420)}`,
+    args.todo.length > 0 ? `请继续执行以下剩余任务：\n${remainingTodo}` : '',
+    `执行策略：${args.responseStrategy}`,
+    '要求：不要重复已经完成的子任务；如果阶段成果已经足够，请直接整理为最终答复；否则补齐缺失步骤后再回复用户。',
+  ].filter(Boolean).join('\n\n')
+}
+
+function currentPlanForReplan(decision: MultiAgentRouteDecision) {
+  return {
+    summary: decision.summary,
+    reason: decision.reason,
+    route_text: decision.routeText,
+    todo: decision.todo,
+    constraints: decision.constraints,
+    plan: decision.plan,
+    delegated_node_ids: decision.delegatedNodeIds,
+    selected_agent: decision.selectedAgent
+      ? {
+          id: decision.selectedAgent.id,
+          name: decision.selectedAgent.name,
+        }
+      : null,
   }
 }
 
@@ -925,5 +1054,129 @@ export async function resolveMultiAgentRoute(input: {
       plan: null,
       delegatedNodeIds: [],
     }
+  }
+}
+
+export async function resolveMultiAgentReplan(input: {
+  profile: string
+  provider?: string | null
+  model?: string | null
+  candidates?: MultiAgentRouteCandidate[]
+  previous: MultiAgentRouteDecision
+  observation: string
+  onProgress?: (event: MultiAgentRouteProgressEvent) => void
+  onReasoning?: (event: MultiAgentRouteReasoningEvent) => void
+}): Promise<MultiAgentReplanDecision> {
+  const observation = summarizeObservation(input.observation, 520)
+  if (!observation) {
+    return {
+      continueExecution: false,
+      routeDecision: null,
+      followUpInput: null,
+      responseStrategy: '',
+    }
+  }
+
+  input.onProgress?.({
+    stage: 'route',
+    status: 'running',
+    text: '主智能体正在吸收子智能体阶段成果，并评估是否需要继续执行。',
+  })
+
+  let replanned: GeneratedTaskReplanDecision
+  try {
+    replanned = await generateTaskReplanDecision({
+      profile: input.profile,
+      provider: input.provider,
+      model: input.model,
+      requirement: input.previous.inputText,
+      observation,
+      currentPlan: currentPlanForReplan(input.previous),
+      agents: normalizeCandidates(input.candidates || []),
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    input.onReasoning?.({
+      stage: 'route',
+      text: `重规划评估失败：${message}。当前默认进入最终汇总。`,
+    })
+    input.onProgress?.({
+      stage: 'route',
+      status: 'done',
+      text: '主智能体未能完成重规划评估，当前改为直接汇总阶段成果。',
+    })
+    return {
+      continueExecution: false,
+      routeDecision: null,
+      followUpInput: null,
+      responseStrategy: '',
+    }
+  }
+
+  input.onReasoning?.({
+    stage: 'route',
+    text: replanned.reason,
+  })
+
+  if (!replanned.continue_execution || replanned.todo.length === 0) {
+    input.onProgress?.({
+      stage: 'route',
+      status: 'done',
+      text: '主智能体判断阶段成果已足够，后续直接进入最终汇总。',
+    })
+    return {
+      continueExecution: false,
+      routeDecision: null,
+      followUpInput: null,
+      responseStrategy: replanned.response_strategy,
+    }
+  }
+
+  const routeText = `多智能体协作：主智能体已吸收阶段成果，继续执行剩余 ${replanned.todo.length} 个节点。`
+  const routeDecisionBase: MultiAgentRouteDecision = {
+    ...input.previous,
+    shouldPlan: true,
+    reason: replanned.reason,
+    executionMode: 'hermes_native',
+    selectedAgent: null,
+    routeText,
+    todo: replanned.todo,
+    constraints: replanned.constraints,
+    hermesInstructions: null,
+    plan: null,
+    delegatedNodeIds: [],
+  }
+  const plan = buildExecutionPlanFromRouterTodo(routeDecisionBase) || buildFallbackExecutionPlan(
+    summarizeText(input.previous.inputText),
+    routeText,
+  )
+  const activePlan = activateExecutionPlan(plan)
+  const routeDecision: MultiAgentRouteDecision = {
+    ...routeDecisionBase,
+    plan: activePlan,
+    hermesInstructions: `${buildHermesInstructions({
+      ...routeDecisionBase,
+      plan: activePlan,
+      hermesInstructions: null,
+      delegatedNodeIds: [],
+    })}\n\n当前处于多智能体协作的二次规划阶段。\n你已经收到子智能体返回的阶段成果，请把它视为已完成观察，不要重复已完成步骤。\n阶段成果：${observation}\n后续执行策略：${replanned.response_strategy}`,
+  }
+
+  input.onProgress?.({
+    stage: 'route',
+    status: 'done',
+    text: `主智能体已完成重规划，准备继续处理 ${replanned.todo.length} 个剩余节点。`,
+  })
+
+  return {
+    continueExecution: true,
+    routeDecision,
+    followUpInput: buildReplanFollowUpInput({
+      requirement: input.previous.inputText,
+      observation,
+      todo: replanned.todo,
+      responseStrategy: replanned.response_strategy,
+    }),
+    responseStrategy: replanned.response_strategy,
   }
 }

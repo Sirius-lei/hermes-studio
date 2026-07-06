@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from bridge_runtime import _install_stop_signal_handlers, _jsonable
+from bridge_runtime import _install_stop_signal_handlers, _jsonable, _positive_int
 from bridge_transport import (
     WorkerProcess,
     _make_listen_socket,
@@ -43,6 +43,15 @@ class BridgeBroker:
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._last_gc = time.time()
+        self._worker_idle_timeout_seconds = _positive_int(
+            os.environ.get("HERMES_AGENT_BRIDGE_WORKER_IDLE_TIMEOUT_SECONDS")
+        ) or self.IDLE_TIMEOUT_SECONDS
+        self._gc_interval_seconds = _positive_int(
+            os.environ.get("HERMES_AGENT_BRIDGE_GC_INTERVAL_SECONDS")
+        ) or self.GC_INTERVAL_SECONDS
+        self._disable_worker_idle_gc = str(
+            os.environ.get("HERMES_AGENT_BRIDGE_DISABLE_WORKER_IDLE_GC", "")
+        ).strip().lower() in {"1", "true", "yes", "on"}
 
     def _normalize_profile(self, value: Any) -> str:
         profile = str(value or "").strip()
@@ -241,6 +250,20 @@ class BridgeBroker:
             resp["worker_key"] = worker_key
             return resp
 
+        if action == "warm_profile":
+            profile = self._normalize_profile(req.get("profile"))
+            worker_key = self._normalize_worker_key(profile, req.get("worker_key"))
+            worker = self._worker_for_profile(profile, worker_key)
+            worker.start()
+            worker.last_used_at = time.time()
+            return {
+                "profile": profile,
+                "worker_key": worker_key,
+                "running": worker.running,
+                "pid": worker.pid,
+                "endpoint": worker.endpoint,
+            }
+
         if action == "chat":
             profile = self._normalize_profile(req.get("profile"))
             return self._forward(profile, req, self._normalize_worker_key(profile, req.get("worker_key")))
@@ -427,14 +450,16 @@ class BridgeBroker:
                 pass
 
     def _gc_idle_workers(self) -> None:
+        if self._disable_worker_idle_gc:
+            return
         now = time.time()
-        if now - self._last_gc < self.GC_INTERVAL_SECONDS:
+        if now - self._last_gc < self._gc_interval_seconds:
             return
         self._last_gc = now
         with self._lock:
             idle = [
                 key for key, worker in self._workers.items()
-                if worker.running and now - worker.last_used_at > self.IDLE_TIMEOUT_SECONDS
+                if worker.running and now - worker.last_used_at > self._worker_idle_timeout_seconds
             ]
         for key in idle:
             with self._lock:

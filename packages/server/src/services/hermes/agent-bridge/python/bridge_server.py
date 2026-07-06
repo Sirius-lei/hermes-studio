@@ -35,6 +35,15 @@ class BridgeServer:
         self.pool = AgentPool()
         self._stop = threading.Event()
         self._last_gc = time.time()
+        self._session_idle_timeout_seconds = _positive_int(
+            os.environ.get("HERMES_AGENT_BRIDGE_SESSION_IDLE_TIMEOUT_SECONDS")
+        ) or self.IDLE_TIMEOUT_SECONDS
+        self._gc_interval_seconds = _positive_int(
+            os.environ.get("HERMES_AGENT_BRIDGE_GC_INTERVAL_SECONDS")
+        ) or self.GC_INTERVAL_SECONDS
+        self._disable_session_idle_gc = str(
+            os.environ.get("HERMES_AGENT_BRIDGE_DISABLE_SESSION_IDLE_GC", "")
+        ).strip().lower() in {"1", "true", "yes", "on"}
 
     def handle(self, req: dict[str, Any]) -> dict[str, Any]:
         action = str(req.get("action") or "").strip()
@@ -592,14 +601,16 @@ class BridgeServer:
 
     def _gc_idle_sessions(self) -> None:
         """Destroy sessions idle longer than IDLE_TIMEOUT_SECONDS."""
+        if self._disable_session_idle_gc:
+            return
         now = time.time()
-        if now - self._last_gc < self.GC_INTERVAL_SECONDS:
+        if now - self._last_gc < self._gc_interval_seconds:
             return
         self._last_gc = now
         with self.pool._lock:
             idle_ids = [
                 sid for sid, s in self.pool._sessions.items()
-                if not s.running and now - s.last_used_at > self.IDLE_TIMEOUT_SECONDS
+                if not s.running and now - s.last_used_at > self._session_idle_timeout_seconds
             ]
         for sid in idle_ids:
             self.pool.destroy(sid)

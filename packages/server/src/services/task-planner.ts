@@ -73,6 +73,16 @@ export interface TaskRouteReasoningChunk {
   model: string
 }
 
+export interface GeneratedTaskReplanDecision {
+  continue_execution: boolean
+  reason: string
+  todo: string[]
+  constraints: string[]
+  response_strategy: string
+  planner_provider: string
+  planner_model: string
+}
+
 interface RawPlannerResponse {
   title?: unknown
   summary?: unknown
@@ -94,6 +104,14 @@ interface RawRouteDecisionResponse {
   reason?: unknown
   todo?: unknown
   constraints?: unknown
+}
+
+interface RawTaskReplanResponse {
+  continue_execution?: unknown
+  reason?: unknown
+  todo?: unknown
+  constraints?: unknown
+  response_strategy?: unknown
 }
 
 function trimString(value: unknown, fallback = ''): string {
@@ -150,6 +168,18 @@ function normalizeRouteDecisionResponse(raw: RawRouteDecisionResponse): Omit<Gen
     reason: trimString(raw.reason, needClarify ? '当前信息不足，需要先澄清。' : '已完成任务路由判断。'),
     todo,
     constraints,
+  }
+}
+
+function normalizeTaskReplanResponse(raw: RawTaskReplanResponse): Omit<GeneratedTaskReplanDecision, 'planner_provider' | 'planner_model'> {
+  const todo = stringArray(raw.todo).slice(0, 5)
+  const constraints = stringArray(raw.constraints).slice(0, 5)
+  return {
+    continue_execution: raw.continue_execution === true && todo.length > 0,
+    reason: trimString(raw.reason, '主智能体已评估阶段成果。'),
+    todo,
+    constraints,
+    response_strategy: trimString(raw.response_strategy, '先吸收阶段成果，再继续处理剩余任务，并在结束后给出最终回复。'),
   }
 }
 
@@ -463,6 +493,82 @@ export async function generateTaskRouteDecision(input: {
     }
     const raw = extractJsonObject(content) as RawRouteDecisionResponse
     const normalized = normalizeRouteDecisionResponse(raw)
+    return {
+      ...normalized,
+      planner_provider: modelConfig.provider,
+      planner_model: modelConfig.model,
+    }
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+export async function generateTaskReplanDecision(input: {
+  profile: string
+  requirement: string
+  observation: string
+  currentPlan?: unknown
+  provider?: string | null
+  model?: string | null
+  agents?: TaskPlannerAgentCandidate[]
+}): Promise<GeneratedTaskReplanDecision> {
+  const requirement = input.requirement.trim()
+  const observation = input.observation.trim()
+  if (!requirement) throw new Error('requirement is required')
+  if (!observation) throw new Error('observation is required')
+  const modelConfig = await resolveAvailableModelForProfile({
+    profile: input.profile,
+    provider: input.provider,
+    model: input.model,
+  })
+  const apiMode = modelConfig.api_mode || 'chat_completions'
+  if (apiMode !== 'chat_completions') {
+    throw new Error(`Replanner currently supports chat_completions providers, got ${apiMode}`)
+  }
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 45000)
+  try {
+    const response = await postPlannerRequest({
+      url: chatCompletionsUrl(modelConfig.base_url),
+      apiKey: modelConfig.api_key,
+      signal: controller.signal,
+      body: {
+        model: modelConfig.model,
+        temperature: 0.1,
+        messages: [
+          {
+            role: 'system',
+            content: [
+              '你是 Hermes 多智能体协作中的重规划决策器。',
+              '你会收到原始用户需求、当前任务计划，以及某个子智能体刚刚返回的阶段成果。',
+              '你的职责是判断：主智能体是否还需要继续执行剩余步骤。',
+              '如果阶段成果已经足够支撑最终答复，continue_execution 必须是 false，todo 返回空数组。',
+              '如果还需要主智能体验证、整合、补查、二次处理、调用工具或组织最终结果，continue_execution 必须是 true，并输出 1 到 5 条剩余 todo。',
+              '这一步只决定 Hermes 主链路是否继续，不要再指派新的子智能体。',
+              '只输出一个 JSON 对象，不要输出 Markdown、解释文字或代码块。',
+              'JSON 字段必须包含 continue_execution, reason, todo, constraints, response_strategy。',
+              'response_strategy 用一句话描述主智能体接下来应该如何处理阶段成果。',
+            ].join('\n'),
+          },
+          {
+            role: 'user',
+            content: JSON.stringify({
+              requirement,
+              current_plan: input.currentPlan || null,
+              stage_observation: observation,
+              available_agents: agentCapabilitySummary(input.agents || []),
+            }),
+          },
+        ],
+      },
+    })
+    const content = response?.choices?.[0]?.message?.content
+    if (typeof content !== 'string' || !content.trim()) {
+      throw new Error('Replanner returned an empty response')
+    }
+    const raw = extractJsonObject(content) as RawTaskReplanResponse
+    const normalized = normalizeTaskReplanResponse(raw)
     return {
       ...normalized,
       planner_provider: modelConfig.provider,

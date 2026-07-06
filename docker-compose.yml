@@ -3,6 +3,9 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        BASE_IMAGE: ${HERMES_AGENT_IMAGE:-nousresearch/hermes-agent:latest}
+        NODE_VERSION: ${NODE_VERSION:-24.15.0}
     image: ${WEBUI_IMAGE:-hermes-web-ui-local:latest}
     container_name: ${WEBUI_CONTAINER_NAME:-hermes-webui}
     ports:
@@ -14,12 +17,20 @@ services:
       - ${HERMES_DATA_DIR:-./hermes_data}/hermes-web-ui:/home/agent/.hermes-web-ui
     environment:
       - PORT=${PORT:-6060}
+      - BIND_HOST=0.0.0.0
       - HERMES_HOME=/home/agent/.hermes
-      - HERMES_BIN=/opt/hermes/.venv/bin/hermes
+      - HERMES_WEB_UI_HOME=/home/agent/.hermes-web-ui
       - HERMES_WEB_UI_MANAGED_GATEWAY=1
+      - HERMES_WEB_UI_REQUIRE_AGENT_BRIDGE=1
+      - HERMES_AGENT_BRIDGE_ENDPOINT=${HERMES_AGENT_BRIDGE_ENDPOINT:-tcp://127.0.0.1:18765}
+      - HERMES_AGENT_BRIDGE_WORKER_TRANSPORT=${HERMES_AGENT_BRIDGE_WORKER_TRANSPORT:-tcp}
+      - HERMES_AGENT_BRIDGE_WORKER_PORT_BASE=${HERMES_AGENT_BRIDGE_WORKER_PORT_BASE:-18780}
+      - HERMES_AGENT_BRIDGE_WARM_PROFILES=${HERMES_AGENT_BRIDGE_WARM_PROFILES:-active}
+      - HERMES_AGENT_BRIDGE_WORKER_IDLE_TIMEOUT_SECONDS=${HERMES_AGENT_BRIDGE_WORKER_IDLE_TIMEOUT_SECONDS:-86400}
+      - HERMES_AGENT_BRIDGE_SESSION_IDLE_TIMEOUT_SECONDS=${HERMES_AGENT_BRIDGE_SESSION_IDLE_TIMEOUT_SECONDS:-86400}
       - HERMES_WEB_UI_XAI_CALLBACK_BIND_HOST=0.0.0.0
-      - PATH=/opt/hermes/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
       - HERMES_ALLOW_ROOT_GATEWAY=1
     restart: unless-stopped
+    init: true
     stdin_open: true
     tty: true

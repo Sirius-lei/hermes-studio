@@ -1,4 +1,5 @@
 import { startRunViaSocket, resumeSession, registerSessionHandlers, unregisterSessionHandlers, getChatRunSocket, respondToolApproval, onPeerUserMessage, onSessionCommand, onSessionTitleUpdated, respondClarify, type ChatRunTransport, type RunEvent, type ResumeSessionPayload, type StartRunRequest, type ContentBlock as ContentBlockImport } from '@/api/hermes/chat'
+import { fetchSessionCollaborationRuns, type CollaborationRunRecord } from '@/api/hermes/collaboration-runs'
 import { deleteSession as deleteSessionApi, fetchSessionMessagesPage, fetchSessions, setSessionModel, type HermesMessage, type SessionSummary } from '@/api/hermes/sessions'
 import { getActiveProfileName } from '@/api/client'
 import { inferCodingAgentApiMode, normalizeCodingAgentApiMode } from '@/api/coding-agents'
@@ -53,12 +54,19 @@ export interface MultiAgentPlanNodeState {
   title: string
   phase: string
   status: 'todo' | 'doing' | 'done' | 'blocked'
+  dependsOn: string[]
   executor: {
     type: 'hermes' | 'subagent'
     id?: string
     name: string
   }
   summary: string
+}
+
+export interface MultiAgentPlanDependencyState {
+  from: string
+  to: string
+  type: 'blocks' | 'informs'
 }
 
 export interface MultiAgentExecutionEventState {
@@ -110,6 +118,8 @@ export interface MultiAgentWorkflowMessageState {
 }
 
 export interface MultiAgentRouteState {
+  runId: string
+  sessionId: string
   mode: 'delegate_subagent' | 'hermes_native'
   intent: string
   category: string
@@ -123,8 +133,115 @@ export interface MultiAgentRouteState {
   todo: string[]
   constraints: string[]
   planNodes: MultiAgentPlanNodeState[]
+  planDependencies: MultiAgentPlanDependencyState[]
   activity: MultiAgentExecutionEventState[]
   thinkingSteps: MultiAgentThinkingStepState[]
+  startedAt: number
+  endedAt: number | null
+}
+
+function isMultiAgentStatus(value: unknown): value is MultiAgentRouteState['status'] {
+  return value === 'idle' || value === 'running' || value === 'completed' || value === 'failed'
+}
+
+function isPlanNodeStatus(value: unknown): value is MultiAgentPlanNodeState['status'] {
+  return value === 'todo' || value === 'doing' || value === 'done' || value === 'blocked'
+}
+
+function isThinkingStepStatus(value: unknown): value is MultiAgentThinkingStepState['status'] {
+  return value === 'pending' || value === 'running' || value === 'done'
+}
+
+function collaborationRunToRouteState(record: CollaborationRunRecord): MultiAgentRouteState | null {
+  const snapshot = record.snapshot_json && typeof record.snapshot_json === 'object'
+    ? record.snapshot_json as Record<string, unknown>
+    : null
+  if (!snapshot) return null
+
+  const planNodes = Array.isArray(snapshot.planNodes)
+    ? snapshot.planNodes
+      .filter((node): node is Record<string, unknown> => !!node && typeof node === 'object')
+      .map((node, index): MultiAgentPlanNodeState => ({
+        id: String(node.id || `node_${index + 1}`),
+        title: sanitizeMultiAgentText(node.title || `节点 ${index + 1}`) || `节点 ${index + 1}`,
+        phase: sanitizeMultiAgentText(node.phase || '执行') || '执行',
+        status: isPlanNodeStatus(node.status) ? node.status : 'todo',
+        dependsOn: Array.isArray(node.dependsOn) ? node.dependsOn.map(item => String(item || '').trim()).filter(Boolean) : [],
+        executor: node.executor && typeof node.executor === 'object' && (node.executor as any).type === 'subagent'
+          ? {
+              type: 'subagent',
+              id: typeof (node.executor as any).id === 'string' ? (node.executor as any).id : undefined,
+              name: sanitizeMultiAgentText((node.executor as any).name || '子智能体') || '子智能体',
+            }
+          : {
+              type: 'hermes',
+              name: sanitizeMultiAgentText((node.executor as any)?.name || '主智能体') || '主智能体',
+            },
+        summary: sanitizeMultiAgentText(node.summary || ''),
+      }))
+    : []
+
+  const planDependencies = Array.isArray(snapshot.planDependencies)
+    ? snapshot.planDependencies
+      .filter((dep): dep is Record<string, unknown> => !!dep && typeof dep === 'object')
+      .map((dep): MultiAgentPlanDependencyState => ({
+        from: String(dep.from || '').trim(),
+        to: String(dep.to || '').trim(),
+        type: dep.type === 'informs' ? 'informs' : 'blocks',
+      }))
+      .filter(dep => dep.from && dep.to && dep.from !== dep.to)
+    : []
+
+  const activity = Array.isArray(snapshot.activity)
+    ? snapshot.activity
+      .filter((item): item is Record<string, unknown> => !!item && typeof item === 'object')
+      .map((item, index): MultiAgentExecutionEventState => ({
+        id: String(item.id || `activity_${index + 1}`),
+        kind: String(item.kind || 'route') as MultiAgentExecutionEventState['kind'],
+        title: sanitizeMultiAgentText(item.title || '协作事件') || '协作事件',
+        text: sanitizeMultiAgentText(item.text || ''),
+        status: item.status === 'done' ? 'done' : item.status === 'error' ? 'error' : item.status === 'running' ? 'running' : 'info',
+        timestamp: typeof item.timestamp === 'number' ? item.timestamp : Date.now(),
+        agentId: typeof item.agentId === 'string' ? item.agentId : undefined,
+        agentName: sanitizeMultiAgentText(item.agentName || '') || undefined,
+        toolName: sanitizeMultiAgentText(item.toolName || '') || undefined,
+        output: typeof item.output === 'string' ? item.output : undefined,
+      }))
+    : []
+
+  const thinkingSteps = Array.isArray(snapshot.thinkingSteps)
+    ? snapshot.thinkingSteps
+      .filter((step): step is Record<string, unknown> => !!step && typeof step === 'object')
+      .map((step, index): MultiAgentThinkingStepState => ({
+        id: String(step.id || `thinking_${index + 1}`),
+        title: sanitizeMultiAgentText(step.title || `步骤 ${index + 1}`) || `步骤 ${index + 1}`,
+        detail: sanitizeMultiAgentText(step.detail || ''),
+        status: isThinkingStepStatus(step.status) ? step.status : 'pending',
+      }))
+    : []
+
+  return {
+    runId: String(snapshot.runId || record.id),
+    sessionId: String(snapshot.sessionId || record.session_id),
+    mode: snapshot.mode === 'delegate_subagent' ? 'delegate_subagent' : 'hermes_native',
+    intent: sanitizeMultiAgentText(snapshot.intent || record.intent || ''),
+    category: sanitizeMultiAgentText(snapshot.category || record.category || '协作分析') || '协作分析',
+    reason: sanitizeMultiAgentText(snapshot.reason || record.reason || ''),
+    text: sanitizeMultiAgentText(snapshot.text || record.text || ''),
+    objective: sanitizeMultiAgentText(snapshot.objective || record.objective || ''),
+    status: isMultiAgentStatus(snapshot.status) ? snapshot.status : (record.status === 'completed' ? 'completed' : record.status === 'failed' ? 'failed' : 'running'),
+    currentNodeId: typeof snapshot.currentNodeId === 'string' ? snapshot.currentNodeId : record.current_node_id,
+    selectedAgentId: sanitizeMultiAgentText(snapshot.selectedAgentId || record.selected_agent_id || ''),
+    selectedAgentName: sanitizeMultiAgentText(snapshot.selectedAgentName || record.selected_agent_name || ''),
+    todo: Array.isArray(snapshot.todo) ? snapshot.todo.map(item => sanitizeMultiAgentText(item)).filter(Boolean) : [],
+    constraints: Array.isArray(snapshot.constraints) ? snapshot.constraints.map(item => sanitizeMultiAgentText(item)).filter(Boolean) : [],
+    planNodes,
+    planDependencies,
+    activity,
+    thinkingSteps,
+    startedAt: typeof snapshot.startedAt === 'number' ? snapshot.startedAt : record.started_at,
+    endedAt: typeof snapshot.endedAt === 'number' ? snapshot.endedAt : record.ended_at,
+  }
 }
 
 function summarizeMultiAgentObjectiveText(value: string, maxLength = 160) {
@@ -139,6 +256,119 @@ const WORKFLOW_ARCHIVE_STORAGE_KEY = 'hermes.multiAgent.workflowArchives.v1'
 
 function isReservedMultiAgentNodeId(nodeId?: string | null): boolean {
   return !!nodeId && RESERVED_MULTI_AGENT_NODE_IDS.has(nodeId)
+}
+
+function routeTodoNodeId(index: number) {
+  return `task_route_${index + 1}`
+}
+
+function inferRouteTodoPhase(title: string, index: number, total: number) {
+  if (index === 0 || /(理解|确认|识别|澄清|校验|权限|约束|目标)/.test(title)) return '分析'
+  if (index === total - 1 || /(汇总|总结|回复|输出|交付)/.test(title)) return '汇总'
+  return '执行'
+}
+
+function findRouteTodoDelegateIndex(todo: string[]) {
+  const preferredIndex = todo.findIndex(title => !/(理解|确认|识别|澄清|校验|权限|约束|目标|路由|规划|汇总|总结|回复|输出|交付)/.test(title))
+  if (preferredIndex >= 0) return preferredIndex
+  if (todo.length >= 3) return 1
+  return todo.length > 1 ? todo.length - 2 : 0
+}
+
+function shouldKeepRouteTodoTask(title: string, index: number, total: number) {
+  if (/(意图识别|任务拆解|Todo生成|绘制节点|生成路由|确认执行路径|选择执行路径)/i.test(title)) return false
+  if (index === total - 1 && /(汇总|总结|回复|输出|交付)/.test(title)) return false
+  return true
+}
+
+function fallbackRouteTodoSummary(title: string, constraint: string, selectedAgentName: string, isDelegateStep: boolean) {
+  if (constraint) return constraint
+  if (isDelegateStep && selectedAgentName) return `等待 ${selectedAgentName} 开始执行该节点。`
+  if (/(汇总|总结|回复|输出|交付)/.test(title)) return '等待前置节点完成后由主智能体汇总阶段成果。'
+  if (/(理解|确认|识别|澄清|校验|权限|约束|目标)/.test(title)) return '主智能体正在确认目标、约束与可用能力。'
+  return '等待执行。'
+}
+
+function buildRouteTodoFallbackPlan(args: {
+  mode: 'delegate_subagent' | 'hermes_native'
+  todo: string[]
+  constraints: string[]
+  selectedAgent: { id?: string; name?: string }
+  routeText: string
+}): {
+  nodes: MultiAgentPlanNodeState[]
+  dependencies: MultiAgentPlanDependencyState[]
+} {
+  const rawTodo = args.todo.map(item => sanitizeMultiAgentText(item)).filter(Boolean).slice(0, 6)
+  const cleanedTodo = rawTodo.filter((title, index) => shouldKeepRouteTodoTask(title, index, rawTodo.length))
+  const hermesExecutor: MultiAgentPlanNodeState['executor'] = { type: 'hermes', name: '主智能体' }
+  const delegateIndex = args.mode === 'delegate_subagent' && args.selectedAgent.id
+    ? findRouteTodoDelegateIndex(cleanedTodo)
+    : -1
+
+  const taskNodes = cleanedTodo.map((title, index): MultiAgentPlanNodeState => {
+    const isDelegateStep = index === delegateIndex && !!args.selectedAgent.id
+    return {
+      id: routeTodoNodeId(index),
+      title,
+      phase: inferRouteTodoPhase(title, index, cleanedTodo.length),
+      status: 'todo',
+      dependsOn: index > 0 ? [routeTodoNodeId(index - 1)] : [],
+      executor: isDelegateStep
+        ? {
+            type: 'subagent',
+            id: String(args.selectedAgent.id || '').trim() || undefined,
+            name: sanitizeMultiAgentText(args.selectedAgent.name || '') || '子智能体',
+          }
+        : hermesExecutor,
+      summary: fallbackRouteTodoSummary(
+        title,
+        sanitizeMultiAgentText(args.constraints[index] || ''),
+        sanitizeMultiAgentText(args.selectedAgent.name || ''),
+        isDelegateStep,
+      ),
+    }
+  })
+
+  const dependencies: MultiAgentPlanDependencyState[] = taskNodes.slice(1).map((node, index) => ({
+    from: taskNodes[index]!.id,
+    to: node.id,
+    type: 'blocks',
+  }))
+
+  return {
+    nodes: [
+      {
+        id: 'understand',
+        title: '理解需求与约束',
+        phase: '分析',
+        status: 'done',
+        dependsOn: [],
+        executor: hermesExecutor,
+        summary: '已接收用户需求并提取当前任务目标。',
+      },
+      {
+        id: 'route',
+        title: '确认执行路径',
+        phase: '路由',
+        status: taskNodes.length > 0 ? 'doing' : 'done',
+        dependsOn: [],
+        executor: hermesExecutor,
+        summary: args.routeText || '主智能体已生成任务路径。',
+      },
+      ...taskNodes,
+      {
+        id: 'respond',
+        title: '汇总阶段成果并回复用户',
+        phase: '汇总',
+        status: taskNodes.length > 0 ? 'todo' : 'doing',
+        dependsOn: taskNodes.length > 0 ? [taskNodes[taskNodes.length - 1]!.id] : ['route'],
+        executor: hermesExecutor,
+        summary: '等待执行节点完成后由主智能体组织最终回复。',
+      },
+    ],
+    dependencies,
+  }
 }
 
 export interface Message {
@@ -939,6 +1169,8 @@ export const useChatStore = defineStore('chat', () => {
   /** sessionId → queue ids that server reported as dequeued before the peer message arrived */
   const dequeuedQueueIds = ref<Map<string, Set<string>>>(new Map())
   const multiAgentRoutes = ref<Map<string, MultiAgentRouteState>>(new Map())
+  const multiAgentRouteHistories = ref<Map<string, MultiAgentRouteState[]>>(new Map())
+  const selectedMultiAgentRunIds = ref<Map<string, string>>(new Map())
   const pendingApprovals = ref<Map<string, PendingApproval>>(new Map())
   const activePendingApproval = computed(() => {
     const sid = activeSessionId.value
@@ -1483,6 +1715,7 @@ export const useChatStore = defineStore('chat', () => {
     } catch (err) {
       console.error('Failed to load session messages via resume:', err)
     } finally {
+      await loadSessionCollaborationHistory(sessionId)
       isLoadingMessages.value = false
     }
 
@@ -1939,6 +2172,56 @@ export const useChatStore = defineStore('chat', () => {
     if (route) next.set(sessionId, route)
     else next.delete(sessionId)
     multiAgentRoutes.value = next
+
+    if (route) {
+      const history = (multiAgentRouteHistories.value.get(sessionId) || []).filter((item) => {
+        if (!route.runId || route.runId.startsWith('pending:')) return true
+        return !(item.runId.startsWith('pending:') && item.startedAt === route.startedAt)
+      })
+      const existingIndex = history.findIndex(item => item.runId === route.runId)
+      const nextHistory = [...history]
+      if (existingIndex >= 0) nextHistory[existingIndex] = route
+      else if (route.runId) nextHistory.unshift(route)
+      const historyMap = new Map(multiAgentRouteHistories.value)
+      historyMap.set(sessionId, nextHistory.slice(0, 20))
+      multiAgentRouteHistories.value = historyMap
+      if (route.runId) {
+        const selectedMap = new Map(selectedMultiAgentRunIds.value)
+        selectedMap.set(sessionId, route.runId)
+        selectedMultiAgentRunIds.value = selectedMap
+      }
+    }
+  }
+
+  function setSessionCollaborationHistory(sessionId: string, routes: MultiAgentRouteState[]) {
+    const historyMap = new Map(multiAgentRouteHistories.value)
+    historyMap.set(sessionId, routes)
+    multiAgentRouteHistories.value = historyMap
+    const selected = selectedMultiAgentRunIds.value.get(sessionId)
+    if (selected && routes.some(route => route.runId === selected)) return
+    const nextSelected = new Map(selectedMultiAgentRunIds.value)
+    if (routes[0]?.runId) nextSelected.set(sessionId, routes[0].runId)
+    else nextSelected.delete(sessionId)
+    selectedMultiAgentRunIds.value = nextSelected
+  }
+
+  async function loadSessionCollaborationHistory(sessionId: string) {
+    try {
+      const records = await fetchSessionCollaborationRuns(sessionId, 20)
+      const routes = records
+        .map(collaborationRunToRouteState)
+        .filter((route): route is MultiAgentRouteState => Boolean(route))
+      setSessionCollaborationHistory(sessionId, routes)
+    } catch (err) {
+      console.error('Failed to load collaboration history:', err)
+    }
+  }
+
+  function selectMultiAgentRun(sessionId: string, runId: string | null) {
+    const next = new Map(selectedMultiAgentRunIds.value)
+    if (runId) next.set(sessionId, runId)
+    else next.delete(sessionId)
+    selectedMultiAgentRunIds.value = next
   }
 
   function mutateMultiAgentRouteState(
@@ -1951,7 +2234,10 @@ export const useChatStore = defineStore('chat', () => {
   }
 
   function resetMultiAgentRouteState(sessionId: string, objective: string, mode: 'delegate_subagent' | 'hermes_native' = 'hermes_native') {
+    const now = Date.now()
     setMultiAgentRouteState(sessionId, {
+      runId: `pending:${sessionId}:${now}`,
+      sessionId,
       mode,
       intent: '',
       category: '协作分析',
@@ -1970,6 +2256,7 @@ export const useChatStore = defineStore('chat', () => {
           title: '理解需求与约束',
           phase: '分析',
           status: 'doing',
+          dependsOn: [],
           executor: { type: 'hermes', name: '主智能体' },
           summary: '主智能体正在读取消息、提取目标与约束。',
         },
@@ -1978,6 +2265,7 @@ export const useChatStore = defineStore('chat', () => {
           title: '确认执行路径',
           phase: '路由',
           status: 'todo',
+          dependsOn: ['understand'],
           executor: { type: 'hermes', name: '主智能体' },
           summary: '等待主智能体完成意图分析与任务拆解。',
         },
@@ -1986,18 +2274,23 @@ export const useChatStore = defineStore('chat', () => {
           title: '汇总阶段成果并回复用户',
           phase: '汇总',
           status: 'todo',
+          dependsOn: ['route'],
           executor: { type: 'hermes', name: '主智能体' },
           summary: '等待前置节点完成后生成最终回复。',
         },
       ],
+      planDependencies: [
+        { from: 'understand', to: 'route', type: 'blocks' },
+        { from: 'route', to: 'respond', type: 'blocks' },
+      ],
       activity: [
         {
-          id: `route:reset:${sessionId}:${Date.now()}`,
+          id: `route:reset:${sessionId}:${now}`,
           kind: 'route',
           title: '主智能体开始规划',
           text: '已清空上一轮协作状态，正在生成新的任务路径。',
           status: 'running',
-          timestamp: Date.now(),
+          timestamp: now,
         },
       ],
       thinkingSteps: [
@@ -2020,6 +2313,8 @@ export const useChatStore = defineStore('chat', () => {
           status: 'pending',
         },
       ],
+      startedAt: now,
+      endedAt: null,
     })
   }
 
@@ -2150,9 +2445,35 @@ export const useChatStore = defineStore('chat', () => {
     return route.planNodes.find(node => {
       if (excluded.has(node.id)) return false
       if (!options.includeRespond && RESERVED_MULTI_AGENT_NODE_IDS.has(node.id)) return false
-      if (node.status === 'done' || node.status === 'blocked') return false
+      if (node.status === 'done' || node.status === 'blocked' || node.status === 'doing') return false
+      const dependenciesReady = (node.dependsOn || []).every(dependsOn => {
+        const dependency = route.planNodes.find(item => item.id === dependsOn)
+        return !dependency || dependency.status === 'done'
+      })
+      if (!dependenciesReady) return false
       return true
     }) || null
+  }
+
+  function normalizeRunningMultiAgentNodes(
+    nodes: MultiAgentPlanNodeState[],
+    runningNodeId: string | null,
+  ): MultiAgentPlanNodeState[] {
+    let fallbackRunningUsed = false
+    return nodes.map((node) => {
+      if (RESERVED_MULTI_AGENT_NODE_IDS.has(node.id)) return node
+      if (runningNodeId) {
+        if (node.id === runningNodeId) return { ...node, status: 'doing' }
+        if (node.status === 'doing') return { ...node, status: 'todo' }
+        return node
+      }
+      if (node.status !== 'doing') return node
+      if (!fallbackRunningUsed) {
+        fallbackRunningUsed = true
+        return node
+      }
+      return { ...node, status: 'todo' }
+    })
   }
 
   function setMultiAgentNodeStatus(
@@ -2162,6 +2483,24 @@ export const useChatStore = defineStore('chat', () => {
   ) {
     if (!nodeId) return
     patchMultiAgentPlanNodes(sessionId, [nodeId], patch)
+  }
+
+  function completeDependentHermesNodes(sessionId: string, targetNodeIds: string[], summary: string) {
+    const current = multiAgentRoutes.value.get(sessionId)
+    if (!current || targetNodeIds.length === 0) return
+    const dependencyIds = new Set<string>()
+    current.planNodes
+      .filter(node => targetNodeIds.includes(node.id))
+      .forEach((node) => {
+        ;(node.dependsOn || []).forEach(dependsOn => {
+          if (!isReservedMultiAgentNodeId(dependsOn)) dependencyIds.add(dependsOn)
+        })
+      })
+    if (dependencyIds.size === 0) return
+    patchMultiAgentPlanNodes(sessionId, [...dependencyIds], {
+      status: 'done',
+      summary: summary || '前置步骤已完成。',
+    })
   }
 
   function resolveSubagentPlanNodeIds(sessionId: string, subagentId: string, explicitNodeIds: string[] = []) {
@@ -2236,12 +2575,16 @@ export const useChatStore = defineStore('chat', () => {
       }
     })
     const nextCurrentNodeId = requestedCurrentNodeId !== undefined ? requestedCurrentNodeId : current.currentNodeId
+    const runningNodeId = targetNodeId && !isReservedMultiAgentNodeId(targetNodeId) && patch.currentNodeStatus === 'doing'
+      ? targetNodeId
+      : null
+    const normalizedNodes = normalizeRunningMultiAgentNodes(nodes, runningNodeId)
     const normalizedCurrentNodeId = nextCurrentNodeId && isReservedMultiAgentNodeId(nextCurrentNodeId)
       ? nextCurrentNodeId
-      : (nextCurrentNodeId && nodes.some(node => node.id === nextCurrentNodeId)
+      : (nextCurrentNodeId && normalizedNodes.some(node => node.id === nextCurrentNodeId)
           ? nextCurrentNodeId
           : (() => {
-              const nextNode = nodes.find(node => !isReservedMultiAgentNodeId(node.id) && node.status === 'doing')
+              const nextNode = normalizedNodes.find(node => !isReservedMultiAgentNodeId(node.id) && node.status === 'doing')
               if (nextNode) return nextNode.id
               if (current.status === 'completed') return 'respond'
               return current.currentNodeId
@@ -2250,7 +2593,7 @@ export const useChatStore = defineStore('chat', () => {
       ...current,
       status: patch.status || current.status,
       currentNodeId: normalizedCurrentNodeId,
-      planNodes: nodes,
+      planNodes: normalizedNodes,
       activity: current.activity,
     })
   }
@@ -2344,6 +2687,7 @@ export const useChatStore = defineStore('chat', () => {
             : step.status,
       })),
       activity: current.activity,
+      endedAt: current.endedAt || Date.now(),
     })
 
     appendMultiAgentActivity(sessionId, {
@@ -2362,6 +2706,15 @@ export const useChatStore = defineStore('chat', () => {
   function handleSubagentEvent(sessionId: string, evt: RunEvent) {
     const eventName = String(evt.event || '')
     if (!eventName.startsWith('subagent.')) return
+    const collaborationRunId = typeof (evt as any).collaboration_run_id === 'string' && (evt as any).collaboration_run_id
+      ? String((evt as any).collaboration_run_id)
+      : ''
+    if (collaborationRunId) {
+      mutateMultiAgentRouteState(sessionId, route => ({
+        ...route,
+        runId: collaborationRunId,
+      }))
+    }
 
     const subagentId = String((evt as any).subagent_id || `${(evt as any).task_index ?? 0}`)
     const explicitPlanNodeIds = Array.isArray((evt as any).plan_node_ids)
@@ -2407,6 +2760,10 @@ export const useChatStore = defineStore('chat', () => {
       ? ((evt as any).status && String((evt as any).status) !== 'completed' ? 'error' : 'done')
       : 'running'
 
+    if (eventName === 'subagent.start' && planNodeIds.length > 0) {
+      completeDependentHermesNodes(sessionId, planNodeIds, '已完成前置校验，进入子智能体执行阶段。')
+    }
+
     if (planNodeIds.length > 0) {
       patchMultiAgentPlanNodes(sessionId, planNodeIds, {
         status: toolStatus === 'error' ? 'blocked' : toolStatus === 'done' ? 'done' : 'doing',
@@ -2423,6 +2780,7 @@ export const useChatStore = defineStore('chat', () => {
         title: `执行子任务：${agentName || '子智能体'}`,
         phase: '执行',
         status: toolStatus === 'error' ? 'blocked' : toolStatus === 'done' ? 'done' : 'doing',
+        dependsOn: ['route'],
         executor: {
           type: 'subagent',
           id: subagentId,
@@ -2436,6 +2794,7 @@ export const useChatStore = defineStore('chat', () => {
       title: '汇总阶段成果并回复用户',
       phase: '汇总',
       status: 'todo',
+      dependsOn: planNodeIds.length > 0 ? planNodeIds : ['execute'],
       executor: {
         type: 'hermes',
         name: '主智能体',
@@ -2792,6 +3151,15 @@ export const useChatStore = defineStore('chat', () => {
   function handleAgentEvent(evt: RunEvent) {
     const sid = evt.session_id
     if (!sid) return
+    const collaborationRunId = typeof (evt as any).collaboration_run_id === 'string' && (evt as any).collaboration_run_id
+      ? String((evt as any).collaboration_run_id)
+      : ''
+    if (collaborationRunId) {
+      mutateMultiAgentRouteState(sid, route => ({
+        ...route,
+        runId: collaborationRunId,
+      }))
+    }
     if ((evt as any).source === 'coding_agent' && (evt as any).kind === 'status') return
     if ((evt as any).kind === 'multi_agent_progress') {
       const stage = String((evt as any).stage || '').trim()
@@ -2920,6 +3288,7 @@ export const useChatStore = defineStore('chat', () => {
       return
     }
     if ((evt as any).kind === 'multi_agent_route') {
+      const mode = String((evt as any).mode || 'hermes_native') as 'delegate_subagent' | 'hermes_native'
       const selectedAgent = ((evt as any).selected_agent || {}) as { id?: string; name?: string }
       const todo = Array.isArray((evt as any).todo)
         ? ((evt as any).todo as unknown[]).map(item => sanitizeMultiAgentText(item)).filter(Boolean)
@@ -2929,19 +3298,74 @@ export const useChatStore = defineStore('chat', () => {
         : []
       const intent = sanitizeMultiAgentText((evt as any).intent || '')
       const rawPlan = Array.isArray((evt as any).plan?.nodes) ? (evt as any).plan.nodes as Array<Record<string, any>> : []
+      const rawPlanDependencies = Array.isArray((evt as any).plan?.dependencies)
+        ? (evt as any).plan.dependencies as Array<Record<string, any>>
+        : []
       const existing = multiAgentRoutes.value.get(sid)
-      const planNodes: MultiAgentPlanNodeState[] = rawPlan.map((node, index) => ({
-        id: String(node.id || `node_${index + 1}`),
-        title: sanitizeMultiAgentText(node.title || `节点 ${index + 1}`) || `节点 ${index + 1}`,
-        phase: sanitizeMultiAgentText(node.phase || '执行') || '执行',
-        status: String(node.status || 'todo') as MultiAgentPlanNodeState['status'],
-        executor: {
-          type: node.executor?.type === 'subagent' ? 'subagent' : 'hermes',
-          id: typeof node.executor?.id === 'string' ? node.executor.id : undefined,
-          name: sanitizeMultiAgentText(node.executor?.name || '主智能体') || '主智能体',
-        },
-        summary: sanitizeMultiAgentText(node.summary || ''),
-      }))
+      const routeText = sanitizeMultiAgentText((evt as any).text || (evt as any).reason || '')
+      const rawExecutableCount = rawPlan.filter(node => !isReservedMultiAgentNodeId(String(node?.id || ''))).length
+      const shouldUseTodoFallback = rawExecutableCount === 0 && todo.length > 0
+      const fallbackPlan = shouldUseTodoFallback
+        ? buildRouteTodoFallbackPlan({
+            mode,
+            todo,
+            constraints,
+            selectedAgent,
+            routeText,
+          })
+        : null
+
+      let normalizedDependencies: MultiAgentPlanDependencyState[] = []
+      let planNodes: MultiAgentPlanNodeState[] = []
+
+      if (fallbackPlan) {
+        normalizedDependencies = fallbackPlan.dependencies
+        planNodes = fallbackPlan.nodes
+      } else {
+        const planNodeIds = rawPlan.map((node, index) => String(node.id || `node_${index + 1}`))
+        const validNodeIds = new Set(planNodeIds)
+        normalizedDependencies = rawPlanDependencies
+          .map((dependency): MultiAgentPlanDependencyState | null => {
+            const from = String(dependency.from || '').trim()
+            const to = String(dependency.to || '').trim()
+            if (!from || !to || from === to || !validNodeIds.has(from) || !validNodeIds.has(to)) return null
+            return {
+              from,
+              to,
+              type: dependency.type === 'informs' ? 'informs' : 'blocks',
+            }
+          })
+          .filter((item): item is MultiAgentPlanDependencyState => Boolean(item))
+        if (normalizedDependencies.length === 0) {
+          const taskNodeIds = planNodeIds.filter(id => !RESERVED_MULTI_AGENT_NODE_IDS.has(id))
+          taskNodeIds.slice(1).forEach((nodeId, index) => {
+            normalizedDependencies.push({
+              from: taskNodeIds[index]!,
+              to: nodeId,
+              type: 'blocks',
+            })
+          })
+        }
+        const dependsOnMap = new Map<string, string[]>()
+        normalizedDependencies.forEach((dependency) => {
+          const currentDeps = dependsOnMap.get(dependency.to) || []
+          if (!currentDeps.includes(dependency.from)) currentDeps.push(dependency.from)
+          dependsOnMap.set(dependency.to, currentDeps)
+        })
+        planNodes = rawPlan.map((node, index) => ({
+          id: planNodeIds[index],
+          title: sanitizeMultiAgentText(node.title || `节点 ${index + 1}`) || `节点 ${index + 1}`,
+          phase: sanitizeMultiAgentText(node.phase || '执行') || '执行',
+          status: String(node.status || 'todo') as MultiAgentPlanNodeState['status'],
+          dependsOn: dependsOnMap.get(planNodeIds[index]) || [],
+          executor: {
+            type: node.executor?.type === 'subagent' ? 'subagent' : 'hermes',
+            id: typeof node.executor?.id === 'string' ? node.executor.id : undefined,
+            name: sanitizeMultiAgentText(node.executor?.name || '主智能体') || '主智能体',
+          },
+          summary: sanitizeMultiAgentText(node.summary || ''),
+        }))
+      }
       const executableCount = planNodes.filter(node => !RESERVED_MULTI_AGENT_NODE_IDS.has(node.id)).length
       const currentNodeId = executableCount > 0
         ? 'route'
@@ -2959,7 +3383,6 @@ export const useChatStore = defineStore('chat', () => {
         }
       })
       const objective = sanitizeMultiAgentText((evt as any).plan?.objective || (evt as any).reason || '')
-      const routeText = sanitizeMultiAgentText((evt as any).text || (evt as any).reason || '')
       patchWorkflow(sid, workflow => ({
         ...workflow,
         subtitle: selectedAgent.name
@@ -3043,8 +3466,13 @@ export const useChatStore = defineStore('chat', () => {
           status: 'done',
         },
       ]
+      const collaborationRunId = typeof (evt as any).collaboration_run_id === 'string' && (evt as any).collaboration_run_id
+        ? String((evt as any).collaboration_run_id)
+        : (existing?.runId || `pending:${sid}:${Date.now()}`)
       setMultiAgentRouteState(sid, {
-        mode: String((evt as any).mode || 'hermes_native') as 'delegate_subagent' | 'hermes_native',
+        runId: collaborationRunId,
+        sessionId: sid,
+        mode,
         intent,
         category: sanitizeMultiAgentText((evt as any).category || '通用任务') || '通用任务',
         reason: sanitizeMultiAgentText((evt as any).reason || ''),
@@ -3057,8 +3485,11 @@ export const useChatStore = defineStore('chat', () => {
         todo,
         constraints,
         planNodes: normalizedNodes,
+        planDependencies: normalizedDependencies,
         activity,
         thinkingSteps,
+        startedAt: existing?.startedAt || Date.now(),
+        endedAt: null,
       })
       return
     }
@@ -3260,6 +3691,48 @@ export const useChatStore = defineStore('chat', () => {
       requestedAt: Date.now(),
     })
     pendingApprovals.value = new Map(pendingApprovals.value)
+
+    const commandText = summarizeMultiAgentObjectiveText(String((evt as any).command || ''), 120)
+    const detail = sanitizeMultiAgentText(description || '')
+    const waitText = detail
+      ? `${detail}${commandText ? ` 命令：${commandText}` : ''}`
+      : (commandText ? `等待终端权限确认：${commandText}` : '等待终端权限确认。')
+
+    patchWorkflow(sid, workflow => ({
+      ...workflow,
+      subtitle: '等待权限确认',
+      current: waitText,
+      status: 'running',
+    }))
+    patchWorkflowStep(sid, 'execute', {
+      detail: waitText,
+      status: 'running',
+    })
+    upsertWorkflowEvent(sid, {
+      id: `approval:${approvalId}`,
+      title: '等待终端权限确认',
+      text: waitText,
+      status: 'running',
+      timestamp: Date.now(),
+    })
+    appendMultiAgentActivity(sid, {
+      id: `approval:${approvalId}:requested`,
+      kind: 'route',
+      title: '等待终端权限确认',
+      text: waitText,
+      status: 'running',
+      timestamp: Date.now(),
+    })
+
+    const currentRoute = multiAgentRoutes.value.get(sid)
+    const activeNodeId = currentRoute?.currentNodeId || 'route'
+    updateMultiAgentExecutionState(sid, {
+      status: 'running',
+      currentNodeId: activeNodeId,
+      nodeId: activeNodeId,
+      currentNodeSummary: waitText,
+      currentNodeStatus: activeNodeId === 'respond' ? 'doing' : 'doing',
+    })
   }
 
   function clearPendingApproval(evt: RunEvent) {
@@ -3269,8 +3742,49 @@ export const useChatStore = defineStore('chat', () => {
     if (!current) return
     const approvalId = (evt as any).approval_id
     if (approvalId && current.approvalId !== approvalId) return
+    const resolved = (evt as any).resolved !== false
+    const choice = typeof (evt as any).choice === 'string' ? String((evt as any).choice) : ''
+    const resultText = resolved
+      ? `终端权限已确认${choice ? `（${choice}）` : ''}，继续执行。`
+      : `终端权限未通过${choice ? `（${choice}）` : ''}。`
     pendingApprovals.value.delete(sid)
     pendingApprovals.value = new Map(pendingApprovals.value)
+
+    patchWorkflow(sid, workflow => ({
+      ...workflow,
+      subtitle: resolved ? '继续执行中' : '权限校验失败',
+      current: resultText,
+      status: resolved ? 'running' : 'error',
+    }))
+    patchWorkflowStep(sid, 'execute', {
+      detail: resultText,
+      status: resolved ? 'running' : 'error',
+    })
+    upsertWorkflowEvent(sid, {
+      id: `approval:${current.approvalId}`,
+      title: resolved ? '终端权限已确认' : '终端权限未通过',
+      text: resultText,
+      status: resolved ? 'done' : 'error',
+      timestamp: Date.now(),
+    })
+    appendMultiAgentActivity(sid, {
+      id: `approval:${current.approvalId}:resolved`,
+      kind: 'route',
+      title: resolved ? '终端权限已确认' : '终端权限未通过',
+      text: resultText,
+      status: resolved ? 'done' : 'error',
+      timestamp: Date.now(),
+    })
+
+    const currentRoute = multiAgentRoutes.value.get(sid)
+    const activeNodeId = currentRoute?.currentNodeId || 'route'
+    updateMultiAgentExecutionState(sid, {
+      status: resolved ? 'running' : 'failed',
+      currentNodeId: activeNodeId,
+      nodeId: activeNodeId,
+      currentNodeSummary: resultText,
+      currentNodeStatus: resolved ? 'doing' : 'blocked',
+    })
   }
 
   function setPendingClarify(evt: RunEvent) {
@@ -5069,6 +5583,8 @@ export const useChatStore = defineStore('chat', () => {
     queueLengths,
     queuedUserMessages,
     multiAgentRoutes,
+    multiAgentRouteHistories,
+    selectedMultiAgentRunIds,
     pendingApprovals,
     activePendingApproval,
     activePendingClarify,
@@ -5093,6 +5609,8 @@ export const useChatStore = defineStore('chat', () => {
     loadSessions,
     refreshSessionListOnly,
     refreshActiveSession,
+    loadSessionCollaborationHistory,
+    selectMultiAgentRun,
     getThinkingObservation,
     noteThinkingDelta,
     noteReasoningStart,

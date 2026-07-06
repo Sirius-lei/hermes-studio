@@ -6,7 +6,7 @@ import { contentBlocksToString, extractTextForPreview } from './content-blocks'
 import { getOrCreateSession, pushState } from './compression'
 import { calcAndUpdateUsage } from './usage'
 import type { ContentBlock, SessionState } from './types'
-import type { MultiAgentRouteDecision } from './multi-agent-routing'
+import { resolveMultiAgentReplan, type MultiAgentRouteCandidate, type MultiAgentRouteDecision } from './multi-agent-routing'
 
 interface SubagentRunSocketData {
   input: string | ContentBlock[]
@@ -14,11 +14,22 @@ interface SubagentRunSocketData {
   display_role?: 'user' | 'command'
   storage_message?: string
   session_id?: string
+  model?: string
+  provider?: string
   workspace?: string | null
   source?: string
   session_source?: 'global_agent' | 'workflow'
   queue_id?: string
+  collaboration_run_id?: string
+  sub_agent_candidates?: MultiAgentRouteCandidate[]
   onEvent?: (event: string, payload: any) => void
+}
+
+interface SubagentContinuationOptions {
+  continueWithHermes?: (args: {
+    input: string
+    instructions: string
+  }) => Promise<void>
 }
 
 interface SubagentStreamTextState {
@@ -490,6 +501,7 @@ export async function handleSubagentRun(
   decision: MultiAgentRouteDecision,
   dequeueNextQueuedRun?: (socket: Socket, sessionId: string, fallbackProfile?: string) => boolean,
   skipUserMessage = false,
+  options: SubagentContinuationOptions = {},
 ): Promise<void> {
   const sessionId = String(data.session_id || '').trim()
   const selectedAgent = decision.selectedAgent
@@ -520,6 +532,7 @@ export async function handleSubagentRun(
       ? 'workflow'
       : 'cli'
   const state = getOrCreateSession(sessionMap, sessionId)
+  let handedOffToHermes = false
   state.isWorking = true
   state.isAborting = false
   state.profile = profile
@@ -531,18 +544,24 @@ export async function handleSubagentRun(
   state.responseRun = undefined
 
   const existingSession = getSession(sessionId)
+  const socketUser = socket.data.user as { id?: string | number } | undefined
   if (!existingSession) {
     createSession({
       id: sessionId,
       profile,
       source: runSource,
+      user_id: socketUser?.id,
       title: preview,
       workspace: data.workspace || undefined,
     })
   }
 
   const emit = (event: string, payload: any) => {
-    const tagged = { ...payload, session_id: sessionId }
+    const tagged = {
+      ...payload,
+      session_id: sessionId,
+      ...(data.collaboration_run_id ? { collaboration_run_id: data.collaboration_run_id } : {}),
+    }
     pushState(sessionMap, sessionId, event, tagged)
     data.onEvent?.(event, tagged)
     nsp.to(`session:${sessionId}`).emit(event, tagged)
@@ -647,6 +666,63 @@ export async function handleSubagentRun(
       duration_seconds: Math.round((Date.now() - startedAt) / 100) / 10,
       api_calls: 1,
     })
+
+    const replan = await resolveMultiAgentReplan({
+      profile,
+      provider: data.provider,
+      model: data.model,
+      candidates: data.sub_agent_candidates || [],
+      previous: decision,
+      observation: assistantContent,
+      onProgress: (event) => {
+        emit('agent.event', {
+          event: 'agent.event',
+          kind: 'multi_agent_progress',
+          ...event,
+        })
+      },
+      onReasoning: (event) => {
+        emit('agent.event', {
+          event: 'agent.event',
+          kind: 'multi_agent_reasoning',
+          ...event,
+        })
+      },
+    })
+
+    if (replan.continueExecution && replan.routeDecision && replan.followUpInput && replan.routeDecision.hermesInstructions && options.continueWithHermes) {
+      emit('agent.event', {
+        event: 'agent.event',
+        kind: 'multi_agent_route',
+        mode: replan.routeDecision.executionMode,
+        intent: replan.routeDecision.intent,
+        category: replan.routeDecision.category,
+        confidence: replan.routeDecision.confidence,
+        reason: replan.routeDecision.reason,
+        todo: replan.routeDecision.todo,
+        constraints: replan.routeDecision.constraints,
+        plan: replan.routeDecision.plan,
+        selected_agent: null,
+        text: replan.routeDecision.routeText,
+      })
+      try {
+        await options.continueWithHermes({
+          input: replan.followUpInput,
+          instructions: replan.routeDecision.hermesInstructions,
+        })
+        handedOffToHermes = true
+        return
+      } catch (error) {
+        const message = sanitizeSubagentDisplayText(error instanceof Error ? error.message : String(error))
+        emit('run.failed', {
+          event: 'run.failed',
+          run_id: runId,
+          error: `main-agent continuation failed: ${message}`,
+        })
+        return
+      }
+    }
+
     emit('run.completed', {
       event: 'run.completed',
       run_id: runId,
@@ -677,6 +753,7 @@ export async function handleSubagentRun(
       error: `sub-agent ${selectedAgent.name} failed: ${message}`,
     })
   } finally {
+    if (handedOffToHermes) return
     state.isWorking = false
     state.isAborting = false
     state.runId = undefined

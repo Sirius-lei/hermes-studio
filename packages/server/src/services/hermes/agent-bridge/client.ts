@@ -606,6 +606,14 @@ export class AgentBridgeClient {
     return this.request({ action: 'destroy_profile', profile }, { serialize: true })
   }
 
+  warmProfile(profile: string, workerKey?: string): Promise<AgentBridgeResponse> {
+    return this.request({
+      action: 'warm_profile',
+      profile,
+      ...(workerKey ? { worker_key: workerKey } : {}),
+    }, { serialize: true })
+  }
+
   getHistory(sessionId: string, profile?: string): Promise<AgentBridgeResponse> {
     return this.request({
       action: 'get_history',

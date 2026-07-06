@@ -37,32 +37,6 @@ function formatTokens(n: number): string {
   return String(n)
 }
 
-function formatToolDuration(seconds: number): string {
-  if (seconds < 1) return `${Math.round(seconds * 1000)}ms`
-  if (seconds < 60) return `${Math.round(seconds * 10) / 10}s`
-  const mins = Math.floor(seconds / 60)
-  const secs = Math.round(seconds % 60)
-  return `${mins}m ${secs}s`
-}
-
-function compactToolPreview(toolName?: string, preview?: string): string {
-  const text = String(preview || '').replace(/\s+/g, ' ').trim()
-  if (!text) return ''
-  if (toolName === 'delegate_task') return text.length > 84 ? `${text.slice(0, 81)}...` : text
-  const genericNoise = [
-    'json_path',
-    'cache_id',
-    'row_count',
-    'columns',
-    'data',
-    'cache',
-  ]
-  if (genericNoise.some(token => text.includes(token))) {
-    return '工具已返回结果'
-  }
-  return text.length > 84 ? `${text.slice(0, 81)}...` : text
-}
-
 const isThinkingIndicatorVisible = computed(() => chatStore.isRunActive || !!chatStore.abortState);
 const currentToolCalls = computed(() => {
   const msgs = chatStore.messages;
@@ -79,17 +53,14 @@ const currentToolCalls = computed(() => {
   return [...tools].reverse();
 });
 
-const visibleToolCalls = computed(() =>
-  currentToolCalls.value.filter((tool) => !!tool.toolName),
-);
+const latestWorkflowMessageId = computed(() => {
+  const latest = [...chatStore.messages]
+    .reverse()
+    .find(message => message.systemType === "workflow" && message.workflow)
+  return latest?.id || null
+})
 
-const activeSubagentToolCall = computed(() =>
-  visibleToolCalls.value.find(tool => tool.toolName === 'delegate_task') || null,
-);
-
-const visibleSystemToolCalls = computed(() =>
-  visibleToolCalls.value.filter(tool => tool.toolName !== 'delegate_task'),
-);
+const hasWorkflowTrace = computed(() => !!latestWorkflowMessageId.value)
 
 const emptyState = computed(() => {
   const session = chatStore.activeSession;
@@ -116,12 +87,13 @@ const emptyState = computed(() => {
 });
 
 const displayMessages = computed(() => {
-  const currentToolIds = new Set(currentToolCalls.value.map((tool) => tool.id));
   return chatStore.messages.filter((m) => {
+    if (m.systemType === "workflow") return m.id === latestWorkflowMessageId.value;
     if (m.role === "tool") {
+      if (hasWorkflowTrace.value) return false;
       if (!toolTraceVisible.value || !m.toolName) return false;
-      if (m.toolName === "delegate_task") return true;
-      return !(chatStore.isRunActive && currentToolIds.has(m.id));
+      if (["delegate_task", "clarify", "todo"].includes(m.toolName)) return false;
+      return true;
     }
     if (
       m.role === "assistant" &&
@@ -141,7 +113,28 @@ function forkDividerId(sessionId: string): string {
 }
 
 const displayMessagesWithForkDivider = computed<Message[]>(() => {
-  const messages = displayMessages.value;
+  let messages = displayMessages.value;
+  const workflowIndex = messages.findIndex(message => message.systemType === "workflow");
+  if (workflowIndex >= 0) {
+    const workflowMessage = messages[workflowIndex];
+    const otherMessages = messages.filter((_, index) => index !== workflowIndex);
+    let lastUserIndex = -1;
+    for (let index = otherMessages.length - 1; index >= 0; index -= 1) {
+      if (otherMessages[index].role === "user") {
+        lastUserIndex = index;
+        break;
+      }
+    }
+    if (lastUserIndex >= 0) {
+      messages = [
+        ...otherMessages.slice(0, lastUserIndex + 1),
+        workflowMessage,
+        ...otherMessages.slice(lastUserIndex + 1),
+      ];
+    } else {
+      messages = [workflowMessage, ...otherMessages];
+    }
+  }
   const lineage = forkLineage.value;
   const session = chatStore.activeSession;
   if (!lineage || !session?.forkPointMessageId) return messages;
@@ -507,11 +500,11 @@ defineExpose({
       <template #after>
         <Transition name="fade">
         <div
-          v-if="isThinkingIndicatorVisible && (activeSubagentToolCall || visibleSystemToolCalls.length > 0 || chatStore.compressionState || chatStore.abortState)"
+          v-if="isThinkingIndicatorVisible && (chatStore.compressionState || chatStore.abortState)"
           class="streaming-indicator"
         >
           <div
-            v-if="activeSubagentToolCall || visibleSystemToolCalls.length > 0 || chatStore.compressionState || chatStore.abortState"
+            v-if="chatStore.compressionState || chatStore.abortState"
             class="tool-calls-panel"
           >
             <!-- Abort indicator -->
@@ -595,133 +588,6 @@ defineExpose({
                 v-if="chatStore.compressionState.compressing"
                 class="tool-call-spinner"
               ></span>
-            </div>
-            <div
-              v-if="activeSubagentToolCall"
-              class="tool-call-item is-subagent-status"
-            >
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.5"
-                class="tool-call-icon"
-              >
-                <path d="M8 7V5a4 4 0 1 1 8 0v2" />
-                <path d="M6 10h12" />
-                <rect x="4" y="10" width="16" height="10" rx="2" />
-                <path d="M9 15h.01M15 15h.01" />
-              </svg>
-              <span class="tool-call-name">子智能体执行</span>
-              <span
-                v-if="activeSubagentToolCall.toolPreview"
-                class="tool-call-preview"
-                :title="activeSubagentToolCall.toolPreview"
-              >{{ compactToolPreview(activeSubagentToolCall.toolName, activeSubagentToolCall.toolPreview) }}</span>
-              <span
-                v-if="activeSubagentToolCall.toolDuration && activeSubagentToolCall.toolStatus !== 'running'"
-                class="tool-call-duration"
-              >{{ formatToolDuration(activeSubagentToolCall.toolDuration) }}</span>
-              <span
-                v-if="activeSubagentToolCall.toolStatus === 'running'"
-                class="tool-call-spinner"
-              ></span>
-              <svg
-                v-else-if="activeSubagentToolCall.toolStatus === 'done'"
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                class="tool-call-success-icon"
-              >
-                <circle cx="12" cy="12" r="10" fill="currentColor" fill-opacity="0.15"/>
-                <path d="M8 12L11 15L16 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none" />
-              </svg>
-              <svg
-                v-else-if="activeSubagentToolCall.toolStatus === 'error'"
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                class="tool-call-error-icon"
-              >
-                <circle cx="12" cy="12" r="10" fill="currentColor" fill-opacity="0.15"/>
-                <path d="M15 9L9 15M9 9L15 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none" />
-              </svg>
-            </div>
-            <!-- Tool calls -->
-            <div
-              v-for="tc in visibleSystemToolCalls"
-              :key="tc.id"
-              class="tool-call-item"
-            >
-              <svg
-                width="12"
-                height="12"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.5"
-                class="tool-call-icon"
-              >
-                <path
-                  d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"
-                />
-              </svg>
-              <span class="tool-call-name">{{ tc.toolName }}</span>
-              <span
-                v-if="tc.toolPreview"
-                class="tool-call-preview"
-                :title="tc.toolPreview"
-              >{{ compactToolPreview(tc.toolName, tc.toolPreview) }}</span>
-              <span
-                v-if="tc.toolDuration && tc.toolStatus !== 'running'"
-                class="tool-call-duration"
-                :title="$t('chat.executionDuration')"
-              >{{ formatToolDuration(tc.toolDuration) }}</span
-              >
-              <svg
-                v-if="tc.toolStatus === 'done'"
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                class="tool-call-success-icon"
-              >
-                <circle cx="12" cy="12" r="10" fill="currentColor" fill-opacity="0.15"/>
-                <path
-                  d="M8 12L11 15L16 9"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  fill="none"
-                />
-              </svg>
-              <span
-                v-if="tc.toolStatus === 'running'"
-                class="tool-call-spinner"
-              ></span>
-              <svg
-                v-if="tc.toolStatus === 'error'"
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                class="tool-call-error-icon"
-              >
-                <circle cx="12" cy="12" r="10" fill="currentColor" fill-opacity="0.15"/>
-                <path
-                  d="M15 9L9 15M9 9L15 15"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  fill="none"
-                />
-              </svg>
             </div>
           </div>
         </div>

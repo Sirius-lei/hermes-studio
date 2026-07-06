@@ -4,9 +4,9 @@ import type { AvailableModelGroup } from "@/api/hermes/system";
 import { fetchCodingAgentsStatus, inferCodingAgentApiMode, normalizeCodingAgentApiMode, type CodingAgentApiMode, type CodingAgentId } from "@/api/coding-agents";
 import {
   useChatStore,
-  type MultiAgentPlanNodeState,
   type MultiAgentRouteState,
   type MultiAgentRunOptions,
+  type MultiAgentWorkflowMessageState,
   type Session,
 } from "@/stores/hermes/chat";
 import { useAppStore } from "@/stores/hermes/app";
@@ -31,15 +31,16 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { copyToClipboard } from "@/utils/clipboard";
+import { useSessionSearch } from "@/composables/useSessionSearch";
 import FolderPicker from "./FolderPicker.vue";
 import ChatInput from "./ChatInput.vue";
 import ConversationMonitorPane from "./ConversationMonitorPane.vue";
 import MessageList from "./MessageList.vue";
+import MultiAgentCanvasPanel from "./MultiAgentCanvasPanel.vue";
 import SessionListItem from "./SessionListItem.vue";
 import OutlinePanel from "./OutlinePanel.vue";
 import FilesPanel from "./FilesPanel.vue";
 import TerminalPanel from "./TerminalPanel.vue";
-import PageSidebarNav from "@/components/layout/PageSidebarNav.vue";
 import { isStoredSuperAdmin } from "@/api/client";
 import { SUB_AGENT_STORAGE_EVENT, readStoredSubAgents } from "@/utils/subagent-storage";
 
@@ -50,6 +51,7 @@ const sessionBrowserPrefsStore = useSessionBrowserPrefsStore();
 const router = useRouter();
 const message = useMessage();
 const { t } = useI18n();
+const { openSessionSearch } = useSessionSearch();
 const isSuperAdmin = computed(() => isStoredSuperAdmin());
 
 type MultiAgentSkill = {
@@ -74,6 +76,7 @@ type MultiAgentPlanTask = {
   phase: string
   title: string
   summary: string
+  dependsOn: string[]
   executorType: "hermes" | "subagent"
   agentId: string
   agentName: string
@@ -119,56 +122,99 @@ const multiAgentRuntimeRoute = computed<MultiAgentRouteState | null>(() => {
   return chatStore.multiAgentRoutes.get(sessionId) || null;
 });
 
+const multiAgentRouteHistory = computed<MultiAgentRouteState[]>(() => {
+  if (!multiAgentMode.value) return [];
+  const sessionId = chatStore.activeSessionId;
+  if (!sessionId) return [];
+  return chatStore.multiAgentRouteHistories.get(sessionId) || [];
+});
+
+const multiAgentSelectedHistoryRoute = computed<MultiAgentRouteState | null>(() => {
+  const sessionId = chatStore.activeSessionId;
+  if (!sessionId) return null;
+  const selectedRunId = chatStore.selectedMultiAgentRunIds.get(sessionId) || "";
+  if (!selectedRunId) return multiAgentRouteHistory.value[0] || null;
+  return multiAgentRouteHistory.value.find(route => route.runId === selectedRunId) || multiAgentRouteHistory.value[0] || null;
+});
+
+const multiAgentDisplayedRoute = computed<MultiAgentRouteState | null>(() => {
+  const sessionId = chatStore.activeSessionId;
+  if (!sessionId) return null;
+  const selectedRunId = chatStore.selectedMultiAgentRunIds.get(sessionId) || "";
+  const runtimeRoute = multiAgentRuntimeRoute.value;
+  if (runtimeRoute && (!selectedRunId || selectedRunId === runtimeRoute.runId)) return runtimeRoute;
+  return multiAgentSelectedHistoryRoute.value || runtimeRoute || null;
+});
+
+const multiAgentHistoryItems = computed(() =>
+  multiAgentRouteHistory.value.map(route => ({
+    runId: route.runId,
+    objective: route.objective || route.reason || route.text || "协作任务",
+    status: route.status,
+    startedAt: route.startedAt,
+    endedAt: route.endedAt,
+  })),
+);
+
+const multiAgentWorkflowSnapshot = computed<MultiAgentWorkflowMessageState | null>(() => {
+  if (!multiAgentMode.value) return null;
+  const workflowMessage = [...chatStore.messages]
+    .reverse()
+    .find(message => message.systemType === "workflow" && message.workflow);
+  return workflowMessage?.workflow || null;
+});
+
 const displayedMultiAgentTasks = computed<MultiAgentPlanTask[]>(() => {
-  const route = multiAgentRuntimeRoute.value;
+  const route = multiAgentDisplayedRoute.value;
   if (!route) return [];
 
-  return route.planNodes
-    .filter(task => !["understand", "route", "respond"].includes(task.id))
+  const visibleTasks = route.planNodes
+    .filter(task => !["understand", "route"].includes(task.id));
+  const executableTasks = visibleTasks.filter(task => task.id !== "respond");
+  const tasksToRender = executableTasks.length > 0 ? visibleTasks : [];
+
+  return tasksToRender
     .map((task, index) => ({
       ...task,
       index: index + 1,
+      dependsOn: task.dependsOn || [],
       executorType: task.executor.type,
       agentId: task.executor.id || "",
       agentName: task.executor.name,
     }));
 });
 
-const activeExecutionTask = computed(() => {
-  const route = multiAgentRuntimeRoute.value;
-  if (!route) return null;
-  return displayedMultiAgentTasks.value.find(task => task.id === route.currentNodeId) || null;
-});
-
 const multiAgentTodoSteps = computed<MultiAgentPlannerStep[]>(() => {
-  const route = multiAgentRuntimeRoute.value;
-  if (!route?.todo?.length) return [];
-  return route.todo.map((item, index) => {
-    const mappedTask = displayedMultiAgentTasks.value[index];
-    const isDone = route.status === "completed" || (mappedTask ? mappedTask.status === "done" : false);
-    const isRunning = !isDone && (mappedTask ? mappedTask.status === "doing" : index === 0 && route.currentNodeId === "route");
-    return {
-      id: `todo_${index + 1}`,
-      title: item,
-      detail: route.constraints[index] || route.reason || "等待执行。",
-      status: isDone ? "done" : isRunning ? "running" : "pending",
-    };
-  });
+  if (displayedMultiAgentTasks.value.length > 0) {
+    return displayedMultiAgentTasks.value.map((task) => ({
+      id: task.id,
+      title: task.title,
+      detail: task.summary || "等待执行。",
+      status: task.status === "done" ? "done" : task.status === "doing" ? "running" : "pending",
+    }));
+  }
+  return [];
 });
 
-const multiAgentPlannerDoneCount = computed(() =>
-  multiAgentTodoSteps.value.filter(step => step.status === "done").length,
-);
-
-const multiAgentExecutionDoneCount = computed(() =>
-  displayedMultiAgentTasks.value.filter(task => task.status === "done").length,
-);
+const currentQueuedMessageCount = computed(() => {
+  const sid = chatStore.activeSessionId;
+  if (!sid) return 0;
+  return chatStore.queuedUserMessages.get(sid)?.length || 0;
+});
 
 const multiAgentPanelStatusText = computed(() => {
-  const route = multiAgentRuntimeRoute.value;
+  const route = multiAgentDisplayedRoute.value;
   if (!route) return "等待任务";
+  if (chatStore.activePendingApproval) {
+    return currentQueuedMessageCount.value > 0
+      ? `等待权限确认 · ${currentQueuedMessageCount.value} 条排队`
+      : "等待权限确认";
+  }
   if (route.status === "failed") return "执行失败";
   if (route.status === "completed") return "已完成";
+  if (currentQueuedMessageCount.value > 0 && route.status === "running") {
+    return `执行中 · ${currentQueuedMessageCount.value} 条排队`;
+  }
   if (route.currentNodeId === "understand") return "理解需求中";
   if (route.currentNodeId === "route") return "规划任务中";
   if (route.currentNodeId === "respond") return "汇总结果中";
@@ -176,7 +222,7 @@ const multiAgentPanelStatusText = computed(() => {
 });
 
 const multiAgentPrimaryActorText = computed(() => {
-  const route = multiAgentRuntimeRoute.value;
+  const route = multiAgentDisplayedRoute.value;
   if (!route) return "当前由主智能体待命";
   if (route.selectedAgentName) return `已匹配子智能体：${route.selectedAgentName}`;
   return route.mode === "delegate_subagent"
@@ -185,7 +231,7 @@ const multiAgentPrimaryActorText = computed(() => {
 });
 
 const multiAgentObjectiveText = computed(() => {
-  const route = multiAgentRuntimeRoute.value;
+  const route = multiAgentDisplayedRoute.value;
   if (!route) return "";
   return route.objective || route.reason || route.text || "";
 });
@@ -197,54 +243,10 @@ const multiAgentObjectiveLines = computed(() =>
     .filter(Boolean),
 );
 
-function multiAgentTaskStatusLabel(status: MultiAgentPlanNodeState["status"]) {
-  switch (status) {
-    case "doing":
-      return "执行中";
-    case "done":
-      return "已完成";
-    case "blocked":
-      return "失败";
-    default:
-      return "待执行";
-  }
-}
-
-function multiAgentPlannerStatusLabel(status: MultiAgentPlannerStep["status"]) {
-  switch (status) {
-    case "running":
-      return "进行中";
-    case "done":
-      return "已完成";
-    default:
-      return "待执行";
-  }
-}
-
-function multiAgentTaskAgentLabel(task: MultiAgentPlanTask) {
-  return task.executorType === "subagent"
-    ? `子智能体：${task.agentName}`
-    : `主智能体：${task.agentName}`;
-}
-
-function multiAgentConnectorState(taskIndex: number, direction: "before" | "after") {
-  const tasks = displayedMultiAgentTasks.value;
-  if (direction === "before") {
-    if (taskIndex <= 0) return "hidden";
-    const previous = tasks[taskIndex - 1];
-    if (!previous) return "hidden";
-    if (previous.status === "done") return "done";
-    if (previous.status === "blocked") return "blocked";
-    if (previous.status === "doing") return "running";
-    return "idle";
-  }
-  if (taskIndex >= tasks.length - 1) return "hidden";
-  const current = tasks[taskIndex];
-  if (!current) return "hidden";
-  if (current.status === "done") return "done";
-  if (current.status === "blocked") return "blocked";
-  if (current.status === "doing") return "running";
-  return "idle";
+function selectMultiAgentHistoryRun(runId: string) {
+  const sessionId = chatStore.activeSessionId;
+  if (!sessionId) return;
+  chatStore.selectMultiAgentRun(sessionId, runId);
 }
 
 const showOutline = ref(false);
@@ -458,6 +460,22 @@ function handleMobileChange(e: MediaQueryListEvent | MediaQueryList) {
 
 function openPageSidebar() {
   showSessions.value = true;
+}
+
+function openChatRoute() {
+  if (chatStore.runtimeMode === "global_agent") {
+    void router.push({ name: "hermes.globalAgent" });
+    return;
+  }
+  void router.push({ name: "hermes.chat" });
+}
+
+function openHistoryRoute() {
+  void router.push({ name: "hermes.history" });
+}
+
+function openWorkflowRoute() {
+  void router.push({ name: "hermes.workflow" });
 }
 
 onMounted(() => {
@@ -1326,21 +1344,85 @@ async function handleSessionModelCustomSubmit() {
       class="session-list"
       :class="{ collapsed: !showSessions }"
     >
-      <div v-if="showSessions" class="page-sidebar-top">
-        <PageSidebarNav
-          :active="chatStore.runtimeMode === 'global_agent' ? 'global' : 'chat'"
-          :primary-label="t('chat.newChat')"
-          @primary="openNewChatModal"
-        />
-        <div class="session-list-toolbar">
-          <NSelect
-            class="session-profile-filter"
-            :value="sessionProfileFilter || '__all__'"
-            :options="profileFilterOptions"
-            size="small"
-            :loading="profilesStore.loading"
-            @update:value="handleProfileFilterChange"
-          />
+      <div v-if="showSessions" class="page-sidebar-top page-sidebar-top--chat">
+        <button class="session-primary-btn" type="button" @click="openNewChatModal">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+          <span>{{ t("chat.newChat") }}</span>
+        </button>
+
+        <nav class="session-nav-links" aria-label="会话导航">
+          <button class="session-nav-link" type="button" @click="openSessionSearch">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.5-3.5" />
+            </svg>
+            <span>{{ t("sidebar.search") }}</span>
+          </button>
+          <button class="session-nav-link" type="button" @click="openHistoryRoute">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 7v5l3 2" />
+            </svg>
+            <span>{{ t("sidebar.history") }}</span>
+          </button>
+        </nav>
+
+        <div class="session-mode-switch" role="tablist" aria-label="会话模式">
+          <button
+            class="session-mode-tab"
+            :class="{ active: chatStore.runtimeMode !== 'global_agent' }"
+            type="button"
+            @click="openChatRoute"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            </svg>
+          </button>
+          <button
+            class="session-mode-tab"
+            :class="{ active: chatStore.runtimeMode === 'global_agent' }"
+            type="button"
+            @click="void router.push({ name: 'hermes.globalAgent' })"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="7" y="7" width="10" height="10" rx="2" />
+              <path d="M9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M1 15h4M19 9h4M19 15h4" />
+            </svg>
+          </button>
+          <button class="session-mode-tab" type="button" @click="openWorkflowRoute">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="5" cy="12" r="3" />
+              <circle cx="19" cy="6" r="3" />
+              <circle cx="19" cy="18" r="3" />
+              <path d="M8 12h3a4 4 0 0 0 4-4V6" />
+              <path d="M8 12h3a4 4 0 0 1 4 4v2" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="session-list-toolbar session-list-toolbar--compact">
+          <div class="session-filter-wrap">
+            <NSelect
+              class="session-profile-filter"
+              :value="sessionProfileFilter || '__all__'"
+              :options="profileFilterOptions"
+              size="small"
+              :loading="profilesStore.loading"
+              @update:value="handleProfileFilterChange"
+            />
+          </div>
           <div class="session-list-actions">
             <button class="session-close-btn" @click="showSessions = false">
               <svg
@@ -1974,199 +2056,20 @@ async function handleSessionModelCustomSubmit() {
             :messages="chatStore.messages"
             @navigate="handleOutlineNavigate"
           />
-          <aside
+          <MultiAgentCanvasPanel
             v-if="multiAgentMode"
-            class="multi-agent-side-panel"
-            aria-label="多智能体协作规划"
-            data-testid="multi-agent-panel"
-          >
-            <div class="multi-agent-side-header">
-              <div class="multi-agent-side-title">
-                <span class="multi-agent-plan-dot" />
-                <div>
-                  <strong>多智能体协作模式</strong>
-                  <span class="multi-agent-header-status">{{ multiAgentPanelStatusText }}</span>
-                </div>
-              </div>
-              <button class="multi-agent-side-close" type="button" @click="toggleMultiAgentMode">
-                关闭
-              </button>
-            </div>
-            <div class="multi-agent-side-body">
-              <div v-if="!multiAgentRuntimeRoute" class="multi-agent-placeholder" data-testid="multi-agent-placeholder">
-                <strong>多智能体协作已展开</strong>
-                <span>发送需求后，右侧会先展示规划清单，再展示实际执行节点。</span>
-              </div>
-              <template v-else>
-                <div class="multi-agent-summary">
-                  <span>任务目标</span>
-                  <div class="multi-agent-scrollable">
-                    <template v-if="multiAgentObjectiveLines.length">
-                      <p v-for="(line, index) in multiAgentObjectiveLines" :key="`${index}-${line}`">{{ line }}</p>
-                    </template>
-                    <p v-else>发送消息后，这里会展示本轮任务目标、范围和预期交付。</p>
-                  </div>
-                </div>
-                <div
-                  class="multi-agent-status-strip"
-                  :class="`is-${multiAgentRuntimeRoute.status}`"
-                >
-                  <span class="multi-agent-status-pulse" aria-hidden="true"></span>
-                  <div>
-                    <strong>{{ multiAgentPrimaryActorText }}</strong>
-                    <small>{{ activeExecutionTask?.summary || multiAgentRuntimeRoute.reason || multiAgentRuntimeRoute.text || "正在更新协作状态" }}</small>
-                  </div>
-                </div>
-                <div class="multi-agent-metrics">
-                  <div>
-                    <span>任务节点</span>
-                    <strong>{{ displayedMultiAgentTasks.length }}</strong>
-                  </div>
-                  <div>
-                    <span>已完成</span>
-                    <strong>{{ multiAgentExecutionDoneCount }}/{{ displayedMultiAgentTasks.length || 0 }}</strong>
-                  </div>
-                  <div>
-                    <span>当前状态</span>
-                    <strong>{{ multiAgentPanelStatusText }}</strong>
-                  </div>
-                </div>
-                <section class="multi-agent-planner-shell">
-                  <div class="multi-agent-canvas-head">
-                    <strong>任务清单</strong>
-                    <span>
-                      {{ multiAgentTodoSteps.length ? `${multiAgentPlannerDoneCount}/${multiAgentTodoSteps.length}` : "等待生成" }}
-                    </span>
-                  </div>
-                  <div v-if="multiAgentTodoSteps.length" class="multi-agent-planner-list">
-                    <article
-                      v-for="(step, stepIndex) in multiAgentTodoSteps"
-                      :key="step.id"
-                      class="multi-agent-planner-item"
-                      :class="`is-${step.status}`"
-                    >
-                      <div class="multi-agent-planner-badge" :class="`is-${step.status}`" aria-hidden="true">
-                        <span v-if="step.status === 'pending'">{{ stepIndex + 1 }}</span>
-                        <span v-else-if="step.status === 'running'" class="multi-agent-task-spinner"></span>
-                        <svg
-                          v-else
-                          class="multi-agent-task-icon"
-                          viewBox="0 0 20 20"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2"
-                          stroke-linecap="round"
-                          stroke-linejoin="round"
-                        >
-                          <path d="M4 10.5 8 14.5 16 6.5" />
-                        </svg>
-                      </div>
-                      <div class="multi-agent-planner-copy">
-                        <div class="multi-agent-task-line">
-                          <strong>{{ step.title }}</strong>
-                          <span>{{ multiAgentPlannerStatusLabel(step.status) }}</span>
-                        </div>
-                        <div class="multi-agent-step-scroll">
-                          <p>{{ step.detail }}</p>
-                        </div>
-                      </div>
-                    </article>
-                  </div>
-                  <div v-else class="multi-agent-plain">
-                    主智能体完成路由后，这里会展示真实生成的待办清单和关键约束。
-                  </div>
-                </section>
-                <section class="multi-agent-canvas-shell">
-                  <div class="multi-agent-canvas-head">
-                    <strong>执行画布</strong>
-                    <span>{{ activeExecutionTask ? `节点 ${activeExecutionTask.index}` : "等待执行" }}</span>
-                  </div>
-                  <template v-if="displayedMultiAgentTasks.length">
-                    <div class="multi-agent-task-list">
-                      <article
-                        v-for="(task, taskIndex) in displayedMultiAgentTasks"
-                        :key="task.id"
-                        class="multi-agent-task"
-                        :data-testid="`multi-agent-task-${task.id}`"
-                        :class="{
-                          active: task.id === multiAgentRuntimeRoute.currentNodeId,
-                          done: task.status === 'done',
-                          blocked: task.status === 'blocked',
-                        }"
-                      >
-                        <div class="multi-agent-task-rail" aria-hidden="true">
-                          <div
-                            class="multi-agent-task-line-segment before"
-                            :class="`is-${multiAgentConnectorState(taskIndex, 'before')}`"
-                          ></div>
-                          <div class="multi-agent-task-glyph" :class="`is-${task.status}`">
-                            <span v-if="task.status === 'todo'" class="multi-agent-task-index">{{ task.index }}</span>
-                            <span v-else-if="task.status === 'doing'" class="multi-agent-task-spinner"></span>
-                            <svg
-                              v-else-if="task.status === 'done'"
-                              class="multi-agent-task-icon"
-                              viewBox="0 0 20 20"
-                              fill="none"
-                              stroke="currentColor"
-                              stroke-width="2"
-                              stroke-linecap="round"
-                              stroke-linejoin="round"
-                            >
-                              <path d="M4 10.5 8 14.5 16 6.5" />
-                            </svg>
-                            <svg
-                              v-else
-                              class="multi-agent-task-icon"
-                              viewBox="0 0 20 20"
-                              fill="none"
-                              stroke="currentColor"
-                              stroke-width="2"
-                              stroke-linecap="round"
-                            >
-                              <path d="M6 6 14 14" />
-                              <path d="M14 6 6 14" />
-                            </svg>
-                          </div>
-                          <div
-                            class="multi-agent-task-line-segment after"
-                            :class="`is-${multiAgentConnectorState(taskIndex, 'after')}`"
-                          ></div>
-                        </div>
-                        <div class="multi-agent-task-card">
-                          <div class="multi-agent-task-main">
-                            <div class="multi-agent-task-line">
-                              <strong>{{ task.title }}</strong>
-                              <span>{{ task.phase }}</span>
-                            </div>
-                            <div class="multi-agent-task-summary-scroll">
-                              <p>{{ task.summary }}</p>
-                            </div>
-                          </div>
-                          <div
-                            class="multi-agent-task-agent"
-                            :class="[
-                              `is-${task.status}`,
-                              { empty: !task.agentId && task.executorType !== 'hermes' },
-                            ]"
-                          >
-                            <span>{{ multiAgentTaskAgentLabel(task) }}</span>
-                            <small>{{ multiAgentTaskStatusLabel(task.status) }}</small>
-                          </div>
-                        </div>
-                      </article>
-                    </div>
-                    <div class="multi-agent-canvas-status">
-                      <span>当前节点</span>
-                      <strong>{{ activeExecutionTask?.title || (multiAgentRuntimeRoute.currentNodeId === "respond" ? "汇总阶段成果" : "等待执行") }}</strong>
-                    </div>
-                  </template>
-                  <div v-else class="multi-agent-plain">
-                    规划节点生成后，会在这里按执行顺序展示，并依次更新状态。
-                  </div>
-                </section>
-              </template>
-            </div>
-          </aside>
+            :route="multiAgentDisplayedRoute"
+            :workflow-snapshot="multiAgentWorkflowSnapshot"
+            :tasks="displayedMultiAgentTasks"
+            :todo-steps="multiAgentTodoSteps"
+            :status-text="multiAgentPanelStatusText"
+            :primary-actor-text="multiAgentPrimaryActorText"
+            :objective-lines="multiAgentObjectiveLines"
+            :history-runs="multiAgentHistoryItems"
+            :selected-run-id="multiAgentDisplayedRoute?.runId || ''"
+            @close="toggleMultiAgentMode"
+            @select-run="selectMultiAgentHistoryRun"
+          />
           <aside
             v-if="showToolPanel"
             class="chat-tool-panel"
@@ -2472,6 +2375,117 @@ async function handleSessionModelCustomSubmit() {
   border-bottom: 1px solid $border-color;
 }
 
+.page-sidebar-top--chat {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.session-primary-btn {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.98);
+  color: $text-primary;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 14px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  transition:
+    border-color $transition-fast,
+    background-color $transition-fast,
+    box-shadow $transition-fast;
+
+  &:hover {
+    border-color: rgba(var(--accent-primary-rgb), 0.24);
+    background: rgba(var(--accent-primary-rgb), 0.03);
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+  }
+}
+
+.session-nav-links {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.session-nav-link {
+  width: 100%;
+  min-width: 0;
+  min-height: 34px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: $text-secondary;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition:
+    background-color $transition-fast,
+    color $transition-fast;
+
+  svg {
+    flex-shrink: 0;
+  }
+
+  span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    line-height: 18px;
+  }
+
+  &:hover {
+    background: rgba(var(--accent-primary-rgb), 0.06);
+    color: $text-primary;
+  }
+}
+
+.session-mode-switch {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: rgba(148, 163, 184, 0.14);
+}
+
+.session-mode-tab {
+  min-height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: $text-secondary;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    background-color $transition-fast,
+    color $transition-fast,
+    box-shadow $transition-fast;
+
+  &:hover {
+    color: $text-primary;
+  }
+
+  &.active {
+    background: rgba(255, 255, 255, 0.98);
+    color: $text-primary;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+  }
+}
+
 .page-sidebar-tabs {
   display: flex;
   flex-direction: column;
@@ -2521,6 +2535,15 @@ async function handleSessionModelCustomSubmit() {
   align-items: center;
   gap: 8px;
   margin-top: 12px;
+}
+
+.session-list-toolbar--compact {
+  margin-top: 0;
+}
+
+.session-filter-wrap {
+  flex: 1;
+  min-width: 0;
 }
 
 .session-list-actions {

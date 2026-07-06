@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { authenticate, mockChatSocket, mockHermesApi, TEST_ACCESS_KEY } from './fixtures'
 
 const inputPlaceholder = 'Type a message... (Enter to send, Shift+Enter for new line)'
+const archiveStorageKey = 'hermes.multiAgent.workflowArchives.v1'
 
 async function sendChatMessage(page: Page, message: string) {
   const input = page.getByPlaceholder(inputPlaceholder)
@@ -27,7 +28,7 @@ async function emitSocketEvent(page: Page, sessionId: string, event: Record<stri
   }, { sid: sessionId, payload: event })
 }
 
-test('shows animated collaboration state and preserves expandable workflow history across runs', async ({ page }) => {
+test('renders the right-side multi-agent workflow panel with expandable execution details', async ({ page }) => {
   await authenticate(page, TEST_ACCESS_KEY, 'research')
   await mockHermesApi(page)
   await mockChatSocket(page)
@@ -108,15 +109,31 @@ test('shows animated collaboration state and preserves expandable workflow histo
     },
   })
 
-  await expect(multiAgentPanel).toContainText('任务清单')
-  await expect(multiAgentPanel).toContainText('执行画布')
-  await expect(multiAgentPanel).toContainText('规划任务中')
-  await expect(multiAgentPanel).toContainText('当前状态')
-  await expect(multiAgentPanel).toContainText('已匹配子智能体：问数智能体')
-  await expect(multiAgentPanel).toContainText('子智能体：问数智能体')
-  await expect(multiAgentPanel).not.toContainText('状态流')
+  await expect(multiAgentPanel).toContainText('任务目标')
+  await expect(multiAgentPanel).toContainText('标准执行计划')
+  await expect(multiAgentPanel).toContainText('意图识别')
+  await expect(multiAgentPanel).toContainText('任务拆解')
+  await expect(multiAgentPanel).toContainText('执行清单 (Todo List)')
+  await expect(multiAgentPanel).toContainText('执行节点画布')
+  await expect(multiAgentPanel).toContainText('问数智能体')
   await expect(multiAgentPanel).not.toContainText('Hermes 编排')
-  await expect(multiAgentPanel).not.toContainText('规划中')
+  await expect(multiAgentPanel).not.toContainText('状态流')
+  const workflowCard = page.locator('.workflow-card')
+  await expect(workflowCard).toHaveCount(1)
+  await expect(workflowCard).toContainText('执行过程')
+  await expect(workflowCard).not.toContainText('理解需求与约束')
+
+  await workflowCard.locator('.workflow-card-head').click()
+  await expect(workflowCard).toContainText('理解需求')
+  await expect(workflowCard).toContainText('规划路径')
+  await expect(workflowCard).toContainText('已提取任务目标')
+
+  const canvas = multiAgentPanel.locator('.multi-agent-canvas')
+  await expect(canvas).toBeVisible()
+  await multiAgentPanel.getByTestId('multi-agent-canvas-toggle').click()
+  await expect(canvas).toBeHidden()
+  await multiAgentPanel.getByTestId('multi-agent-canvas-toggle').click()
+  await expect(canvas).toBeVisible()
 
   await emitSocketEvent(page, firstRun.session_id, {
     event: 'subagent.start',
@@ -153,18 +170,9 @@ test('shows animated collaboration state and preserves expandable workflow histo
     output: '首轮协作已完成，已返回 8 月月报摘要。',
   })
 
-  await expect(page.getByText('子智能体协作开始执行：查询海关月报 8 月详情')).toBeVisible()
-  await expect(page.getByText('子智能体协作调用工具 query-bi：正在查询 8 月月报数据')).toBeVisible()
-  await expect(page.getByText('子智能体协作已返回 8 月月报摘要。')).toBeVisible()
-
-  const workflowCards = page.locator('.workflow-card')
-  await expect(workflowCards).toHaveCount(1)
-  await workflowCards.first().locator('.workflow-card-head').click()
-  await expect(workflowCards.first()).toContainText('任务目标')
-  await expect(workflowCards.first()).toContainText('查询海关月报 8 月详情')
-  await expect(workflowCards.first()).toContainText('主智能体正在提炼任务目标、关键约束，并评估可用子智能体。')
-  await expect(workflowCards.first()).toContainText('执行事件')
-  await expect(workflowCards.first()).toContainText('已返回 8 月月报摘要。')
+  await expect(workflowCard).toContainText('query-bi')
+  await expect(workflowCard).toContainText('已返回 8 月月报摘要。')
+  await expect(multiAgentPanel).toContainText('已完成')
 
   await sendChatMessage(page, '查询海关月报 9 月详情')
   const secondRun = await waitForRun(page, 1)
@@ -194,15 +202,6 @@ test('shows animated collaboration state and preserves expandable workflow histo
     },
   })
   await emitSocketEvent(page, secondRun.session_id, {
-    event: 'subagent.start',
-    run_id: 'run-ma-2',
-    subagent_id: 'data-agent',
-    agent_name: '问数智能体',
-    goal: '查询海关月报 9 月详情',
-    task_index: 0,
-    task_count: 1,
-  })
-  await emitSocketEvent(page, secondRun.session_id, {
     event: 'subagent.complete',
     run_id: 'run-ma-2',
     subagent_id: 'data-agent',
@@ -218,10 +217,105 @@ test('shows animated collaboration state and preserves expandable workflow histo
     output: '第二轮协作已完成，已返回 9 月月报摘要。',
   })
 
-  await expect(workflowCards).toHaveCount(2)
-  await workflowCards.nth(1).locator('.workflow-card-head').click()
-  await expect(workflowCards.nth(1)).toContainText('查询海关月报 9 月详情')
-  await expect(workflowCards.first()).toContainText('查询海关月报 8 月详情')
-  await expect(multiAgentPanel).not.toContainText('Hermes 编排')
-  await expect(multiAgentPanel).not.toContainText('规划中')
+  await expect(multiAgentPanel).toContainText('查询海关月报 9 月详情')
+  const archiveCount = await page.evaluate((storageKey) => {
+    try {
+      const value = window.localStorage.getItem(storageKey)
+      return Array.isArray(JSON.parse(value || '[]')) ? JSON.parse(value || '[]').length : 0
+    } catch {
+      return 0
+    }
+  }, archiveStorageKey)
+  expect(archiveCount).toBeGreaterThanOrEqual(2)
+})
+
+test('builds real todo and canvas nodes from route.todo when planner nodes are missing', async ({ page }) => {
+  await authenticate(page, TEST_ACCESS_KEY, 'research')
+  await mockHermesApi(page)
+  await mockChatSocket(page)
+
+  await page.addInitScript(() => {
+    window.localStorage.setItem('hermes.subAgents.frontendDraft.v4', JSON.stringify([
+      {
+        id: 'data-agent',
+        name: '问数智能体',
+        description: '负责数据查询与报表分析',
+        baseUrl: 'https://example.invalid',
+        status: 'active',
+        runtimeConfig: {
+          enabled: true,
+          chatPath: '/v1/chat/completions',
+        },
+      },
+    ]))
+  })
+
+  await page.goto('/#/hermes/chat')
+  await page.getByRole('button', { name: /开启多智能体协作模式|开启多智能体|多智能体/ }).click()
+
+  await sendChatMessage(page, '查询海关月报 8 月详情')
+  const run = await waitForRun(page, 0)
+
+  await emitSocketEvent(page, run.session_id, {
+    event: 'run.started',
+    run_id: 'run-ma-fallback',
+  })
+  await emitSocketEvent(page, run.session_id, {
+    event: 'agent.event',
+    kind: 'multi_agent_route',
+    mode: 'delegate_subagent',
+    category: '数据任务',
+    reason: 'Planner 暂未返回结构化执行节点，先使用真实待办清单继续执行。',
+    text: '多智能体协作：已匹配问数智能体，等待生成详细执行节点。',
+    todo: [
+      '确认月报口径与时间范围',
+      '调用问数智能体检索 8 月月报数据',
+      '汇总阶段结果并回复用户',
+    ],
+    constraints: [
+      '默认“8 月”按自然月处理。',
+      '需要问数智能体返回可核验的数据来源。',
+      '输出时保留缺失字段说明。',
+    ],
+    selected_agent: { id: 'data-agent', name: '问数智能体' },
+    plan: {
+      objective: '查询海关月报 8 月详情',
+      status: 'running',
+      currentNodeId: 'route',
+      nodes: [
+        { id: 'understand', title: '理解需求与约束', phase: '分析', status: 'done', executor: { type: 'hermes', name: '主智能体' }, summary: '已提取目标与边界。' },
+        { id: 'route', title: '确认执行路径', phase: '规划', status: 'doing', executor: { type: 'hermes', name: '主智能体' }, summary: '等待补齐执行节点。' },
+        { id: 'respond', title: '汇总阶段成果并回复用户', phase: '汇总', status: 'todo', executor: { type: 'hermes', name: '主智能体' }, summary: '等待结果汇总。' },
+      ],
+    },
+  })
+
+  const multiAgentPanel = page.getByTestId('multi-agent-panel')
+  await expect(multiAgentPanel).toContainText('确认月报口径与时间范围')
+  await expect(multiAgentPanel).toContainText('调用问数智能体检索 8 月月报数据')
+  await expect(multiAgentPanel).toContainText('汇总阶段成果并回复用户')
+  await expect(multiAgentPanel.locator('.multi-agent-canvas')).toContainText('调用问数智能体检索 8 月月报数据')
+
+  await emitSocketEvent(page, run.session_id, {
+    event: 'subagent.start',
+    run_id: 'run-ma-fallback',
+    subagent_id: 'data-agent',
+    agent_name: '问数智能体',
+    goal: '调用问数智能体检索 8 月月报数据',
+    task_index: 0,
+    task_count: 1,
+  })
+  await emitSocketEvent(page, run.session_id, {
+    event: 'subagent.complete',
+    run_id: 'run-ma-fallback',
+    subagent_id: 'data-agent',
+    agent_name: '问数智能体',
+    status: 'completed',
+    summary: '已返回 8 月月报核心数据。',
+    task_index: 0,
+    task_count: 1,
+  })
+
+  await expect(multiAgentPanel).toContainText('2 / 3 完成')
+  await expect(multiAgentPanel).toContainText('问数智能体')
 })

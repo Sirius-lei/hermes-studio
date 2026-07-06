@@ -20,6 +20,7 @@ import { setChatRunServer } from './routes/hermes/chat-run'
 import { GroupChatServer } from './services/hermes/group-chat'
 import { ChatRunSocket } from './services/hermes/run-chat'
 import { getAgentBridgeManager, startAgentBridgeManager } from './services/hermes/agent-bridge'
+import { warmAgentBridgeProfilesOnStartup } from './services/hermes/agent-bridge/warmup'
 import { HermesSkillInjector } from './services/hermes/skill-injector'
 import { injectBundledMcpServer } from './services/hermes/studio-mcp-autoinject'
 import { ensureProfileGatewaysRunning } from './services/hermes/gateway-autostart'
@@ -171,6 +172,10 @@ function skillInjectionDisabled(): boolean {
   return envFlagEnabled('HERMES_WEB_UI_DISABLE_SKILL_INJECTION')
 }
 
+function agentBridgeRequired(): boolean {
+  return envFlagEnabled('HERMES_WEB_UI_REQUIRE_AGENT_BRIDGE')
+}
+
 async function startRuntimeServicesBeforeListen(): Promise<void> {
   if (gatewayAutostartDisabled()) {
     console.log('[bootstrap] profile gateway check disabled by HERMES_WEB_UI_DISABLE_GATEWAY_AUTOSTART')
@@ -186,9 +191,14 @@ async function startRuntimeServicesBeforeListen(): Promise<void> {
   try {
     agentBridgeManager = await startAgentBridgeManager()
     console.log('[bootstrap] agent bridge started')
+    const warmed = await warmAgentBridgeProfilesOnStartup(agentBridgeManager.getRuntimeState?.().endpoint)
+    if (warmed.length > 0) {
+      console.log(`[bootstrap] warmed agent bridge profiles: ${warmed.join(', ')}`)
+    }
   } catch (err) {
     logger.warn(err, '[bootstrap] agent bridge failed to start')
     console.warn('[bootstrap] agent bridge failed to start:', err instanceof Error ? err.message : err)
+    if (agentBridgeRequired()) throw err
   }
 }
 
@@ -211,6 +221,10 @@ function startRuntimeServicesAfterListen(): void {
     try {
       agentBridgeManager = await startAgentBridgeManager()
       console.log('[bootstrap] agent bridge started')
+      const warmed = await warmAgentBridgeProfilesOnStartup(agentBridgeManager.getRuntimeState?.().endpoint)
+      if (warmed.length > 0) {
+        console.log(`[bootstrap] warmed agent bridge profiles: ${warmed.join(', ')}`)
+      }
     } catch (err) {
       logger.warn(err, '[bootstrap] agent bridge failed to start')
       console.warn('[bootstrap] agent bridge failed to start:', err instanceof Error ? err.message : err)

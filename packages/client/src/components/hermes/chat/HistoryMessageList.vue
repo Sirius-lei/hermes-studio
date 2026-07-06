@@ -31,11 +31,15 @@ const pendingInitialScrollSessionId = ref<string | null>(null);
 const showScrollBottomButton = ref(false);
 const activeSession = computed(() => props.session || null);
 const listInstanceKey = computed(() => activeSession.value?.id ? `history-${activeSession.value.id}` : "history-empty");
+const hasWorkflowTrace = computed(() =>
+  (activeSession.value?.messages || []).some(message => message.systemType === "workflow" && message.workflow),
+);
 
 const displayMessages = computed(() =>
   (activeSession.value?.messages || []).filter((m) => {
+    if (m.systemType === 'workflow') return false
     // Tool messages without a name are internal use only and remain hidden.
-    if (m.role === 'tool') return toolTraceVisible.value && !!m.toolName
+    if (m.role === 'tool') return !hasWorkflowTrace.value && toolTraceVisible.value && !!m.toolName && !['delegate_task', 'clarify', 'todo'].includes(m.toolName)
     // Filter out messages with empty content.
     if (!m.content?.trim()) return false
     return true
