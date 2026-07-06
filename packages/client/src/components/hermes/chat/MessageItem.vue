@@ -238,6 +238,11 @@ const workflowCurrentEvent = computed(() => {
 
 const workflowToolEvent = computed(() => {
   const events = workflowState.value?.events || []
+  return [...events].reverse().find(event => !!event.toolName && event.status === "running") || null
+})
+
+const latestWorkflowToolEvent = computed(() => {
+  const events = workflowState.value?.events || []
   return [...events].reverse().find(event => !!event.toolName) || null
 })
 
@@ -289,7 +294,7 @@ const workflowSummaryText = computed(() => {
 })
 
 const workflowToolPreviewText = computed(() => {
-  const text = workflowToolEvent.value?.text || ""
+  const text = workflowToolEvent.value?.text || latestWorkflowToolEvent.value?.text || ""
   return text.trim() || "等待工具返回更多上下文。"
 })
 
@@ -951,7 +956,7 @@ onBeforeUnmount(() => {
 
             <!-- Render assistant message content -->
             <MarkdownRenderer
-              v-if="message.role === 'assistant' && message.content && !parsedThinking.body"
+              v-if="message.role === 'assistant' && message.content && !parsedThinking.hasThinking"
               :content="message.content"
               :heading-id-prefix="effectiveHeadingIdPrefix"
             />

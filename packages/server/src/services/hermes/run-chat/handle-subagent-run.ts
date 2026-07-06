@@ -304,6 +304,7 @@ function mapPiMonoEvent(args: {
   const kind = args.kind
   const event = args.event
   const name = sanitizeSubagentDisplayText(String(event.name || event.tool_name || ''))
+  const toolCallId = sanitizeSubagentDisplayText(String(event.id || event.tool_call_id || event.toolCallId || ''))
   const message = sanitizeSubagentDisplayText(String(event.message || event.status || event.kind || '').trim())
   const resultPreview = event.result != null ? previewText(event.result, 280) : ''
   const argumentsPreview = event.arguments != null ? previewText(event.arguments, 220) : ''
@@ -328,8 +329,12 @@ function mapPiMonoEvent(args: {
         task_index: 0,
         task_count: 1,
         goal: args.goal,
+        tool_call_id: toolCallId || undefined,
+        tool_event_kind: kind,
         tool_name: name || 'tool',
         tool_count: nextToolCount,
+        arguments: event.arguments,
+        result: event.result,
         text: [message, resultPreview || argumentsPreview].filter(Boolean).join(' - ') || kind,
         status: String(event.status || kind),
       },

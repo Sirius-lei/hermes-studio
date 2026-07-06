@@ -270,7 +270,7 @@ const planCardSteps = computed<PlanCardStep[]>(() => {
   const decomposeStatus = resolveFixedPlanStatus("route")
   const todoStatus: PlanCardStep["status"] = hasGeneratedTodo.value
     ? "done"
-    : (decomposeStatus === "done" || props.route?.currentNodeId === "route")
+    : decomposeStatus === "done"
         ? "running"
         : "pending"
   const canvasStatus: PlanCardStep["status"] = effectiveRouteState.value === "failed"

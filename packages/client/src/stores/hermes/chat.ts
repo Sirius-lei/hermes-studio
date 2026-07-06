@@ -546,15 +546,37 @@ function compactSubagentEventKey(value: unknown, maxLength = 48): string {
     || 'none'
 }
 
+function normalizeMultiAgentNodeStatus(
+  value: unknown,
+  fallback: MultiAgentPlanNodeState['status'] = 'todo',
+): MultiAgentPlanNodeState['status'] {
+  return value === 'todo' || value === 'doing' || value === 'done' || value === 'blocked'
+    ? value
+    : fallback
+}
+
+const GENERIC_SUBAGENT_TOOL_NAMES = new Set(['bash', 'sh', 'zsh', 'fish', 'cmd', 'powershell', 'pwsh'])
+
+function normalizeSubagentToolName(value: unknown): string {
+  const toolName = sanitizeMultiAgentText(typeof value === 'string' ? value : String(value ?? ''))
+  if (!toolName) return ''
+  return GENERIC_SUBAGENT_TOOL_NAMES.has(toolName.toLowerCase())
+    ? '运行时命令'
+    : toolName
+}
+
 function buildSubagentEventToolCallId(input: {
   runId?: unknown
   subagentId?: unknown
+  toolCallId?: unknown
   eventName: string
   toolName?: unknown
   preview?: unknown
 }) {
   const runId = compactSubagentEventKey(input.runId || 'run', 24)
   const subagentId = compactSubagentEventKey(input.subagentId || 'subagent', 24)
+  const toolCallId = compactSubagentEventKey(input.toolCallId || '', 32)
+  if (toolCallId !== 'none') return `subagent:${runId}:${subagentId}:${toolCallId}`
   const toolName = compactSubagentEventKey(input.toolName || '', 20)
   const preview = compactSubagentEventKey(input.preview || '', 40)
   return `subagent:${runId}:${subagentId}:${input.eventName}:${toolName}:${preview}`
@@ -2724,19 +2746,31 @@ export const useChatStore = defineStore('chat', () => {
     const taskIndex = Number((evt as any).task_index ?? 0)
     const taskCount = Number((evt as any).task_count ?? 1)
     const label = `${taskIndex + 1}/${Math.max(1, taskCount || 1)}`
-    const toolName = sanitizeMultiAgentText((evt as any).tool || (evt as any).tool_name || (evt as any).name || '')
+    const rawToolName = sanitizeMultiAgentText((evt as any).tool || (evt as any).tool_name || (evt as any).name || '')
+    const toolName = normalizeSubagentToolName(rawToolName)
     const goal = sanitizeMultiAgentText((evt as any).goal || '')
     const text = sanitizeMultiAgentText(evt.text || evt.preview || '')
     const summary = sanitizeMultiAgentText((evt as any).summary || '')
     const duration = Number((evt as any).duration_seconds ?? (evt as any).duration)
     const agentName = sanitizeMultiAgentText((evt as any).subagent_name || (evt as any).agent_name || '')
+    const rawToolCallId = sanitizeMultiAgentText((evt as any).tool_call_id || '')
+    const toolEventKind = sanitizeMultiAgentText((evt as any).tool_event_kind || '')
     const targetNodeId = planNodeIds[0] || 'execute'
 
     let preview = text || summary || goal
     if (eventName === 'subagent.start') {
       preview = goal ? `开始执行：${goal}` : `子任务 ${label} 已启动`
     } else if (eventName === 'subagent.tool') {
-      preview = `${toolName ? `调用工具 ${toolName}` : `子任务 ${label} 调用工具`}${text ? `：${text}` : ''}`
+      const verb = toolEventKind === 'tool_call_start'
+        ? '准备调用'
+        : toolEventKind === 'tool_call_end'
+          ? '确认参数'
+          : toolEventKind === 'tool_execution_end'
+            ? '完成工具'
+            : toolEventKind === 'tool_execution_update'
+              ? '工具输出'
+              : '调用工具'
+      preview = `${toolName ? `${verb} ${toolName}` : `子任务 ${label} 调用工具`}${text ? `：${text}` : ''}`
     } else if (eventName === 'subagent.progress') {
       preview = text || `子任务 ${label} 执行中`
     } else if (eventName === 'subagent.complete') {
@@ -2749,6 +2783,7 @@ export const useChatStore = defineStore('chat', () => {
     const toolCallId = buildSubagentEventToolCallId({
       runId: evt.run_id,
       subagentId,
+      toolCallId: rawToolCallId,
       eventName,
       toolName: toolName || agentName || 'delegate',
       preview,
@@ -2806,6 +2841,9 @@ export const useChatStore = defineStore('chat', () => {
       toolCallId,
       toolPreview: preview.slice(0, 220),
       toolStatus,
+      toolArgs: hasRuntimeToolPayload((evt as any).arguments)
+        ? (evt as any).arguments
+        : undefined,
       toolDuration: Number.isFinite(duration) ? duration : undefined,
       toolResult: eventName === 'subagent.complete'
         ? JSON.stringify({
@@ -2815,6 +2853,8 @@ export const useChatStore = defineStore('chat', () => {
             input_tokens: (evt as any).input_tokens,
             output_tokens: (evt as any).output_tokens,
           }, null, 2)
+        : hasRuntimeToolPayload((evt as any).result)
+          ? (evt as any).result
         : undefined,
     }
 
@@ -3356,7 +3396,14 @@ export const useChatStore = defineStore('chat', () => {
           id: planNodeIds[index],
           title: sanitizeMultiAgentText(node.title || `节点 ${index + 1}`) || `节点 ${index + 1}`,
           phase: sanitizeMultiAgentText(node.phase || '执行') || '执行',
-          status: String(node.status || 'todo') as MultiAgentPlanNodeState['status'],
+          status: normalizeMultiAgentNodeStatus(
+            node.status,
+            planNodeIds[index] === 'understand'
+              ? 'done'
+              : planNodeIds[index] === 'route'
+                ? 'doing'
+                : 'todo',
+          ),
           dependsOn: dependsOnMap.get(planNodeIds[index]) || [],
           executor: {
             type: node.executor?.type === 'subagent' ? 'subagent' : 'hermes',
@@ -3367,21 +3414,17 @@ export const useChatStore = defineStore('chat', () => {
         }))
       }
       const executableCount = planNodes.filter(node => !RESERVED_MULTI_AGENT_NODE_IDS.has(node.id)).length
-      const currentNodeId = executableCount > 0
-        ? 'route'
-        : 'respond'
-      const normalizedNodes: MultiAgentPlanNodeState[] = planNodes.map(node => {
-        if (node.id === 'understand') return { ...node, status: 'done' as const }
-        if (node.id === 'route') return { ...node, status: executableCount > 0 ? 'doing' as const : 'done' as const }
-        if (node.id === 'respond') return {
-          ...node,
-          status: executableCount > 0 ? 'todo' as const : 'doing' as const,
-        }
-        return {
-          ...node,
-          status: node.status === 'done' || node.status === 'blocked' ? node.status : 'todo',
-        }
-      })
+      const validPlanNodeIds = planNodes.map(node => node.id)
+      const requestedCurrentNodeId = sanitizeMultiAgentText((evt as any).plan?.currentNodeId || '')
+      const runningNodeId = planNodes.find(node => node.status === 'doing')?.id || ''
+      const currentNodeId = runningNodeId
+        || (requestedCurrentNodeId && validPlanNodeIds.includes(requestedCurrentNodeId) ? requestedCurrentNodeId : '')
+        || (executableCount > 0 ? 'route' : 'respond')
+      const normalizedNodes: MultiAgentPlanNodeState[] = planNodes.map(node =>
+        normalizeMultiAgentNodeStatus(node.status) === node.status
+          ? node
+          : { ...node, status: normalizeMultiAgentNodeStatus(node.status) },
+      )
       const objective = sanitizeMultiAgentText((evt as any).plan?.objective || (evt as any).reason || '')
       patchWorkflow(sid, workflow => ({
         ...workflow,
