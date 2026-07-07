@@ -34,6 +34,7 @@ import { markAbortCompleted } from './abort'
 import { writeModelRunProfileToken } from './model-run-prompt'
 import type { AuthenticatedUser } from '../../../middleware/user-auth'
 import { ensureHermesRunWorkspace } from './workspace'
+import { effectiveSessionOwnerId } from '../session-access'
 
 const BRIDGE_USAGE_FLUSH_DELAY_MS = 200
 const BRIDGE_TITLE_EVENT_POLL_INTERVAL_MS = 500
@@ -81,6 +82,13 @@ function isReplaceableLocalTitle(sessionId: string): boolean {
 
 function isBridgeSessionSource(source?: string | null): boolean {
   return source === 'cli' || source === 'global_agent'
+}
+
+function requestedUserContextFromSocket(socket: Socket): string | null {
+  const value = typeof socket.handshake.query?.user_id === 'string'
+    ? socket.handshake.query.user_id.trim()
+    : ''
+  return value || null
 }
 
 function syncBridgeGeneratedTitle(sessionId: string, title: unknown, emit: (event: string, payload: any) => void): boolean {
@@ -323,7 +331,7 @@ export async function handleBridgeRun(
   const sessionRow = getSession(session_id)
   const socketUser = socket.data.user as AuthenticatedUser | undefined
   const workspace = await ensureHermesRunWorkspace(profile, sessionRow?.workspace || data.workspace, {
-    userId: sessionRow?.user_id || socketUser?.id || null,
+    userId: sessionRow?.user_id || effectiveSessionOwnerId(socketUser, requestedUserContextFromSocket(socket)) || null,
     sessionId: session_id,
   })
   if (sessionRow && !sessionRow.workspace) updateSession(session_id, { workspace })
@@ -409,7 +417,7 @@ export async function handleBridgeRun(
         id: session_id,
         profile,
         source: runSource,
-        user_id: socketUser?.id,
+        user_id: effectiveSessionOwnerId(socketUser, requestedUserContextFromSocket(socket)),
         model: resolvedModel,
         provider: resolvedProvider,
         title: preview,
@@ -431,7 +439,7 @@ export async function handleBridgeRun(
       id: session_id,
       profile,
       source: runSource,
-      user_id: socketUser?.id,
+      user_id: effectiveSessionOwnerId(socketUser, requestedUserContextFromSocket(socket)),
       model: resolvedModel,
       provider: resolvedProvider,
       title: preview,

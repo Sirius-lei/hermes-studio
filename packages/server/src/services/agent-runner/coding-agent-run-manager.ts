@@ -67,6 +67,7 @@ export interface CodingAgentRunLaunch {
   args: string[]
   shellCommand: string
   workspaceDir: string
+  userId?: string | number | null
   env?: NodeJS.ProcessEnv
   state?: SessionState
   sessionSource?: 'global_agent' | 'workflow'
@@ -678,6 +679,7 @@ export class CodingAgentRunManager {
         agent: run.launch.agentId === 'codex' ? 'codex' : 'claude',
         agent_session_id: run.id,
         agent_native_session_id: run.launch.agentNativeSessionId,
+        user_id: run.launch.userId ?? null,
         model: run.launch.model,
       provider: run.launch.provider,
       title: '',

@@ -137,6 +137,7 @@ export async function startRun(ctx: Context) {
       sessionId: String(body.sessionId || ''),
       mode: body.mode,
       profile: ctx.state.profile?.name || body.profile,
+      userId: ctx.state.user?.id,
       provider: body.provider,
       model: body.model,
       baseUrl: body.baseUrl,

@@ -8,6 +8,7 @@ import { handleAbort } from './abort'
 import { calcAndUpdateUsage, contextTokensWithCachedOverhead, updateMessageContextTokenUsage } from './usage'
 import { contentBlocksToString } from './content-blocks'
 import type { ChatRunSource, ContentBlock, QueuedRun, SessionState } from './types'
+import { effectiveSessionOwnerId } from '../session-access'
 
 type CommandName =
   | 'usage'
@@ -26,6 +27,17 @@ type CommandName =
   | 'destroy'
   | 'reload-mcp'
   | 'reload-skills'
+
+function requestedUserContextFromSocket(socket: Socket): string | null {
+  const value = typeof socket.handshake.query?.user_id === 'string'
+    ? socket.handshake.query.user_id.trim()
+    : ''
+  return value || null
+}
+
+function ownerIdForSocket(socket: Socket): string | null {
+  return effectiveSessionOwnerId(socket.data.user, requestedUserContextFromSocket(socket))
+}
 
 interface ParsedSessionCommand {
   name: CommandName
@@ -488,7 +500,14 @@ export async function handleSessionCommand(
       }
       const title = command.args.slice(0, 120)
       if (!getSession(sessionId)) {
-        createSession({ id: sessionId, profile: ctx.profile, source: 'cli', model: ctx.model, title })
+        createSession({
+          id: sessionId,
+          profile: ctx.profile,
+          source: 'cli',
+          model: ctx.model,
+          title,
+          user_id: ownerIdForSocket(ctx.socket),
+        })
       }
       const updated = renameSession(sessionId, title)
       emitCommand({
@@ -896,6 +915,7 @@ function ensureCommandSession(sessionId: string, command: ParsedSessionCommand, 
     source: 'cli',
     model: ctx.model,
     title: buildCommandSessionTitle(command),
+    user_id: ownerIdForSocket(ctx.socket),
   })
 }
 
@@ -945,6 +965,7 @@ function createBranchSession(parentSessionId: string, requestedTitle: string, ct
     agent_mode: parent.agent_mode || '',
     agent_session_id: parent.agent_session_id || '',
     agent_native_session_id: parent.agent_native_session_id || '',
+    user_id: parent.user_id || ownerIdForSocket(ctx.socket),
     model: parent.model || ctx.model || '',
     provider: parent.provider || ctx.provider || '',
     title,

@@ -28,10 +28,11 @@ import {
   type DropdownOption,
 } from "naive-ui";
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { copyToClipboard } from "@/utils/clipboard";
 import { useSessionSearch } from "@/composables/useSessionSearch";
+import { listSubAgentsRegistry, replaceSubAgentsRegistry } from "@/api/hermes/sub-agents";
 import FolderPicker from "./FolderPicker.vue";
 import ChatInput from "./ChatInput.vue";
 import ConversationMonitorPane from "./ConversationMonitorPane.vue";
@@ -42,17 +43,21 @@ import OutlinePanel from "./OutlinePanel.vue";
 import FilesPanel from "./FilesPanel.vue";
 import TerminalPanel from "./TerminalPanel.vue";
 import { isStoredSuperAdmin } from "@/api/client";
-import { SUB_AGENT_STORAGE_EVENT, readStoredSubAgents } from "@/utils/subagent-storage";
 
 const chatStore = useChatStore();
 const appStore = useAppStore();
 const profilesStore = useProfilesStore();
 const sessionBrowserPrefsStore = useSessionBrowserPrefsStore();
+const route = useRoute();
 const router = useRouter();
 const message = useMessage();
 const { t } = useI18n();
 const { openSessionSearch } = useSessionSearch();
 const isSuperAdmin = computed(() => isStoredSuperAdmin());
+const routeUserId = computed(() => {
+  const value = route.query.user_id;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+});
 
 type MultiAgentSkill = {
   name: string
@@ -70,6 +75,19 @@ type MultiAgentCandidate = {
   tools: MultiAgentSkill[]
 }
 
+type RuntimeAgentProfileResponse = {
+  id?: string
+  name?: string
+  description?: string
+  skills?: Array<{ name?: string; description?: string; path?: string }>
+  extensions?: Array<{ name?: string; description?: string; path?: string; entry?: string }>
+}
+
+const FALLBACK_SUBAGENT_RUNTIME_BASE_URLS = [
+  "http://127.0.0.1:8767",
+  "http://172.16.50.149:8768",
+];
+
 type MultiAgentPlanTask = {
   id: string
   index: number
@@ -81,6 +99,7 @@ type MultiAgentPlanTask = {
   agentId: string
   agentName: string
   status: "todo" | "doing" | "done" | "blocked"
+  outcome: "unknown" | "success" | "failure"
 }
 
 type MultiAgentPlannerStep = {
@@ -181,6 +200,7 @@ const displayedMultiAgentTasks = computed<MultiAgentPlanTask[]>(() => {
       executorType: task.executor.type,
       agentId: task.executor.id || "",
       agentName: task.executor.name,
+      outcome: task.outcome,
     }));
 });
 
@@ -225,6 +245,8 @@ const multiAgentPrimaryActorText = computed(() => {
   const route = multiAgentDisplayedRoute.value;
   if (!route) return "当前由主智能体待命";
   if (route.selectedAgentName) return `已匹配子智能体：${route.selectedAgentName}`;
+  const matchedPlanAgent = route.planNodes.find(node => node.executor.type === "subagent" && node.executor.name)?.executor.name?.trim();
+  if (matchedPlanAgent) return `已匹配子智能体：${matchedPlanAgent}`;
   return route.mode === "delegate_subagent"
     ? "等待子智能体接管"
     : "当前由主智能体执行";
@@ -291,36 +313,96 @@ function normalizeMultiAgentSkillList(value: unknown): MultiAgentSkill[] {
   if (!Array.isArray(value)) return [];
   return value.map((item: any) => ({
     name: String(item?.name || item?.id || "").trim(),
-    description: String(item?.description || "").trim(),
+    description: String(item?.description || item?.path || item?.entry || "").trim(),
   })).filter(item => item.name);
 }
 
-function refreshMultiAgentAgents() {
+async function fetchRuntimeProfile(baseUrl: string): Promise<RuntimeAgentProfileResponse> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), 2500);
   try {
-    const parsed = readStoredSubAgents<any>();
-    if (!Array.isArray(parsed)) {
-      multiAgentAgents.value = [];
+    const response = await fetch(`${baseUrl.replace(/\/+$/, "")}/api/agent/profile`, {
+      method: "GET",
+      signal: controller.signal,
+      headers: {
+        Accept: "application/json",
+      },
+    });
+    if (!response.ok) {
+      throw new Error(`runtime profile returned ${response.status}`);
+    }
+    return await response.json() as RuntimeAgentProfileResponse;
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+function normalizeRegistryCandidates(records: any[]): MultiAgentCandidate[] {
+  return records.map((agent: any) => ({
+    id: String(agent?.id || agent?.name || "").trim(),
+    name: String(agent?.name || agent?.id || "").trim(),
+    description: String(agent?.description || "").trim(),
+    baseUrl: String(agent?.baseUrl || "").trim(),
+    chatPath: String(agent?.runtimeConfig?.chatPath || agent?.chatPath || "/v1/chat/completions").trim(),
+    enabled: agent?.runtimeConfig?.enabled !== false && agent?.status !== "offline" && agent?.status !== "draft",
+    skills: normalizeMultiAgentSkillList(agent?.skills),
+    tools: normalizeMultiAgentSkillList(agent?.tools),
+  })).filter(agent => agent.id && agent.name);
+}
+
+async function discoverBootstrapMultiAgentAgents(): Promise<MultiAgentCandidate[]> {
+  const discovered: MultiAgentCandidate[] = [];
+  for (const baseUrl of FALLBACK_SUBAGENT_RUNTIME_BASE_URLS) {
+    try {
+      const profile = await fetchRuntimeProfile(baseUrl);
+      const candidate: MultiAgentCandidate = {
+        id: String(profile?.id || profile?.name || "pi-mono").trim(),
+        name: String(profile?.name || profile?.id || "pi-mono").trim(),
+        description: String(profile?.description || "使用 subAgent-pi 运行时提供的子智能体。").trim(),
+        baseUrl,
+        chatPath: "/v1/chat/completions",
+        enabled: true,
+        skills: normalizeMultiAgentSkillList(profile?.skills),
+        tools: normalizeMultiAgentSkillList(profile?.extensions),
+      };
+      if (candidate.id && candidate.name) {
+        discovered.push(candidate);
+      }
+    } catch {
+      // try the next known runtime endpoint
+    }
+  }
+  return discovered.filter((candidate, index, list) =>
+    list.findIndex(item => item.id === candidate.id && item.baseUrl === candidate.baseUrl) === index,
+  );
+}
+
+async function refreshMultiAgentAgents() {
+  try {
+    const parsed = await listSubAgentsRegistry<any>();
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      multiAgentAgents.value = normalizeRegistryCandidates(parsed);
       return;
     }
-    multiAgentAgents.value = parsed.map((agent: any) => ({
-      id: String(agent?.id || agent?.name || "").trim(),
-      name: String(agent?.name || agent?.id || "").trim(),
-      description: String(agent?.description || "").trim(),
-      baseUrl: String(agent?.baseUrl || "").trim(),
-      chatPath: String(agent?.runtimeConfig?.chatPath || "/v1/chat/completions").trim(),
-      enabled: agent?.runtimeConfig?.enabled !== false && agent?.status !== "offline" && agent?.status !== "draft",
-      skills: normalizeMultiAgentSkillList(agent?.skills),
-      tools: normalizeMultiAgentSkillList(agent?.tools),
-    })).filter(agent => agent.id && agent.name);
+
+    const discovered = await discoverBootstrapMultiAgentAgents();
+    multiAgentAgents.value = discovered;
+    if (discovered.length > 0) {
+      void replaceSubAgentsRegistry(discovered as any[]).catch(() => {});
+    }
   } catch {
     multiAgentAgents.value = [];
   }
 }
 
+function requestRefreshMultiAgentAgents() {
+  void refreshMultiAgentAgents();
+}
+
 function toggleMultiAgentMode() {
   multiAgentMode.value = !multiAgentMode.value;
   if (multiAgentMode.value) {
-    refreshMultiAgentAgents();
+    requestRefreshMultiAgentAgents();
     return;
   }
 }
@@ -329,6 +411,7 @@ function sessionHref(sessionId: string) {
   return router.resolve({
     name: chatStore.runtimeMode === "global_agent" ? "hermes.globalAgentSession" : "hermes.session",
     params: { sessionId },
+    query: routeUserId.value ? { user_id: routeUserId.value } : undefined,
   }).href;
 }
 
@@ -484,10 +567,9 @@ onMounted(() => {
   mobileQuery.addEventListener("change", handleMobileChange);
   window.addEventListener("hermes:open-page-sidebar", openPageSidebar);
   window.addEventListener("resize", handleToolPanelViewportResize);
-  window.addEventListener("storage", refreshMultiAgentAgents);
-  window.addEventListener(SUB_AGENT_STORAGE_EVENT, refreshMultiAgentAgents);
+  window.addEventListener("storage", requestRefreshMultiAgentAgents);
   handleToolPanelViewportResize();
-  refreshMultiAgentAgents();
+  requestRefreshMultiAgentAgents();
   if (profilesStore.profiles.length === 0) {
     void profilesStore.fetchProfiles();
   }
@@ -497,8 +579,7 @@ onUnmounted(() => {
   mobileQuery?.removeEventListener("change", handleMobileChange);
   window.removeEventListener("hermes:open-page-sidebar", openPageSidebar);
   window.removeEventListener("resize", handleToolPanelViewportResize);
-  window.removeEventListener("storage", refreshMultiAgentAgents);
-  window.removeEventListener(SUB_AGENT_STORAGE_EVENT, refreshMultiAgentAgents);
+  window.removeEventListener("storage", requestRefreshMultiAgentAgents);
   stopToolResize();
 });
 watch(showToolPanel, async (visible) => {
@@ -848,7 +929,10 @@ function buildSessionUrl(sessionId: string, profile?: string | null): string {
   const href = router.resolve({
     name: chatStore.runtimeMode === "global_agent" ? "hermes.globalAgentSession" : "hermes.session",
     params: { sessionId },
-    query: profile ? { profile } : undefined,
+    query: {
+      ...(profile ? { profile } : {}),
+      ...(routeUserId.value ? { user_id: routeUserId.value } : {}),
+    },
   }).href;
   return `${window.location.origin}${window.location.pathname}${href}`;
 }

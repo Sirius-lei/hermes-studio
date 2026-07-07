@@ -1,5 +1,5 @@
 import { io, type Socket } from 'socket.io-client'
-import { getBaseUrlValue, getApiKey } from '../client'
+import { getBaseUrlValue, getApiKey, getActiveUserContextId } from '../client'
 import type { ProviderApiMode } from './system'
 
 export type ContentBlock =
@@ -107,6 +107,7 @@ export interface RunEvent {
 export interface ResumeSessionPayload {
   session_id: string
   messages: any[]
+  error?: string
   messageTotal?: number
   messageLoadedCount?: number
   messagePageLimit?: number
@@ -128,6 +129,7 @@ export interface ResumeSessionPayload {
 let chatRunSocket: Socket | null = null
 let globalListenersRegistered = false
 let chatRunSocketProfile: string | null = null
+let chatRunSocketUserContext: string | null = null
 export type ChatRunTransport = 'chat-run' | 'global-agent'
 let chatRunSocketTransport: ChatRunTransport = 'chat-run'
 
@@ -615,10 +617,12 @@ export function getChatRunSocket(transport?: ChatRunTransport): Socket | null {
 
 export function connectChatRun(requestedProfile?: string | null, transport: ChatRunTransport = 'chat-run'): Socket {
   const normalizedRequestedProfile = requestedProfile?.trim() || null
+  const userContextId = getActiveUserContextId()
   if (
     chatRunSocket?.connected &&
     chatRunSocketTransport === transport &&
-    (!normalizedRequestedProfile || chatRunSocketProfile === normalizedRequestedProfile)
+    (!normalizedRequestedProfile || chatRunSocketProfile === normalizedRequestedProfile) &&
+    chatRunSocketUserContext === userContextId
   ) {
     return chatRunSocket
   }
@@ -629,6 +633,7 @@ export function connectChatRun(requestedProfile?: string | null, transport: Chat
     chatRunSocket.disconnect()
     globalListenersRegistered = false
     chatRunSocketProfile = null
+    chatRunSocketUserContext = null
   }
 
   const baseUrl = getBaseUrlValue()
@@ -647,12 +652,13 @@ export function connectChatRun(requestedProfile?: string | null, transport: Chat
     profile = normalizedRequestedProfile || localStorage.getItem('hermes_active_profile_name') || 'default'
   }
   chatRunSocketProfile = profile
+  chatRunSocketUserContext = userContextId
   chatRunSocketTransport = transport
 
   const namespace = transport === 'global-agent' ? '/global-agent' : '/chat-run'
   chatRunSocket = io(`${baseUrl}${namespace}`, {
     auth: { token },
-    query: { profile },
+    query: userContextId ? { profile, user_id: userContextId } : { profile },
     transports: ['websocket', 'polling'],
     reconnection: true,
     reconnectionAttempts: Infinity,

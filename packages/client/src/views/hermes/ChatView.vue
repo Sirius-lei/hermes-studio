@@ -24,6 +24,11 @@ const routeProfile = computed(() => {
   return typeof value === 'string' && value.trim() ? value : null
 })
 
+const routeUserId = computed(() => {
+  const value = route.query.user_id
+  return typeof value === 'string' && value.trim() ? value : null
+})
+
 const productTitle = '智能体工作台'
 const tabTitle = computed(() => {
   if (route.name !== 'hermes.session') return productTitle
@@ -57,8 +62,12 @@ onMounted(async () => {
   await loadRouteSession()
 })
 
-watch([routeSessionId, routeProfile], async ([sessionId]) => {
+watch([routeSessionId, routeProfile, routeUserId], async ([sessionId, _profile, userId], [_prevSessionId, _prevProfile, prevUserId]) => {
   if (!chatStore.sessionsLoaded) return
+  if (userId !== prevUserId) {
+    await loadRouteSession()
+    return
+  }
   if (!sessionId) {
     await chatStore.loadSessions(chatStore.sessionProfileFilter)
     return

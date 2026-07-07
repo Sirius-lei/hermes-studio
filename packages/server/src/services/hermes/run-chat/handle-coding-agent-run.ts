@@ -12,6 +12,7 @@ import { writeModelRunProfileToken } from './model-run-prompt'
 import type { AuthenticatedUser } from '../../../middleware/user-auth'
 import { getSystemPrompt } from '../../../lib/llm-prompt'
 import { getSession } from '../../../db/hermes/session-store'
+import { effectiveSessionOwnerId } from '../session-access'
 
 export interface CodingAgentRunSocketData {
   input: string | ContentBlock[]
@@ -36,6 +37,13 @@ export interface CodingAgentRunSocketData {
 function codingAgentId(data: CodingAgentRunSocketData): CodingAgentId {
   const value = data.coding_agent_id || data.agent_id || 'claude-code'
   return value === 'codex' ? 'codex' : 'claude-code'
+}
+
+function requestedUserContextFromSocket(socket: Socket): string | null {
+  const value = typeof socket.handshake.query?.user_id === 'string'
+    ? socket.handshake.query.user_id.trim()
+    : ''
+  return value || null
 }
 
 export async function handleCodingAgentRun(
@@ -83,6 +91,7 @@ export async function handleCodingAgentRun(
       apiKey: data.apiKey || data.api_key,
       apiMode: data.apiMode || data.api_mode,
       sessionSource: data.session_source,
+      userId: effectiveSessionOwnerId(socket.data?.user as AuthenticatedUser | undefined, requestedUserContextFromSocket(socket)),
     }, state)
     runId = started.agentSessionId
   }

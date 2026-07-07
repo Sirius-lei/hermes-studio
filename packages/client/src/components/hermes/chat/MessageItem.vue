@@ -241,15 +241,19 @@ const workflowToolEvent = computed(() => {
   return [...events].reverse().find(event => !!event.toolName && event.status === "running") || null
 })
 
-const latestWorkflowToolEvent = computed(() => {
-  const events = workflowState.value?.events || []
-  return [...events].reverse().find(event => !!event.toolName) || null
-})
+function normalizeWorkflowActorName(value?: string) {
+  const text = String(value || "").trim()
+  if (!text) return "主智能体"
+  if (/^hermes$/i.test(text)) return "主智能体"
+  return text
+}
 
 const workflowSummaryAgentName = computed(() =>
-  workflowToolEvent.value?.agentName
-  || workflowCurrentEvent.value?.agentName
-  || "主智能体",
+  normalizeWorkflowActorName(
+    workflowToolEvent.value?.agentName
+    || workflowCurrentEvent.value?.agentName
+    || "主智能体",
+  ),
 )
 
 const workflowPendingApproval = computed(() => chatStore.activePendingApproval)
@@ -257,24 +261,6 @@ const workflowQueuedCount = computed(() => {
   const sid = chatStore.activeSessionId
   if (!sid) return 0
   return chatStore.queuedUserMessages.get(sid)?.length || 0
-})
-
-const workflowReasoningStatusText = computed(() => {
-  if (workflowPendingApproval.value) return "等待权限确认"
-  if (workflowQueuedCount.value > 0 && workflowState.value?.status === "running") {
-    return `后续 ${workflowQueuedCount.value} 条排队`
-  }
-  if (workflowState.value?.status === "done") return "已完成"
-  if (workflowState.value?.status === "error") return "执行失败"
-  return "持续更新中"
-})
-
-const workflowReasoningDisplayText = computed(() => {
-  const base = (workflowState.value?.reasoningText || "").trim()
-  const fallback = workflowCurrentEvent.value?.text || workflowState.value?.current || ""
-  const text = (base || fallback).trim()
-  if (!text) return ""
-  return text.replace(/([。！？!?])\s*/g, "$1\n")
 })
 
 const workflowSummaryText = computed(() => {
@@ -293,11 +279,6 @@ const workflowSummaryText = computed(() => {
   return workflowCurrentEvent.value?.text || workflowState.value?.current || "正在执行任务"
 })
 
-const workflowToolPreviewText = computed(() => {
-  const text = workflowToolEvent.value?.text || latestWorkflowToolEvent.value?.text || ""
-  return text.trim() || "等待工具返回更多上下文。"
-})
-
 function workflowStepStatusLabel(status?: string) {
   switch (status) {
     case "done":
@@ -306,6 +287,8 @@ function workflowStepStatusLabel(status?: string) {
       return "执行中..."
     case "error":
       return "失败"
+    case "info":
+      return "已记录"
     default:
       return "等待执行"
   }
@@ -908,7 +891,7 @@ onBeforeUnmount(() => {
               </div>
             </div>
             <MarkdownRenderer
-              v-if="parsedThinking.body && message.role === 'assistant'"
+              v-if="parsedThinking.body && message.role === 'assistant' && !isContentBlockArray"
               :content="parsedThinking.body"
               :heading-id-prefix="effectiveHeadingIdPrefix"
             />
@@ -955,11 +938,51 @@ onBeforeUnmount(() => {
             </template>
 
             <!-- Render assistant message content -->
-            <MarkdownRenderer
-              v-if="message.role === 'assistant' && message.content && !parsedThinking.hasThinking"
-              :content="message.content"
-              :heading-id-prefix="effectiveHeadingIdPrefix"
-            />
+            <template v-if="message.role === 'assistant'">
+              <template v-if="isContentBlockArray">
+                <div v-if="contentFiles && contentFiles.length > 0" class="msg-attachments">
+                  <div
+                    v-for="(file, idx) in contentFiles"
+                    :key="idx"
+                    class="msg-attachment"
+                    :class="{ image: file.type === 'image' }"
+                  >
+                    <template v-if="file.type === 'image'">
+                      <img
+                        :src="getContentFileUrl(file)"
+                        :alt="file.name"
+                        class="msg-attachment-thumb"
+                        @click="previewUrl = getContentFileUrl(file)"
+                      />
+                    </template>
+                    <template v-else>
+                      <div
+                        class="msg-attachment-file"
+                        @click="file.path && downloadFile(file.path, file.name).catch(err => toast.error(err.message || t('download.downloadFailed')))"
+                        style="cursor: pointer;"
+                        :title="t('download.downloadFile')"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                          <polyline points="14 2 14 8 20 8" />
+                        </svg>
+                        <span class="att-name">{{ file.name }}</span>
+                      </div>
+                    </template>
+                  </div>
+                </div>
+                <MarkdownRenderer
+                  v-if="displayText"
+                  :content="displayText"
+                  :heading-id-prefix="effectiveHeadingIdPrefix"
+                />
+              </template>
+              <MarkdownRenderer
+                v-else-if="message.content && !parsedThinking.hasThinking"
+                :content="message.content"
+                :heading-id-prefix="effectiveHeadingIdPrefix"
+              />
+            </template>
 
             <div v-if="isWorkflowMessage && workflowState" class="workflow-card">
               <button class="workflow-card-head" type="button" @click="workflowExpanded = !workflowExpanded">
@@ -1020,22 +1043,14 @@ onBeforeUnmount(() => {
               </button>
 
               <div v-if="workflowExpanded" class="workflow-expanded">
-                <div v-if="workflowReasoningDisplayText" class="workflow-reasoning-panel">
-                  <div class="workflow-reasoning-head">
-                    <strong>主智能体规划</strong>
-                    <small>{{ workflowReasoningStatusText }}</small>
-                  </div>
-                  <div class="workflow-reasoning-body">{{ workflowReasoningDisplayText }}</div>
-                </div>
-
-                <div class="workflow-timeline">
+                <div class="workflow-step-chain" role="list" aria-label="执行链路">
                   <article
                     v-for="step in workflowState.steps"
                     :key="step.id"
-                    class="workflow-step"
+                    class="workflow-step-pill"
                     :class="`is-${step.status}`"
                   >
-                    <span class="workflow-step-glyph">
+                    <span class="workflow-step-pill-glyph">
                       <span v-if="step.status === 'running'" class="workflow-spinner"></span>
                       <svg
                         v-else-if="step.status === 'done'"
@@ -1062,21 +1077,9 @@ onBeforeUnmount(() => {
                       <span v-else class="workflow-step-dot"></span>
                     </span>
 
-                    <div class="workflow-step-text">
-                      <div class="workflow-step-head">
-                        <strong>{{ step.title }}</strong>
-                        <small>{{ workflowStepStatusLabel(step.status) }}</small>
-                      </div>
-                      <p>{{ step.detail }}</p>
-
-                      <div
-                        v-if="step.status === 'running' && workflowToolEvent?.toolName"
-                        class="workflow-tool-block"
-                      >
-                        <div class="workflow-tool-label">Tool Call:</div>
-                        <strong>{{ workflowToolEvent.toolName }}</strong>
-                        <pre>{{ workflowToolPreviewText }}</pre>
-                      </div>
+                    <div class="workflow-step-pill-copy">
+                      <strong>{{ step.title }}</strong>
+                      <small>{{ workflowStepStatusLabel(step.status) }}</small>
                     </div>
                   </article>
                 </div>
@@ -1351,11 +1354,11 @@ onBeforeUnmount(() => {
   min-width: 0;
   width: 100%;
   min-width: min(100%, 320px);
-  border: 1px solid $border-light;
+  border: 0;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.04);
-  overflow: hidden;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
 }
 
 .workflow-card-head {
@@ -1365,9 +1368,9 @@ onBeforeUnmount(() => {
   gap: 12px;
   width: 100%;
   min-height: 48px;
-  padding: 12px 14px;
+  padding: 10px 0 8px;
   border: 0;
-  background: rgba(248, 250, 252, 0.72);
+  background: transparent;
   color: inherit;
   text-align: left;
   cursor: pointer;
@@ -1389,13 +1392,13 @@ onBeforeUnmount(() => {
   justify-content: center;
   flex: 0 0 20px;
   border: 1px solid rgba(148, 163, 184, 0.34);
-  background: #fff;
+  background: rgba(255, 255, 255, 0.56);
   color: $text-muted;
 
   &.is-running {
     color: $accent-primary;
     border-color: rgba(var(--accent-primary-rgb), 0.36);
-    box-shadow: 0 0 0 6px rgba(var(--accent-primary-rgb), 0.08);
+    box-shadow: 0 0 0 4px rgba(var(--accent-primary-rgb), 0.08);
   }
 
   &.is-done {
@@ -1461,7 +1464,7 @@ onBeforeUnmount(() => {
   padding: 2px 8px;
   border-radius: 8px;
   border: 1px solid rgba(148, 163, 184, 0.22);
-  background: #fff;
+  background: rgba(255, 255, 255, 0.68);
   color: $accent-primary;
   font-size: 12px;
   line-height: 16px;
@@ -1482,95 +1485,67 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 0 14px 14px;
+  padding: 0 0 6px;
 }
 
-.workflow-reasoning-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 14px;
-  padding: 12px;
-  border-radius: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.16);
-  background: rgba(248, 250, 252, 0.76);
-}
-
-.workflow-reasoning-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-
-  strong {
-    color: $text-primary;
-    font-size: 13px;
-    line-height: 18px;
-    font-weight: 700;
-  }
-
-  small {
-    flex-shrink: 0;
-    color: $text-muted;
-    font-size: 11px;
-    line-height: 16px;
-  }
-}
-
-.workflow-reasoning-body {
-  max-height: 132px;
-  overflow-y: auto;
-  padding-right: 4px;
-  color: $text-secondary;
-  font-size: 12px;
-  line-height: 19px;
-  white-space: pre-wrap;
-  word-break: break-word;
-  scrollbar-width: thin;
-}
-
-.workflow-timeline {
+.workflow-step-chain {
   position: relative;
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 2px 0 0;
+  align-items: stretch;
+  gap: 10px;
+  overflow-x: auto;
+  padding: 4px 0;
+  scrollbar-width: thin;
 
   &::before {
     content: "";
     position: absolute;
-    top: 18px;
-    bottom: 18px;
-    left: 10px;
-    width: 1px;
-    background: rgba(148, 163, 184, 0.28);
+    left: 18px;
+    right: 18px;
+    top: 22px;
+    height: 1px;
+    background: rgba(148, 163, 184, 0.24);
+    pointer-events: none;
   }
 }
 
-.workflow-step {
+.workflow-step-pill {
   position: relative;
+  z-index: 1;
+  min-width: 132px;
+  max-width: 132px;
+  height: 76px;
+  padding: 10px 10px 8px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(255, 255, 255, 0.72);
   display: flex;
+  flex-direction: column;
   align-items: flex-start;
-  gap: 12px;
-  min-width: 0;
-  padding: 8px 0;
+  gap: 8px;
+  flex-shrink: 0;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.05);
 
   &.is-running {
+    border-color: rgba(var(--accent-primary-rgb), 0.28);
     color: $accent-primary;
   }
 
   &.is-done {
+    border-color: rgba(var(--success-rgb), 0.24);
     color: $success;
+    background: rgba(var(--success-rgb), 0.05);
   }
 
   &.is-error {
+    border-color: rgba(var(--error-rgb), 0.24);
     color: $error;
+    background: rgba(var(--error-rgb), 0.05);
   }
 }
 
-.workflow-step-glyph {
+.workflow-step-pill-glyph {
   position: relative;
-  z-index: 1;
   width: 22px;
   height: 22px;
   flex: 0 0 22px;
@@ -1579,21 +1554,21 @@ onBeforeUnmount(() => {
   justify-content: center;
   border-radius: 999px;
   border: 1px solid rgba(148, 163, 184, 0.38);
-  background: #fff;
+  background: rgba(255, 255, 255, 0.56);
   color: $text-muted;
 
-  .workflow-step.is-running & {
+  .workflow-step-pill.is-running & {
     color: $accent-primary;
     border-color: rgba(var(--accent-primary-rgb), 0.34);
   }
 
-  .workflow-step.is-done & {
+  .workflow-step-pill.is-done & {
     color: $success;
     background: rgba(var(--success-rgb), 0.08);
     border-color: rgba(var(--success-rgb), 0.34);
   }
 
-  .workflow-step.is-error & {
+  .workflow-step-pill.is-error & {
     color: $error;
     background: rgba(var(--error-rgb), 0.08);
     border-color: rgba(var(--error-rgb), 0.34);
@@ -1621,152 +1596,29 @@ onBeforeUnmount(() => {
   background: rgba(148, 163, 184, 0.6);
 }
 
-.workflow-step-text {
+.workflow-step-pill-copy {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  flex: 1;
   gap: 4px;
+  width: 100%;
 
   strong {
     color: $text-primary;
-    font-size: 13px;
-    line-height: 18px;
+    font-size: 12px;
+    line-height: 17px;
+    min-height: 34px;
+    max-height: 34px;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
   }
 
   small {
     color: $text-muted;
     font-size: 11px;
-    white-space: nowrap;
-  }
-
-  p {
-    margin: 0;
-    color: $text-secondary;
-    font-size: 12px;
-    line-height: 18px;
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
-}
-
-.workflow-step-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.workflow-tool-block {
-  margin-top: 8px;
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  background: rgba(248, 250, 252, 0.88);
-
-  strong {
-    display: block;
-    margin-top: 2px;
-    color: $accent-primary;
-    font-size: 13px;
-    line-height: 18px;
-    font-family: $font-code;
-  }
-
-  pre {
-    margin: 8px 0 0;
-    max-height: 140px;
-    overflow: auto;
-    white-space: pre-wrap;
-    word-break: break-word;
-    color: $text-secondary;
-    font-size: 12px;
-    line-height: 18px;
-    font-family: $font-code;
-  }
-}
-
-.workflow-tool-label {
-  font-size: 11px;
-  line-height: 16px;
-  color: $text-muted;
-  font-family: $font-code;
-}
-
-.workflow-section {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-
-  > strong {
-    color: $text-primary;
-    font-size: 12px;
-  }
-
-  p,
-  pre {
-    margin: 0;
-    max-height: 120px;
-    overflow: auto;
-    border-radius: 6px;
-    background: rgba(0, 0, 0, 0.035);
-    color: $text-secondary;
-    font-size: 12px;
-    line-height: 1.55;
-    white-space: pre-wrap;
-    padding: 8px;
-    scrollbar-width: thin;
-  }
-}
-
-.workflow-event-list {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 180px;
-  overflow-y: auto;
-  scrollbar-width: thin;
-}
-
-.workflow-event {
-  display: grid;
-  grid-template-columns: 10px minmax(0, 1fr);
-  gap: 8px;
-  align-items: start;
-  min-width: 0;
-
-  strong {
-    display: block;
-    color: $text-primary;
-    font-size: 12px;
-    line-height: 1.35;
-  }
-
-  p {
-    margin: 2px 0 0;
-    color: $text-secondary;
-    font-size: 12px;
-    line-height: 1.45;
-  }
-}
-
-.workflow-event-dot {
-  width: 7px;
-  height: 7px;
-  margin-top: 5px;
-  border-radius: 999px;
-  background: $text-muted;
-
-  .workflow-event.is-running & {
-    background: $accent-primary;
-  }
-
-  .workflow-event.is-done & {
-    background: $success;
-  }
-
-  .workflow-event.is-error & {
-    background: $error;
+    line-height: 16px;
   }
 }
 

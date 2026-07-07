@@ -8,11 +8,16 @@ function safeDecodeURIComponent(value: string): string {
   }
 }
 
+function isAbsoluteHttpUrl(value: string): boolean {
+  return /^https?:\/\//i.test(value.trim())
+}
+
 /**
  * Construct a download URL with auth token as query parameter.
  * Token is passed via query param because <a> tags cannot set headers.
  */
 export function getDownloadUrl(filePath: string, fileName?: string): string {
+  if (isAbsoluteHttpUrl(filePath)) return filePath
   const base = getBaseUrlValue()
 
   // Guard: if filePath is already a full download URL, extract the real path
@@ -47,6 +52,17 @@ export function getDownloadUrl(filePath: string, fileName?: string): string {
  * for the browser download. Throws with error message on failure.
  */
 export async function downloadFile(filePath: string, fileName?: string): Promise<void> {
+  if (isAbsoluteHttpUrl(filePath)) {
+    const a = document.createElement('a')
+    a.href = filePath
+    a.target = '_blank'
+    a.rel = 'noopener noreferrer'
+    if (fileName) a.download = fileName
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    return
+  }
   const url = getDownloadUrl(filePath, fileName)
   const res = await fetch(url)
   if (!res.ok) {
@@ -69,7 +85,7 @@ export async function downloadFile(filePath: string, fileName?: string): Promise
  * Throws with error message on failure.
  */
 export async function fetchFileText(filePath: string, fileName?: string): Promise<string> {
-  const url = getDownloadUrl(filePath, fileName)
+  const url = isAbsoluteHttpUrl(filePath) ? filePath : getDownloadUrl(filePath, fileName)
   const res = await fetch(url)
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))

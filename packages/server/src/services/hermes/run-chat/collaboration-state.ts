@@ -1,5 +1,6 @@
 type SnapshotStatus = 'idle' | 'running' | 'completed' | 'failed'
 type NodeStatus = 'todo' | 'doing' | 'done' | 'blocked'
+type NodeOutcome = 'unknown' | 'success' | 'failure'
 type ThinkingStatus = 'pending' | 'running' | 'done'
 
 export interface CollaborationSnapshotNode {
@@ -7,6 +8,7 @@ export interface CollaborationSnapshotNode {
   title: string
   phase: string
   status: NodeStatus
+  outcome: NodeOutcome
   dependsOn: string[]
   executor: {
     type: 'hermes' | 'subagent'
@@ -88,6 +90,13 @@ function normalizeNodeStatus(value: unknown, fallback: NodeStatus): NodeStatus {
     : fallback
 }
 
+function normalizeNodeOutcome(value: unknown, status?: NodeStatus): NodeOutcome {
+  if (value === 'unknown' || value === 'success' || value === 'failure') return value
+  if (status === 'done') return 'success'
+  if (status === 'blocked') return 'failure'
+  return 'unknown'
+}
+
 function routeTodoNodeId(index: number): string {
   return `task_route_${index + 1}`
 }
@@ -146,6 +155,7 @@ function buildFallbackPlan(args: {
       title,
       phase: inferRouteTodoPhase(title, index, cleanedTodo.length),
       status: 'todo',
+      outcome: 'unknown',
       dependsOn: index > 0 ? [routeTodoNodeId(index - 1)] : [],
       executor: delegated
         ? {
@@ -172,6 +182,7 @@ function buildFallbackPlan(args: {
         title: '理解需求与约束',
         phase: '分析',
         status: 'done',
+        outcome: 'success',
         dependsOn: [],
         executor: { type: 'hermes', name: '主智能体' },
         summary: '已接收用户需求并提取当前任务目标。',
@@ -181,6 +192,7 @@ function buildFallbackPlan(args: {
         title: '确认执行路径',
         phase: '路由',
         status: taskNodes.length > 0 ? 'doing' : 'done',
+        outcome: taskNodes.length > 0 ? 'unknown' : 'success',
         dependsOn: ['understand'],
         executor: { type: 'hermes', name: '主智能体' },
         summary: args.routeText || '主智能体已生成任务路径。',
@@ -191,6 +203,7 @@ function buildFallbackPlan(args: {
         title: '汇总阶段成果并回复用户',
         phase: '汇总',
         status: taskNodes.length > 0 ? 'todo' : 'doing',
+        outcome: 'unknown',
         dependsOn: taskNodes.length > 0 ? [taskNodes[taskNodes.length - 1]!.id] : ['route'],
         executor: { type: 'hermes', name: '主智能体' },
         summary: '等待执行节点完成后组织最终回复。',
@@ -263,6 +276,17 @@ function normalizePlanNodes(payload: Record<string, unknown>, mode: 'delegate_su
         : node.id === 'route'
           ? 'doing'
           : 'todo',
+    ),
+    outcome: normalizeNodeOutcome(
+      (node as Record<string, unknown>).outcome,
+      normalizeNodeStatus(
+        node.status,
+        node.id === 'understand'
+          ? 'done'
+          : node.id === 'route'
+            ? 'doing'
+            : 'todo',
+      ),
     ),
     dependsOn: dependsOnMap.get(nodeIds[index]) || [],
     executor: node.executor && typeof node.executor === 'object' && (node.executor as any).type === 'subagent'
@@ -356,8 +380,8 @@ function normalizeSingleRunningNode(snapshot: CollaborationSnapshotState, runnin
     ...snapshot,
     planNodes: snapshot.planNodes.map(node => {
       if (RESERVED_NODE_IDS.has(node.id)) return node
-      if (runningNodeId && node.id === runningNodeId) return { ...node, status: 'doing' }
-      if (node.status === 'doing') return { ...node, status: 'todo' }
+      if (runningNodeId && node.id === runningNodeId) return { ...node, status: 'doing', outcome: 'unknown' }
+      if (node.status === 'doing') return { ...node, status: 'todo', outcome: 'unknown' }
       return node
     }),
   }
@@ -410,6 +434,7 @@ export function createCollaborationSnapshot(args: {
         title: '理解需求与约束',
         phase: '分析',
         status: 'doing',
+        outcome: 'unknown',
         dependsOn: [],
         executor: { type: 'hermes', name: '主智能体' },
         summary: '主智能体正在读取消息、提取目标与约束。',
@@ -419,6 +444,7 @@ export function createCollaborationSnapshot(args: {
         title: '确认执行路径',
         phase: '路由',
         status: 'todo',
+        outcome: 'unknown',
         dependsOn: ['understand'],
         executor: { type: 'hermes', name: '主智能体' },
         summary: '等待主智能体完成意图分析与任务拆解。',
@@ -428,6 +454,7 @@ export function createCollaborationSnapshot(args: {
         title: '汇总阶段成果并回复用户',
         phase: '汇总',
         status: 'todo',
+        outcome: 'unknown',
         dependsOn: ['route'],
         executor: { type: 'hermes', name: '主智能体' },
         summary: '等待前置节点完成后生成最终回复。',
@@ -592,7 +619,7 @@ export function applySubagentEvent(
       : targetNodeId,
     planNodes: next.planNodes.map(node => {
       if (node.id === 'understand' || node.id === 'route') {
-        return { ...node, status: 'done' }
+        return { ...node, status: 'done', outcome: 'success' }
       }
       if (node.id !== targetNodeId) return node
       if (eventName === 'subagent.complete') {
@@ -600,6 +627,7 @@ export function applySubagentEvent(
         return {
           ...node,
           status: failed ? 'blocked' : 'done',
+          outcome: failed ? 'failure' : 'success',
           summary: summary || text || goal || node.summary,
           executor: {
             type: 'subagent',
@@ -611,6 +639,7 @@ export function applySubagentEvent(
       return {
         ...node,
         status: 'doing',
+        outcome: 'unknown',
         summary: summary || text || goal || preview || node.summary,
         executor: {
           type: 'subagent',
@@ -660,7 +689,9 @@ export function applySubagentEvent(
     return {
       ...next,
       currentNodeId: 'respond',
-      planNodes: next.planNodes.map(node => node.id === 'respond' ? { ...node, status: 'doing', summary: '子智能体已返回阶段成果，主智能体正在组织最终回复。' } : node),
+      planNodes: next.planNodes.map(node => node.id === 'respond'
+        ? { ...node, status: 'doing', outcome: 'unknown', summary: '子智能体已返回阶段成果，主智能体正在组织最终回复。' }
+        : node),
     }
   }
 
@@ -679,16 +710,18 @@ export function applyTerminalEvent(
         return {
           ...node,
           status: 'done' as const,
+          outcome: 'success' as const,
           summary: '主智能体已汇总阶段成果并回复用户。',
         }
       }
       return {
         ...node,
         status: 'done' as const,
+        outcome: 'success' as const,
       }
     }
-    if (node.id === snapshot.currentNodeId) return { ...node, status: 'blocked' as const }
-    if (node.id === 'respond' && node.status === 'doing') return { ...node, status: 'blocked' as const }
+    if (node.id === snapshot.currentNodeId) return { ...node, status: 'blocked' as const, outcome: 'failure' as const }
+    if (node.id === 'respond' && node.status === 'doing') return { ...node, status: 'blocked' as const, outcome: 'failure' as const }
     return node
   })
   const base = {

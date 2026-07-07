@@ -17,6 +17,7 @@ import {
   getCollaborationRun,
   updateCollaborationRun,
 } from '../../../db/hermes/collaboration-run-store'
+import { listOrDiscoverSubAgentsRegistry } from '../../../db/hermes/sub-agent-store'
 import { getActiveProfileName, getProfileDir, listProfileNamesFromDisk } from '../hermes-profile'
 import { AgentBridgeClient } from '../agent-bridge'
 import { getAgentBridgeManager } from '../agent-bridge/manager'
@@ -35,6 +36,11 @@ import { authenticateUserToken, isAuthEnabled, type AuthenticatedUser } from '..
 import { userCanAccessProfile } from '../../../db/hermes/users-store'
 import { ensureHermesRunWorkspace } from './workspace'
 import {
+  canAccessOwnedRecordWithContext,
+  effectiveRequestedUserId,
+  effectiveSessionOwnerId,
+} from '../session-access'
+import {
   applyProgressEvent,
   applyReasoningEvent,
   applyRouteEvent,
@@ -46,11 +52,102 @@ import {
 
 export type { ContentBlock } from './types'
 
+function normalizeMultiAgentCandidates(input: unknown): MultiAgentRouteCandidate[] {
+  if (!Array.isArray(input)) return []
+  return input
+    .map((item) => {
+      const raw = item && typeof item === 'object' && !Array.isArray(item)
+        ? item as Record<string, unknown>
+        : {}
+      const runtimeConfig = raw.runtimeConfig && typeof raw.runtimeConfig === 'object' && !Array.isArray(raw.runtimeConfig)
+        ? raw.runtimeConfig as Record<string, unknown>
+        : {}
+      return {
+        id: String(raw.id || raw.name || '').trim(),
+        name: String(raw.name || raw.id || '').trim(),
+        description: String(raw.description || '').trim(),
+        baseUrl: String(raw.baseUrl || '').trim(),
+        chatPath: String(raw.chatPath || runtimeConfig.chatPath || '/v1/chat/completions').trim() || '/v1/chat/completions',
+        enabled: raw.enabled !== false
+          && runtimeConfig.enabled !== false
+          && raw.status !== 'offline'
+          && raw.status !== 'draft',
+        skills: Array.isArray(raw.skills) ? raw.skills as Array<{ name?: string; description?: string }> : [],
+        tools: Array.isArray(raw.tools) ? raw.tools as Array<{ name?: string; description?: string }> : [],
+      }
+    })
+    .filter(candidate => candidate.id && candidate.name)
+}
+
+async function resolveRuntimeSubAgentCandidates(
+  profile: string,
+  fallbackCandidates?: MultiAgentRouteCandidate[],
+): Promise<MultiAgentRouteCandidate[]> {
+  const registered = normalizeMultiAgentCandidates(await listOrDiscoverSubAgentsRegistry(profile))
+  if (registered.length > 0) return registered
+  return normalizeMultiAgentCandidates(fallbackCandidates || [])
+}
+
+function textFromStoredContent(content: unknown): string {
+  if (typeof content !== 'string') return String(content || '').trim()
+  const trimmed = content.trim()
+  if (!trimmed) return ''
+  try {
+    const parsed = JSON.parse(trimmed)
+    if (Array.isArray(parsed) && parsed.every(item => item && typeof item === 'object' && 'type' in item)) {
+      const blocks = parsed as ContentBlock[]
+      const preview = extractTextForPreview(blocks).trim()
+      if (preview) return preview
+      return blocks.map((block) => {
+        if (block.type === 'text') return block.text
+        if (block.type === 'image') return `[图片: ${block.name || block.path}]`
+        return `[文件: ${block.name || block.path}]`
+      }).join('\n').trim()
+    }
+  } catch {
+    // Keep original plain text content.
+  }
+  return trimmed
+}
+
+function buildRecentConversationContext(sessionId: string, sessionMap: Map<string, SessionState>, latestInput: string): string {
+  const inMemory = sessionMap.get(sessionId)?.messages || []
+  const dbMessages = inMemory.length > 0 ? [] : (getSessionDetail(sessionId)?.messages || [])
+  const sourceMessages = (inMemory.length > 0 ? inMemory : dbMessages)
+    .filter((message: any) => ['user', 'assistant', 'command'].includes(String(message?.display_role || message?.role || '')))
+    .slice(-8)
+
+  const lines = sourceMessages
+    .map((message: any) => {
+      const role = String(message?.display_role || message?.role || '').trim()
+      const text = textFromStoredContent(message?.display_content ?? message?.content)
+      if (!text) return ''
+      const prefix = role === 'assistant' ? '助手' : role === 'command' ? '系统' : '用户'
+      return `${prefix}: ${text}`
+    })
+    .filter(Boolean)
+
+  const normalizedLatest = latestInput.trim()
+  const deduped = normalizedLatest
+    ? lines.filter(line => line !== `用户: ${normalizedLatest}`)
+    : lines
+  const context = deduped.join('\n').trim()
+  if (!context) return ''
+  return context.length > 2400 ? context.slice(context.length - 2400).trim() : context
+}
+
 function currentProfileFromSocket(socket: Socket): string {
   const socketProfile = typeof socket.handshake.query?.profile === 'string'
     ? socket.handshake.query.profile.trim()
     : ''
   return socketProfile || getActiveProfileName() || 'default'
+}
+
+function requestedUserContextFromSocket(socket: Socket): string | null {
+  const queryUserId = typeof socket.handshake.query?.user_id === 'string'
+    ? socket.handshake.query.user_id.trim()
+    : ''
+  return queryUserId || null
 }
 
 function redactBridgeReadyError(error: string, endpoint?: string): string {
@@ -61,6 +158,17 @@ function redactBridgeReadyError(error: string, endpoint?: string): string {
 function isBridgeStatusLookupTimeout(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error)
   return /^Agent bridge request timed out after \d+ms$/.test(message.trim())
+}
+
+function isBridgeMissingSessionError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  if (/\[Errno 2\]\s+No such file or directory/i.test(message)) return true
+  if (message.includes('FileNotFoundError')) return true
+  if (typeof error === 'object' && error && 'response' in error) {
+    const response = (error as { response?: { error_type?: unknown } }).response
+    if (response && String(response.error_type || '') === 'FileNotFoundError') return true
+  }
+  return false
 }
 
 function isHermesWorkerBackedSession(session?: { source?: string | null; agent?: string | null; agent_session_id?: string | null }): boolean {
@@ -244,6 +352,7 @@ export class ChatRunSocket {
 
   private onConnection(socket: Socket) {
     const socketUser = socket.data.user as AuthenticatedUser | undefined
+    const requestedUserContext = () => effectiveRequestedUserId(socketUser, requestedUserContextFromSocket(socket))
     const socketProfile = (socket.handshake.query?.profile as string) || 'default'
     const currentProfile = () => socketProfile || getActiveProfileName() || 'default'
     const profileExists = (profile: string) => {
@@ -266,7 +375,8 @@ export class ChatRunSocket {
         }
         return profile
       }
-      const storedProfile = getSession(sessionId)?.profile || ''
+      const storedSession = this.getAccessibleStoredSession(socketUser, sessionId, requestedUserContext())
+      const storedProfile = storedSession?.profile || ''
       const profile = storedProfile && profileExists(storedProfile) ? storedProfile : currentProfile()
       if (socketUser && !this.canAccessProfile(socketUser, profile)) {
         throw new Error(`Profile "${profile}" is not available for this user`)
@@ -305,6 +415,7 @@ export class ChatRunSocket {
     }) => {
       let runProfile: string
       try {
+        if (data.session_id) this.getAccessibleStoredSession(socketUser, data.session_id, requestedUserContext())
         runProfile = resolveRunProfile(data.session_id, data.profile)
       } catch (err) {
         socket.emit('run.failed', {
@@ -413,6 +524,16 @@ export class ChatRunSocket {
 
     socket.on('cancel_queued_run', (data: { session_id?: string; queue_id?: string }) => {
       if (!data.session_id || !data.queue_id) return
+      try {
+        this.getAccessibleStoredSession(socketUser, data.session_id, requestedUserContext())
+      } catch (err) {
+        socket.emit('run.failed', {
+          event: 'run.failed',
+          session_id: data.session_id,
+          error: err instanceof Error ? err.message : String(err),
+        })
+        return
+      }
       const state = this.sessionMap.get(data.session_id)
       if (!state?.queue.length) return
       const before = state.queue.length
@@ -431,18 +552,52 @@ export class ChatRunSocket {
     socket.on('resume', async (data: { session_id?: string }) => {
       if (!data.session_id) return
       const sid = data.session_id
+      try {
+        this.getAccessibleStoredSession(socketUser, sid, requestedUserContext())
+      } catch (err) {
+        socket.emit('resumed', {
+          session_id: sid,
+          messages: [],
+          isWorking: false,
+          events: [],
+          error: err instanceof Error ? err.message : String(err),
+        })
+        return
+      }
       socket.join(`session:${sid}`)
       await this.resumeSession(socket, sid)
     })
 
     socket.on('abort', (data: { session_id?: string }) => {
       if (data.session_id) {
+        try {
+          this.getAccessibleStoredSession(socketUser, data.session_id, requestedUserContext())
+        } catch (err) {
+          socket.emit('run.failed', {
+            event: 'run.failed',
+            session_id: data.session_id,
+            error: err instanceof Error ? err.message : String(err),
+          })
+          return
+        }
         void handleAbort(this.nsp, socket, data.session_id, this.sessionMap, this.bridge, this.runQueuedItem.bind(this))
       }
     })
 
     socket.on('approval.respond', async (data: { session_id?: string; approval_id?: string; choice?: string }) => {
       if (!data.session_id || !data.approval_id) return
+      try {
+        this.getAccessibleStoredSession(socketUser, data.session_id, requestedUserContext())
+      } catch (err) {
+        this.emitToSession(socket, data.session_id, 'approval.resolved', {
+          event: 'approval.resolved',
+          approval_id: data.approval_id,
+          choice: data.choice || 'deny',
+          resolved: false,
+          error: err instanceof Error ? err.message : String(err),
+        })
+        return
+      }
       try {
         const result = await this.bridge.approvalRespond(data.approval_id, data.choice || 'deny')
         this.emitToSession(socket, data.session_id, 'approval.resolved', {
@@ -464,6 +619,17 @@ export class ChatRunSocket {
 
     socket.on('clarify.respond', async (data: { session_id?: string; clarify_id?: string; response?: string }) => {
       if (!data.session_id || !data.clarify_id) return
+      try {
+        this.getAccessibleStoredSession(socketUser, data.session_id, requestedUserContext())
+      } catch (err) {
+        this.emitToSession(socket, data.session_id, 'clarify.resolved', {
+          event: 'clarify.resolved',
+          clarify_id: data.clarify_id,
+          resolved: false,
+          error: err instanceof Error ? err.message : String(err),
+        })
+        return
+      }
       this.clearClarifyEventState(data.session_id, data.clarify_id)
       try {
         const result = await this.bridge.clarifyRespond(data.clarify_id, data.response || '')
@@ -519,6 +685,9 @@ export class ChatRunSocket {
     skipUserMessage = false,
   ) {
     const source = resolveRunSource(data.source, data.session_id)
+    const effectiveSubAgentCandidates = data.multi_agent_mode === true
+      ? await resolveRuntimeSubAgentCandidates(profile, data.sub_agent_candidates || [])
+      : normalizeMultiAgentCandidates(data.sub_agent_candidates || [])
     if (data.session_id && isBridgeRunSource(source) && isSessionCommand(data.input)) return
 
     const sessionId = data.session_id ? String(data.session_id).trim() : ''
@@ -527,45 +696,62 @@ export class ChatRunSocket {
     const collaborationRunId = sessionId && data.multi_agent_mode === true
       ? randomUUID()
       : null
-    const emitCollaborationEvent = (eventName: string, payload: Record<string, unknown>) => {
-      if (data.onEvent) data.onEvent(eventName, payload)
-      this.appendCollaborationEvent(collaborationRunId, eventName, payload)
-    }
-
-    if (collaborationRunId && sessionId) {
-      const existingRun = getCollaborationRun(collaborationRunId)
+    const ensureCollaborationRunState = (
+      targetRunId: string | null | undefined,
+      objectiveOverride?: string | null,
+      mode: 'delegate_subagent' | 'hermes_native' = 'hermes_native',
+    ) => {
+      if (!targetRunId || !sessionId) return
+      const existingRun = getCollaborationRun(targetRunId)
+      const nextObjective = String(objectiveOverride || objectiveText || '').trim() || objectiveText
       if (!existingRun) {
         createCollaborationRun({
-          id: collaborationRunId,
+          id: targetRunId,
           session_id: sessionId,
-          user_id: socketUser?.id || null,
+          user_id: effectiveSessionOwnerId(socketUser, requestedUserContextFromSocket(socket)),
           profile,
           status: 'running',
-          mode: 'hermes_native',
-          objective: objectiveText,
-          text: objectiveText,
+          mode,
+          objective: nextObjective,
+          text: nextObjective,
           route_json: { enabled: true },
           snapshot_json: createCollaborationSnapshot({
-            runId: collaborationRunId,
+            runId: targetRunId,
             sessionId,
-            objective: objectiveText,
-            mode: 'hermes_native',
+            objective: nextObjective,
+            mode,
           }) as unknown as Record<string, unknown>,
           events_json: [],
         })
       }
       const state = getOrCreateSession(this.sessionMap, sessionId)
-      state.collaborationRunId = collaborationRunId
+      state.collaborationRunId = targetRunId
+    }
+    const emitCollaborationEvent = (
+      eventName: string,
+      payload: Record<string, unknown>,
+      targetRunId: string | null | undefined = collaborationRunId,
+    ) => {
+      if (data.onEvent) data.onEvent(eventName, payload)
+      this.appendCollaborationEvent(targetRunId, eventName, payload)
+    }
+
+    if (collaborationRunId && sessionId) {
+      ensureCollaborationRunState(collaborationRunId, objectiveText, 'hermes_native')
     } else if (sessionId) {
       const state = getOrCreateSession(this.sessionMap, sessionId)
       state.collaborationRunId = undefined
     }
 
     if (!isCodingAgentExecution(source, data)) {
+      const conversationContext = sessionId
+        ? buildRecentConversationContext(sessionId, this.sessionMap, objectiveText)
+        : ''
       const routeDecision = await resolveMultiAgentRoute({
         enabled: data.multi_agent_mode === true,
         input: data.input,
-        candidates: data.sub_agent_candidates || [],
+        candidates: effectiveSubAgentCandidates,
+        conversationContext,
         profile,
         provider: data.provider,
         model: data.model,
@@ -680,6 +866,7 @@ export class ChatRunSocket {
           socket,
           {
             ...data,
+            sub_agent_candidates: effectiveSubAgentCandidates,
             collaboration_run_id: collaborationRunId || undefined,
             onEvent: (eventName, payload) => {
               emitCollaborationEvent(eventName, payload)
@@ -691,11 +878,20 @@ export class ChatRunSocket {
           this.dequeueNextQueuedRun.bind(this),
           skipUserMessage,
           {
-            continueWithHermes: async ({ input, instructions }) => {
+            continueWithHermes: async ({ input, instructions, collaborationRunId: nextCollaborationRunId, objective }) => {
               const bridgeReady = await ensureBridgeReadyForChatRun()
               if (!bridgeReady.ok) {
                 throw new Error(`Agent Bridge is not reachable: ${bridgeReady.error}`)
               }
+              const activeCollaborationRunId = nextCollaborationRunId || collaborationRunId || undefined
+              if (nextCollaborationRunId && collaborationRunId && nextCollaborationRunId !== collaborationRunId) {
+                updateCollaborationRun(collaborationRunId, {
+                  status: 'failed',
+                  error: '子智能体节点执行失败，已切换为主智能体重新规划。',
+                  ended_at: Date.now(),
+                })
+              }
+              ensureCollaborationRunState(activeCollaborationRunId, objective || input, 'hermes_native')
               await handleBridgeRun(
                 this.nsp,
                 socket,
@@ -713,9 +909,9 @@ export class ChatRunSocket {
                   source: data.source,
                   session_source: data.session_source,
                   peerExcludeSocketId: data.peerExcludeSocketId,
-                  collaboration_run_id: collaborationRunId || undefined,
+                  collaboration_run_id: activeCollaborationRunId,
                   onEvent: (eventName, payload) => {
-                    emitCollaborationEvent(eventName, payload)
+                    emitCollaborationEvent(eventName, payload, activeCollaborationRunId)
                   },
                 },
                 profile,
@@ -780,7 +976,10 @@ export class ChatRunSocket {
       }
       if (data.session_id) {
         const sessionRow = getSession(data.session_id)
-        const workspace = await ensureHermesRunWorkspace(profile, sessionRow?.workspace || data.workspace)
+        const workspace = await ensureHermesRunWorkspace(profile, sessionRow?.workspace || data.workspace, {
+          userId: sessionRow?.user_id || effectiveSessionOwnerId(socketUser, requestedUserContextFromSocket(socket)) || null,
+          sessionId: data.session_id,
+        })
         if (workspace) {
           const workspaceCtx = `[Current working directory: ${workspace}]`
           fullInstructions = `\n${workspaceCtx}\n${fullInstructions}`
@@ -898,6 +1097,14 @@ export class ChatRunSocket {
       if (pollKey) this.bridgeResumePolls.delete(pollKey)
       if (isBridgeStatusLookupTimeout(err)) {
         logger.debug(err, '[chat-run-socket] bridge status lookup timed out while resuming session %s', sid)
+        return
+      }
+      if (isBridgeMissingSessionError(err)) {
+        state.isWorking = false
+        state.isAborting = false
+        state.runId = undefined
+        state.activeRunMarker = undefined
+        logger.info('[chat-run-socket] bridge session state missing while resuming session %s, cleared stale local run state', sid)
         return
       }
       logger.warn(err, '[chat-run-socket] bridge status lookup failed while resuming session %s', sid)
@@ -1329,6 +1536,30 @@ export class ChatRunSocket {
 
   private canAccessProfile(user: AuthenticatedUser, profile: string): boolean {
     return user.role === 'super_admin' || userCanAccessProfile(user.id, profile)
+  }
+
+  private canAccessSession(
+    user: AuthenticatedUser | undefined,
+    session?: { user_id?: string | number | null; profile?: string | null } | null,
+    requestedUserId?: string | number | null,
+  ): boolean {
+    if (!session) return true
+    if (!canAccessOwnedRecordWithContext(user, session, requestedUserId)) return false
+    return !user || this.canAccessProfile(user, session.profile || 'default')
+  }
+
+  private getAccessibleStoredSession(
+    user: AuthenticatedUser | undefined,
+    sessionId: string,
+    requestedUserId?: string | number | null,
+  ) {
+    const trimmedSessionId = String(sessionId || '').trim()
+    if (!trimmedSessionId) return null
+    const session = getSession(trimmedSessionId)
+    if (session && !this.canAccessSession(user, session, requestedUserId)) {
+      throw new Error('Session access denied')
+    }
+    return session
   }
 
   /** Close all active upstream response streams */

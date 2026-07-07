@@ -2,6 +2,7 @@ import router from '@/router'
 
 const DEFAULT_BASE_URL = ''
 const ACTIVE_PROFILE_STORAGE_KEY = 'hermes_active_profile_name'
+const ACTIVE_USER_CONTEXT_STORAGE_KEY = 'hermes_active_user_context'
 
 function isDesktopShell(): boolean {
   return typeof window !== 'undefined' &&
@@ -33,6 +34,9 @@ export function clearApiKey() {
 function clearAuthSessionState() {
   clearApiKey()
   localStorage.removeItem(ACTIVE_PROFILE_STORAGE_KEY)
+  if (typeof window !== 'undefined') {
+    window.sessionStorage.removeItem(ACTIVE_USER_CONTEXT_STORAGE_KEY)
+  }
 }
 
 export function hasApiKey(): boolean {
@@ -75,6 +79,22 @@ export function getStoredUsername(): string | null {
 
 export function getActiveProfileName(): string | null {
   return localStorage.getItem(ACTIVE_PROFILE_STORAGE_KEY)
+}
+
+export function setActiveUserContextId(userId: string | null | undefined) {
+  if (typeof window === 'undefined') return
+  const normalized = String(userId || '').trim()
+  if (normalized) {
+    window.sessionStorage.setItem(ACTIVE_USER_CONTEXT_STORAGE_KEY, normalized)
+    return
+  }
+  window.sessionStorage.removeItem(ACTIVE_USER_CONTEXT_STORAGE_KEY)
+}
+
+export function getActiveUserContextId(): string | null {
+  if (typeof window === 'undefined') return null
+  const normalized = String(window.sessionStorage.getItem(ACTIVE_USER_CONTEXT_STORAGE_KEY) || '').trim()
+  return normalized || null
 }
 
 function bodyHasProfileSelector(body: BodyInit | null | undefined): boolean {
@@ -165,6 +185,11 @@ export async function request<T>(path: string, options: RequestInit = {}): Promi
   const profileName = getActiveProfileName()
   if (profileName && shouldAttachProfileHeader(path, options)) {
     headers['X-Hermes-Profile'] = profileName
+  }
+
+  const userContextId = getActiveUserContextId()
+  if (userContextId && path.startsWith('/api/hermes/')) {
+    headers['X-Hermes-User-Context'] = userContextId
   }
 
   const res = await fetch(url, { ...options, headers })

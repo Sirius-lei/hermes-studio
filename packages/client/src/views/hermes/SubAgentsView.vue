@@ -8,6 +8,7 @@ import {
   NTag,
   useMessage,
 } from 'naive-ui'
+import { listSubAgentsRegistry, replaceSubAgentsRegistry } from '@/api/hermes/sub-agents'
 import { copyToClipboard } from '@/utils/clipboard'
 import {
   SUB_AGENT_STORAGE_EVENT,
@@ -218,6 +219,8 @@ const defaultRuntimeConfig: RuntimeConfig = {
   syncError: '',
 }
 
+const SERVER_SYNC_DEBOUNCE_MS = 320
+
 const message = useMessage()
 
 const agents = ref<SubAgentRecord[]>([])
@@ -237,6 +240,9 @@ const isSyncing = ref(false)
 const isValidating = ref(false)
 const isDeploying = ref(false)
 const selectedAssetPreview = ref<AssetRef | null>(null)
+let persistTimer: number | null = null
+let pendingPersistSnapshot: SubAgentRecord[] | null = null
+let latestLoadToken = 0
 
 const createForm = reactive({
   name: '',
@@ -486,51 +492,164 @@ function clearLegacyAgentDrafts() {
   }
 }
 
-function resetToPiMonoSeed(showToast = false) {
+function cloneAgentSnapshot(records: SubAgentRecord[]): SubAgentRecord[] {
+  return JSON.parse(JSON.stringify(records)) as SubAgentRecord[]
+}
+
+function metricOverlayFromLocal(record: SubAgentRecord, local: Partial<SubAgentRecord> | null | undefined): SubAgentRecord {
+  if (!local) return record
+  const localInvocations = Array.isArray(local.recentInvocations) ? local.recentInvocations : record.recentInvocations
+  return {
+    ...record,
+    callCount: Number(local.callCount || record.callCount || 0),
+    successRate: Number(local.successRate || record.successRate || 0),
+    avgLatencyMs: Number(local.avgLatencyMs || record.avgLatencyMs || 0),
+    lastRun: localInvocations.length > 0 && typeof local.lastRun === 'string' && local.lastRun.trim()
+      ? local.lastRun
+      : record.lastRun,
+    recentInvocations: localInvocations as InvocationRecord[],
+  }
+}
+
+function mergeLocalStats(records: SubAgentRecord[], localRecords: SubAgentRecord[] | null): SubAgentRecord[] {
+  if (!localRecords?.length) return records
+  const byKey = new Map<string, Partial<SubAgentRecord>>()
+  for (const record of localRecords) {
+    const idKey = String(record.id || '').trim().toLowerCase()
+    const nameKey = String(record.name || '').trim().toLowerCase()
+    if (idKey) byKey.set(`id:${idKey}`, record)
+    if (nameKey) byKey.set(`name:${nameKey}`, record)
+  }
+  return records.map((record) => {
+    const idKey = String(record.id || '').trim().toLowerCase()
+    const nameKey = String(record.name || '').trim().toLowerCase()
+    return metricOverlayFromLocal(
+      record,
+      byKey.get(`id:${idKey}`) || byKey.get(`name:${nameKey}`),
+    )
+  })
+}
+
+function writeAgentMirror(records: SubAgentRecord[], notify: boolean) {
+  writeStoredSubAgents(cloneAgentSnapshot(records) as unknown as Array<Record<string, unknown>>, { notify })
+}
+
+async function flushServerPersist() {
+  if (!pendingPersistSnapshot) return
+  const snapshot = pendingPersistSnapshot
+  pendingPersistSnapshot = null
+  await replaceSubAgentsRegistry(snapshot as unknown as Array<Record<string, unknown>>)
+}
+
+function scheduleServerPersist(records: SubAgentRecord[], immediate = false) {
+  pendingPersistSnapshot = cloneAgentSnapshot(records)
+  if (persistTimer !== null) {
+    window.clearTimeout(persistTimer)
+    persistTimer = null
+  }
+  if (immediate) {
+    return flushServerPersist()
+  }
+  persistTimer = window.setTimeout(() => {
+    persistTimer = null
+    void flushServerPersist()
+  }, SERVER_SYNC_DEBOUNCE_MS)
+  return Promise.resolve()
+}
+
+function persistAgents(options: {
+  notify?: boolean
+  immediate?: boolean
+  writeMirror?: boolean
+  records?: SubAgentRecord[]
+} = {}) {
+  const snapshot = cloneAgentSnapshot(options.records || agents.value)
+  if (options.writeMirror !== false) {
+    writeAgentMirror(snapshot, options.notify === true)
+  }
+  return scheduleServerPersist(snapshot, options.immediate === true)
+}
+
+function persistAgentsSilently(options: {
+  immediate?: boolean
+  writeMirror?: boolean
+  records?: SubAgentRecord[]
+} = {}) {
+  return persistAgents({
+    ...options,
+    notify: false,
+  })
+}
+
+async function resetToPiMonoSeed(showToast = false) {
   clearLegacyAgentDrafts()
   agents.value = seedAgents()
   selectedAgentId.value = agents.value[0]?.id || ''
   activeTab.value = 'overview'
   validationMessage.value = ''
   validationOk.value = false
-  persistAgents()
+  await persistAgents({ immediate: true })
   if (showToast) {
     message.success('已重置为 subAgent-pi pi-mono 运行时')
   }
 }
 
-function loadAgents(options: { preserveSelection?: boolean } = {}) {
+async function loadAgents(options: { preserveSelection?: boolean } = {}) {
+  const loadToken = ++latestLoadToken
   const previousSelectedId = selectedAgentId.value
+  let localDrafts: SubAgentRecord[] | null = null
   try {
-    const normalized = normalizeStoredAgents(readStoredSubAgents())
-    if (normalized) {
-      clearLegacyAgentDrafts()
-      agents.value = normalized
-      selectedAgentId.value = options.preserveSelection && normalized.some(agent => agent.id === previousSelectedId)
-        ? previousSelectedId
-        : normalized[0].id
-      persistAgentsSilently()
-      return
-    }
+    localDrafts = normalizeStoredAgents(readStoredSubAgents())
   } catch {
-    // fall back to seed runtime
+    localDrafts = null
   }
-  resetToPiMonoSeed()
-}
 
-function persistAgents() {
-  writeStoredSubAgents(agents.value as unknown as Array<Record<string, unknown>>, { notify: true })
-}
+  let serverRecords: SubAgentRecord[] | null = null
+  let shouldBackfillServer = false
 
-function persistAgentsSilently() {
-  writeStoredSubAgents(agents.value as unknown as Array<Record<string, unknown>>, { notify: false })
+  try {
+    serverRecords = normalizeStoredAgents(await listSubAgentsRegistry<SubAgentRecord>())
+  } catch {
+    serverRecords = null
+  }
+
+  let nextRecords = serverRecords
+  if (!nextRecords) {
+    if (localDrafts) {
+      nextRecords = localDrafts
+      shouldBackfillServer = true
+    } else {
+      nextRecords = seedAgents()
+      shouldBackfillServer = true
+    }
+  }
+
+  clearLegacyAgentDrafts()
+  const merged = mergeLocalStats(nextRecords, localDrafts)
+  if (loadToken !== latestLoadToken) return
+
+  agents.value = merged
+  selectedAgentId.value = options.preserveSelection && merged.some(agent => agent.id === previousSelectedId)
+    ? previousSelectedId
+    : merged[0]?.id || ''
+  writeAgentMirror(merged, false)
+
+  const mergedJson = JSON.stringify(merged)
+  const serverJson = JSON.stringify(serverRecords || [])
+  if (shouldBackfillServer || (localDrafts && mergedJson !== serverJson)) {
+    try {
+      await persistAgentsSilently({ immediate: true, writeMirror: false, records: merged })
+    } catch {
+      // keep local mirror usable when server sync is temporarily unavailable
+    }
+  }
 }
 
 function updateAgent(id: string, patch: Partial<SubAgentRecord>) {
   agents.value = agents.value.map(item => (
     item.id === id ? { ...item, ...patch, updatedAt: Date.now() } : item
   ))
-  persistAgents()
+  void persistAgents()
 }
 
 function updateSelected(patch: Partial<SubAgentRecord>) {
@@ -713,7 +832,7 @@ function createAgent() {
   })
   agents.value = [agent, ...agents.value]
   selectedAgentId.value = agent.id
-  persistAgents()
+  void persistAgents()
   showCreateModal.value = false
   message.success('子智能体草稿已创建')
 }
@@ -1029,20 +1148,23 @@ async function copyPayload() {
 }
 
 onMounted(() => {
-  loadAgents()
+  void loadAgents().then(() => syncRuntimeConfig(selectedAgent.value, false))
   loadCapabilityCenters()
   window.addEventListener('storage', handleStoredAgentsUpdated)
   window.addEventListener(SUB_AGENT_STORAGE_EVENT, handleStoredAgentsUpdated)
-  void syncRuntimeConfig(selectedAgent.value, false)
 })
 
 onUnmounted(() => {
+  if (persistTimer !== null) {
+    window.clearTimeout(persistTimer)
+    persistTimer = null
+  }
   window.removeEventListener('storage', handleStoredAgentsUpdated)
   window.removeEventListener(SUB_AGENT_STORAGE_EVENT, handleStoredAgentsUpdated)
 })
 
 function handleStoredAgentsUpdated() {
-  loadAgents({ preserveSelection: true })
+  void loadAgents({ preserveSelection: true })
 }
 </script>
 

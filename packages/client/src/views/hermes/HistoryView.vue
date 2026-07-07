@@ -34,6 +34,11 @@ const routeProfile = computed(() => {
   return typeof value === 'string' && value.trim() ? value : null
 })
 
+const routeUserId = computed(() => {
+  const value = route.query.user_id
+  return typeof value === 'string' && value.trim() ? value : null
+})
+
 const effectiveHistoryProfile = computed(() => profilesStore.activeProfileName || routeProfile.value || null)
 
 // Hermes history sessions (exclude api_server)
@@ -324,10 +329,19 @@ onUnmounted(() => {
   window.removeEventListener('hermes:open-page-sidebar', openPageSidebar)
 })
 
-watch([routeSessionId, routeProfile], async ([sessionId]) => {
+watch([routeSessionId, routeProfile, routeUserId], async ([sessionId, _profile, userId], [_prevSessionId, _prevProfile, prevUserId]) => {
+  const userChanged = userId !== prevUserId
+  if (userChanged && hermesSessionsLoaded.value) {
+    historySessionId.value = null
+    historySession.value = null
+    await loadHermesSessions()
+  }
   if (!sessionId) {
     historySessionId.value = null
     historySession.value = null
+    if (userChanged && hermesSessionsLoaded.value && hermesSessions.value.length > 0) {
+      await openDefaultHistorySession(true)
+    }
     return
   }
   if (!hermesSessionsLoaded.value) return
@@ -540,7 +554,10 @@ function buildHistorySessionUrl(sessionId: string, profile?: string | null) {
   const href = router.resolve({
     name: 'hermes.historySession',
     params: { sessionId },
-    query: profile ? { profile } : undefined,
+    query: {
+      ...(profile ? { profile } : {}),
+      ...(routeUserId.value ? { user_id: routeUserId.value } : {}),
+    },
   }).href
   return `${window.location.origin}${window.location.pathname}${href}`
 }

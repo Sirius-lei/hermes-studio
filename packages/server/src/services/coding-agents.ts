@@ -107,6 +107,7 @@ export interface CodingAgentLaunchInput extends CodingAgentConfigScope {
   mode?: 'scoped' | 'global'
   model?: string
   workspace?: string | null
+  userId?: string | number | null
   baseUrl?: string
   apiKey?: string
   apiMode?: ApiMode
@@ -1792,6 +1793,7 @@ export async function startCodingAgentRun(
     workspaceDir: launch.workspaceDir,
     env: runtimeEnv,
     state,
+    userId: resolvedInput.userId ?? existingSession?.user_id ?? null,
     sessionSource: sessionSource === 'global_agent' || sessionSource === 'workflow' ? sessionSource : undefined,
   })
   updateSession(sessionId, {

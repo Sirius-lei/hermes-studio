@@ -23,6 +23,7 @@ type ExecutionTask = {
   agentId: string
   agentName: string
   status: "todo" | "doing" | "done" | "blocked"
+  outcome: "unknown" | "success" | "failure"
 }
 
 type TodoEntry = {
@@ -34,6 +35,7 @@ type TodoEntry = {
   agentName: string
   executorType: "hermes" | "subagent"
   status: "pending" | "running" | "done" | "error"
+  outcome: "unknown" | "success" | "failure"
 }
 
 type PlanCardStep = {
@@ -66,11 +68,11 @@ type HistoryRunEntry = {
   endedAt: number | null
 }
 
-const CANVAS_MIN_HEIGHT = 268
-const CANVAS_NODE_HEIGHT = 84
-const CANVAS_TOP_PADDING = 20
-const CANVAS_BOTTOM_PADDING = 24
-const CANVAS_LEVEL_GAP = 112
+const CANVAS_MIN_HEIGHT = 288
+const CANVAS_NODE_HEIGHT = 92
+const CANVAS_TOP_PADDING = 24
+const CANVAS_BOTTOM_PADDING = 28
+const CANVAS_LEVEL_GAP = 116
 
 const props = defineProps<{
   route: MultiAgentRouteState | null
@@ -91,7 +93,6 @@ const emit = defineEmits<{
 
 const planExpanded = ref(false)
 const canvasExpanded = ref(true)
-const historyExpanded = ref(false)
 
 const hasWorkflowData = computed(() => !!props.route || !!props.workflowSnapshot)
 
@@ -121,7 +122,7 @@ const effectiveObjectiveText = computed(() => {
 })
 
 const effectiveReasoningText = computed(() => {
-  const workflowReasoning = (props.workflowSnapshot?.reasoningText || "").trim()
+  const workflowReasoning = (props.workflowSnapshot?.mainAgentStream || props.workflowSnapshot?.reasoningText || "").trim()
   if (workflowReasoning) return workflowReasoning
 
   const routeReasoning = (props.route?.activity || [])
@@ -138,27 +139,40 @@ const effectiveReasoningText = computed(() => {
 const effectiveReasoningDisplayText = computed(() => {
   const text = effectiveReasoningText.value
   if (!text) return ""
-  return text.replace(/([。！？!?])\s*/g, "$1\n")
+  return text.replace(/\n{3,}/g, "\n\n")
+})
+
+const effectiveCurrentTaskId = computed(() => {
+  const routeCurrentNodeId = String(props.route?.currentNodeId || "").trim()
+  if (routeCurrentNodeId && props.tasks.some(task => task.id === routeCurrentNodeId)) {
+    return routeCurrentNodeId
+  }
+  const runningTask = props.tasks.find(task => task.status === "doing")
+  return runningTask?.id || ""
 })
 
 const effectiveTodoEntries = computed<TodoEntry[]>(() => {
   if (props.tasks.length > 0) {
-    return props.tasks.map(task => ({
-      id: task.id,
-      index: task.index,
-      title: task.title,
+    return props.tasks.map((task) => {
+      const isCurrentPendingTask = task.id === effectiveCurrentTaskId.value && task.status === "todo"
+      return {
+        id: task.id,
+        index: task.index,
+        title: task.title,
       detail: task.summary || "等待执行。",
       dependsOn: task.dependsOn || [],
       agentName: task.agentName || "",
       executorType: task.executorType,
+      outcome: task.outcome,
       status: task.status === "done"
         ? "done"
-        : task.status === "doing"
+        : task.status === "doing" || isCurrentPendingTask
           ? "running"
           : task.status === "blocked"
             ? "error"
             : "pending",
-    }))
+      }
+    })
   }
 
   if (!props.todoSteps.length) return []
@@ -167,12 +181,13 @@ const effectiveTodoEntries = computed<TodoEntry[]>(() => {
     index: index + 1,
     title: step.title,
     detail: step.detail,
-    dependsOn: index > 0 ? [props.todoSteps[index - 1]?.id || ""].filter(Boolean) : [],
-    agentName: "",
-    executorType: "hermes",
-    status: step.status === "error"
-      ? "error"
-      : step.status === "running"
+      dependsOn: index > 0 ? [props.todoSteps[index - 1]?.id || ""].filter(Boolean) : [],
+      agentName: "",
+      executorType: "hermes",
+      outcome: step.status === "error" ? "failure" : step.status === "done" ? "success" : "unknown",
+      status: step.status === "error"
+        ? "error"
+        : step.status === "running"
         ? "running"
         : step.status === "done"
           ? "done"
@@ -189,6 +204,23 @@ const completedPlanCount = computed(() =>
 )
 
 const historyRuns = computed(() => props.historyRuns || [])
+const currentHistoryIndex = computed(() => {
+  const runs = historyRuns.value
+  if (!runs.length) return -1
+  const selectedRunId = props.selectedRunId || runs[0]?.runId || ""
+  const matchedIndex = runs.findIndex(item => item.runId === selectedRunId)
+  return matchedIndex >= 0 ? matchedIndex : 0
+})
+
+const currentHistoryEntry = computed(() => {
+  if (currentHistoryIndex.value < 0) return null
+  return historyRuns.value[currentHistoryIndex.value] || null
+})
+
+const canSelectPrevHistory = computed(() => currentHistoryIndex.value > 0)
+const canSelectNextHistory = computed(() =>
+  currentHistoryIndex.value >= 0 && currentHistoryIndex.value < historyRuns.value.length - 1,
+)
 
 const planHeadlineText = computed(() => {
   if (effectiveRouteState.value === "failed") return "标准执行计划 (执行失败)"
@@ -210,11 +242,24 @@ function plannerStatusLabel(status: TodoEntry["status"]) {
   }
 }
 
+function outcomeBadgeLabel(outcome: TodoEntry["outcome"], status: TodoEntry["status"] | ExecutionTask["status"]) {
+  if (outcome === "success") return "成功"
+  if (outcome === "failure") return "失败"
+  if (status === "running" || status === "doing") return "运行中"
+  return "待定"
+}
+
+function normalizePrimaryActorLabel(value?: string) {
+  const text = String(value || "").trim()
+  if (!text) return "主智能体"
+  if (/^hermes$/i.test(text)) return "主智能体"
+  return text
+}
+
 function todoAgentLabel(entry: TodoEntry) {
-  if (entry.executorType === "subagent" && entry.agentName) return entry.agentName
-  if (entry.agentName) return entry.agentName
-  if (/(汇总|回复|摘要)/.test(entry.title)) return "总结智能体"
-  if (/(转交|路由|匹配|规划)/.test(entry.title)) return "路由智能体"
+  if (entry.executorType === "hermes") return "主智能体"
+  if (entry.executorType === "subagent" && entry.agentName) return normalizePrimaryActorLabel(entry.agentName)
+  if (entry.agentName) return normalizePrimaryActorLabel(entry.agentName)
   return "主智能体"
 }
 
@@ -243,7 +288,16 @@ function resolveFixedPlanStatus(stepId: "understand" | "route"): PlanCardStep["s
 const hasGeneratedTodo = computed(() => effectiveTodoEntries.value.length > 0)
 
 const effectiveCanvasTasks = computed<ExecutionTask[]>(() => {
-  if (props.tasks.length > 0) return props.tasks
+  if (props.tasks.length > 0) {
+    return props.tasks.map((task) => {
+      if (task.id !== effectiveCurrentTaskId.value || task.status !== "todo") return task
+      return {
+        ...task,
+        status: "doing",
+        outcome: "unknown",
+      }
+    })
+  }
   if (props.todoSteps.length === 0) return []
   return effectiveTodoEntries.value.map((entry) => ({
     id: entry.id,
@@ -251,13 +305,14 @@ const effectiveCanvasTasks = computed<ExecutionTask[]>(() => {
     phase: "",
     title: entry.title,
     summary: entry.detail,
-    dependsOn: entry.dependsOn || [],
-    executorType: entry.executorType,
-    agentId: "",
-    agentName: entry.agentName,
-    status: entry.status === "done"
-      ? "done"
-      : entry.status === "running"
+      dependsOn: entry.dependsOn || [],
+      executorType: entry.executorType,
+      agentId: "",
+      agentName: entry.agentName,
+      outcome: entry.outcome,
+      status: entry.status === "done"
+        ? "done"
+        : entry.status === "running"
         ? "doing"
         : entry.status === "error"
           ? "blocked"
@@ -269,17 +324,13 @@ const planCardSteps = computed<PlanCardStep[]>(() => {
   const intentStatus = resolveFixedPlanStatus("understand")
   const decomposeStatus = resolveFixedPlanStatus("route")
   const todoStatus: PlanCardStep["status"] = hasGeneratedTodo.value
-    ? "done"
-    : decomposeStatus === "done"
-        ? "running"
-        : "pending"
+    ? (decomposeStatus === "done" ? "done" : "running")
+    : (decomposeStatus === "done" ? "running" : "pending")
   const canvasStatus: PlanCardStep["status"] = effectiveRouteState.value === "failed"
     ? "error"
     : effectiveCanvasTasks.value.length > 0
-      ? "done"
-      : todoStatus === "done"
-        ? "running"
-        : "pending"
+      ? (todoStatus === "done" ? "done" : "running")
+      : (todoStatus === "done" ? "running" : "pending")
 
   return [
     {
@@ -396,13 +447,13 @@ const canvasNodes = computed<CanvasNodeLayout[]>(() => {
 
   return orderedLevels.flatMap((level, rowIndex) => {
     const row = layers.get(level) || []
-    const width = row.length >= 3 ? 118 : 138
+    const width = row.length >= 3 ? 120 : 148
     return row.map((task, columnIndex) => {
       const left = row.length === 1
         ? 50
         : row.length === 2
-          ? [30, 70][columnIndex] || 50
-          : 16 + (68 / Math.max(1, row.length - 1)) * columnIndex
+          ? [29, 71][columnIndex] || 50
+          : 15 + (70 / Math.max(1, row.length - 1)) * columnIndex
       return {
         id: task.id,
         task,
@@ -438,15 +489,15 @@ const canvasEdges = computed<CanvasEdgeLayout[]>(() => {
       const startY = fromNode.top + CANVAS_NODE_HEIGHT
       const endX = toNode.left
       const endY = toNode.top
-      const deltaY = Math.max(40, endY - startY)
-      const sameColumn = Math.abs(startX - endX) < 4
-      const controlOffset = Math.max(24, deltaY * 0.42)
-      const firstControlX = sameColumn ? startX : startX + (endX - startX) * 0.18
-      const secondControlX = sameColumn ? endX : endX - (endX - startX) * 0.18
+      const sameColumn = Math.abs(startX - endX) < 1.5
+      const midY = Math.round(startY + Math.max(18, (endY - startY) * 0.48))
+      const path = sameColumn
+        ? `M ${startX} ${startY} L ${endX} ${endY}`
+        : `M ${startX} ${startY} L ${startX} ${midY} L ${endX} ${midY} L ${endX} ${endY}`
 
       return {
         id: `edge:${pair.from}:${pair.to}`,
-        path: `M ${startX} ${startY} C ${firstControlX} ${startY + controlOffset}, ${secondControlX} ${endY - controlOffset}, ${endX} ${endY}`,
+        path,
         tone: edgeTone(targetTask.status),
         animated: targetTask.status === "doing",
       }
@@ -498,6 +549,16 @@ function formatHistoryTime(value: number) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value))
+}
+
+function selectHistoryOffset(offset: number) {
+  if (currentHistoryIndex.value < 0) return
+  const nextIndex = Math.min(
+    historyRuns.value.length - 1,
+    Math.max(0, currentHistoryIndex.value + offset),
+  )
+  const targetRunId = historyRuns.value[nextIndex]?.runId
+  if (targetRunId) emit("selectRun", targetRunId)
 }
 </script>
 
@@ -551,50 +612,47 @@ function formatHistoryTime(value: number) {
         </section>
 
         <section v-if="historyRuns.length > 1" class="multi-agent-section">
-          <button
-            class="multi-agent-canvas-title"
-            type="button"
-            data-testid="multi-agent-history-toggle"
-            @click="historyExpanded = !historyExpanded"
-          >
-            <div class="multi-agent-canvas-title-copy">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 8v5l3 2" />
-                <circle cx="12" cy="12" r="9" />
-              </svg>
-              <h3>协作历史</h3>
-            </div>
-            <svg
-              class="multi-agent-chevron"
-              :class="{ rotated: historyExpanded }"
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <polyline points="6 9 12 15 18 9" />
-            </svg>
-          </button>
-
-          <div v-if="historyExpanded" class="multi-agent-history-list">
-            <button
-              v-for="item in historyRuns"
-              :key="item.runId"
-              class="multi-agent-history-item"
-              :class="{ active: item.runId === (selectedRunId || '') }"
-              type="button"
-              @click="emit('selectRun', item.runId)"
-            >
-              <div class="multi-agent-history-copy">
-                <strong>{{ item.objective }}</strong>
-                <span>{{ formatHistoryTime(item.startedAt) }}</span>
+          <div class="multi-agent-history-pager" data-testid="multi-agent-history-pager">
+            <div class="multi-agent-history-pager-copy">
+              <div class="multi-agent-history-pager-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 8v5l3 2" />
+                  <circle cx="12" cy="12" r="9" />
+                </svg>
+                <h3>协作历史</h3>
               </div>
-              <small :class="historyStatusClass(item.status)">{{ historyStatusLabel(item.status) }}</small>
-            </button>
+              <div v-if="currentHistoryEntry" class="multi-agent-history-pager-meta">
+                <strong>{{ currentHistoryEntry.objective }}</strong>
+                <span>{{ formatHistoryTime(currentHistoryEntry.startedAt) }}</span>
+                <small :class="historyStatusClass(currentHistoryEntry.status)">
+                  {{ historyStatusLabel(currentHistoryEntry.status) }}
+                </small>
+              </div>
+            </div>
+
+            <div class="multi-agent-history-pager-controls">
+              <button
+                class="multi-agent-history-nav"
+                type="button"
+                :disabled="!canSelectPrevHistory"
+                @click="selectHistoryOffset(-1)"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="15 18 9 12 15 6" />
+                </svg>
+              </button>
+              <span>{{ currentHistoryIndex + 1 }} / {{ historyRuns.length }}</span>
+              <button
+                class="multi-agent-history-nav"
+                type="button"
+                :disabled="!canSelectNextHistory"
+                @click="selectHistoryOffset(1)"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="9 18 15 12 9 6" />
+                </svg>
+              </button>
+            </div>
           </div>
         </section>
 
@@ -664,7 +722,9 @@ function formatHistoryTime(value: number) {
                 </span>
                 <div class="multi-agent-plan-step-copy">
                   <strong>{{ step.title }}</strong>
-                  <p>{{ step.detail }}</p>
+                  <div class="multi-agent-plan-step-detail-box">
+                    <p>{{ step.detail }}</p>
+                  </div>
                 </div>
               </article>
             </div>
@@ -683,7 +743,8 @@ function formatHistoryTime(value: number) {
               v-for="entry in effectiveTodoEntries"
               :key="entry.id"
               class="multi-agent-todo-item"
-              :class="`is-${entry.status}`"
+              :class="[`is-${entry.status}`, `outcome-${entry.outcome}`]"
+              :data-outcome="entry.outcome"
             >
               <span class="multi-agent-todo-index">
                 <svg
@@ -709,10 +770,15 @@ function formatHistoryTime(value: number) {
                     <span class="multi-agent-agent-chip" :class="`is-${entry.executorType}`">
                       {{ todoAgentLabel(entry) }}
                     </span>
+                    <span class="multi-agent-outcome-chip" :class="`is-${entry.outcome}`">
+                      {{ outcomeBadgeLabel(entry.outcome, entry.status) }}
+                    </span>
                   </div>
                   <small>{{ plannerStatusLabel(entry.status) }}</small>
                 </div>
-                <p>{{ entry.detail }}</p>
+                <div class="multi-agent-todo-detail-box">
+                  <p>{{ entry.detail }}</p>
+                </div>
               </div>
             </article>
           </div>
@@ -796,7 +862,8 @@ function formatHistoryTime(value: number) {
               v-for="node in canvasNodes"
               :key="node.id"
               class="multi-agent-canvas-node"
-              :class="`is-${node.task.status}`"
+              :class="[`is-${node.task.status}`, `outcome-${node.task.outcome}`]"
+              :data-outcome="node.task.outcome"
               :style="{
                 top: `${node.top}px`,
                 left: `${node.left}%`,
@@ -814,8 +881,12 @@ function formatHistoryTime(value: number) {
                 dependsOn: node.task.dependsOn,
                 agentName: node.task.agentName,
                 executorType: node.task.executorType,
+                outcome: node.task.outcome,
                 status: node.task.status === 'done' ? 'done' : node.task.status === 'doing' ? 'running' : node.task.status === 'blocked' ? 'error' : 'pending',
               }) }}</small>
+              <span class="multi-agent-canvas-node-outcome" :class="`is-${node.task.outcome}`">
+                {{ outcomeBadgeLabel(node.task.outcome, node.task.status) }}
+              </span>
               <span class="multi-agent-canvas-node-state">{{ canvasNodeStateLabel(node.task.status) }}</span>
             </article>
           </div>
@@ -989,34 +1060,67 @@ function formatHistoryTime(value: number) {
   }
 }
 
-.multi-agent-history-list {
+.multi-agent-history-pager {
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: #fff;
+  border-radius: 14px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.multi-agent-history-pager-copy {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.multi-agent-history-item {
-  width: 100%;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  background: #fff;
-  border-radius: 12px;
-  padding: 10px 12px;
+.multi-agent-history-pager-title {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  text-align: left;
-  cursor: pointer;
-  transition: border-color $transition-fast, background-color $transition-fast;
+  gap: 8px;
 
-  &:hover {
-    border-color: rgba(59, 130, 246, 0.28);
-    background: #f8fbff;
+  svg {
+    width: 15px;
+    height: 15px;
+    color: var(--text-tertiary);
+    flex-shrink: 0;
   }
 
-  &.active {
-    border-color: rgba(59, 130, 246, 0.28);
-    background: #eff6ff;
+  h3 {
+    margin: 0;
+    font-size: 14px;
+    line-height: 20px;
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+}
+
+.multi-agent-history-pager-meta {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+
+  strong {
+    max-width: 100%;
+    font-size: 12px;
+    line-height: 18px;
+    color: var(--text-primary);
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  span {
+    font-size: 12px;
+    line-height: 18px;
+    color: var(--text-tertiary);
   }
 
   small {
@@ -1032,26 +1136,49 @@ function formatHistoryTime(value: number) {
   }
 }
 
-.multi-agent-history-copy {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-
-  strong {
-    font-size: 13px;
-    line-height: 20px;
-    color: var(--text-primary);
-    font-weight: 600;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
+.multi-agent-history-pager-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 
   span {
+    min-width: 46px;
+    text-align: center;
     font-size: 12px;
     line-height: 18px;
-    color: var(--text-tertiary);
+    color: var(--text-secondary);
+    font-weight: 600;
+  }
+}
+
+.multi-agent-history-nav {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: #fff;
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color $transition-fast, border-color $transition-fast, color $transition-fast;
+
+  svg {
+    width: 14px;
+    height: 14px;
+  }
+
+  &:hover:not(:disabled) {
+    background: #f8fafc;
+    border-color: rgba(59, 130, 246, 0.3);
+    color: #2563eb;
+  }
+
+  &:disabled {
+    opacity: 0.45;
+    cursor: default;
   }
 }
 
@@ -1204,16 +1331,32 @@ function formatHistoryTime(value: number) {
 .multi-agent-plan-step-copy {
   min-width: 0;
   padding-top: 1px;
+  display: grid;
+  grid-template-rows: auto 58px;
+  gap: 6px;
 
   strong {
     display: block;
     font-size: 13px;
     line-height: 18px;
     color: var(--text-primary);
+    min-height: 36px;
+    max-height: 36px;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
   }
+}
+
+.multi-agent-plan-step-detail-box {
+  height: 58px;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-width: thin;
 
   p {
-    margin: 4px 0 0;
+    margin: 0;
     font-size: 12px;
     line-height: 18px;
     color: var(--text-secondary);
@@ -1263,7 +1406,8 @@ function formatHistoryTime(value: number) {
 }
 
 .multi-agent-reasoning-box {
-  max-height: 120px;
+  height: 120px;
+  min-height: 120px;
   overflow-y: auto;
   padding: 12px 14px;
   border-radius: 14px;
@@ -1375,9 +1519,19 @@ function formatHistoryTime(value: number) {
 .multi-agent-todo-copy {
   min-width: 0;
   flex: 1;
+  display: grid;
+  grid-template-rows: auto 56px;
+  gap: 6px;
+}
+
+.multi-agent-todo-detail-box {
+  height: 56px;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-width: thin;
 
   p {
-    margin: 6px 0 0;
+    margin: 0;
     font-size: 12px;
     line-height: 18px;
     color: var(--text-secondary);
@@ -1412,6 +1566,12 @@ function formatHistoryTime(value: number) {
     line-height: 18px;
     color: var(--text-primary);
     font-weight: 700;
+    min-height: 36px;
+    max-height: 36px;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
   }
 }
 
@@ -1436,6 +1596,33 @@ function formatHistoryTime(value: number) {
   }
 }
 
+.multi-agent-outcome-chip {
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  background: #fff;
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 600;
+  white-space: nowrap;
+
+  &.is-success {
+    border-color: rgba(34, 197, 94, 0.28);
+    background: rgba(240, 253, 244, 0.96);
+    color: #16a34a;
+  }
+
+  &.is-failure {
+    border-color: rgba(248, 113, 113, 0.28);
+    background: rgba(254, 242, 242, 0.96);
+    color: #dc2626;
+  }
+}
+
 .multi-agent-canvas-title-copy {
   svg {
     width: 15px;
@@ -1451,6 +1638,7 @@ function formatHistoryTime(value: number) {
   background: #fff;
   overflow: hidden;
   box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05);
+  padding-inline: 6px;
 }
 
 .multi-agent-canvas-svg {
@@ -1463,7 +1651,7 @@ function formatHistoryTime(value: number) {
 
 .multi-agent-canvas-edge {
   fill: none;
-  stroke-width: 1.75;
+  stroke-width: 1.9;
   stroke-linecap: round;
   stroke-linejoin: round;
   opacity: 0.92;
@@ -1485,15 +1673,15 @@ function formatHistoryTime(value: number) {
   }
 
   &.is-animated {
-    stroke-dasharray: 6 4;
-    animation: edge-pulse 1.2s linear infinite;
+    stroke-dasharray: 7 5;
+    animation: edge-pulse 1s linear infinite;
   }
 }
 
 .multi-agent-canvas-node {
   position: absolute;
   z-index: 1;
-  min-height: 84px;
+  height: 92px;
   padding: 12px 12px 10px;
   border-radius: 14px;
   border: 2px solid rgba(203, 213, 225, 0.84);
@@ -1502,7 +1690,7 @@ function formatHistoryTime(value: number) {
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 4px;
   transition: border-color $transition-fast, box-shadow $transition-fast, background-color $transition-fast;
 
@@ -1512,6 +1700,8 @@ function formatHistoryTime(value: number) {
     line-height: 16px;
     color: var(--text-primary);
     font-weight: 600;
+    min-height: 32px;
+    max-height: 32px;
     display: -webkit-box;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
@@ -1523,6 +1713,8 @@ function formatHistoryTime(value: number) {
     font-size: 10px;
     line-height: 15px;
     color: var(--text-tertiary);
+    min-height: 15px;
+    max-height: 15px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1576,11 +1768,36 @@ function formatHistoryTime(value: number) {
 
 .multi-agent-canvas-node-state {
   display: block;
-  margin-top: 4px;
+  margin-top: auto;
   font-size: 10px;
   line-height: 15px;
   font-weight: 600;
   color: currentColor;
+}
+
+.multi-agent-canvas-node-outcome {
+  display: inline-flex;
+  align-self: center;
+  justify-content: center;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(255, 255, 255, 0.88);
+  font-size: 10px;
+  line-height: 18px;
+  font-weight: 600;
+  color: var(--text-tertiary);
+
+  &.is-success {
+    border-color: rgba(34, 197, 94, 0.28);
+    color: #16a34a;
+  }
+
+  &.is-failure {
+    border-color: rgba(248, 113, 113, 0.28);
+    color: #dc2626;
+  }
 }
 
 @keyframes multi-agent-spin {

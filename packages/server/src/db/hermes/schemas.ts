@@ -186,6 +186,25 @@ export const TASK_PLANS_INDEXES = {
 }
 
 // ============================================================================
+// Sub-agent Registry
+// ============================================================================
+
+export const SUB_AGENTS_REGISTRY_TABLE = 'sub_agents_registry'
+
+export const SUB_AGENTS_REGISTRY_SCHEMA: Record<string, string> = {
+  profile: "TEXT NOT NULL DEFAULT 'default'",
+  id: 'TEXT NOT NULL',
+  payload_json: "TEXT NOT NULL DEFAULT '{}'",
+  created_at: 'INTEGER NOT NULL',
+  updated_at: 'INTEGER NOT NULL',
+}
+
+export const SUB_AGENTS_REGISTRY_INDEXES = {
+  idx_sub_agents_registry_profile: 'CREATE INDEX IF NOT EXISTS idx_sub_agents_registry_profile ON sub_agents_registry(profile)',
+  idx_sub_agents_registry_updated_at: 'CREATE INDEX IF NOT EXISTS idx_sub_agents_registry_updated_at ON sub_agents_registry(updated_at)',
+}
+
+// ============================================================================
 // Collaboration Runs
 // ============================================================================
 
@@ -801,6 +820,12 @@ export function initAllHermesTables(): void {
     // Task plans
     syncTable(TASK_PLANS_TABLE, TASK_PLANS_SCHEMA, {
       indexes: TASK_PLANS_INDEXES,
+    })
+
+    // Sub-agent registry
+    syncTable(SUB_AGENTS_REGISTRY_TABLE, SUB_AGENTS_REGISTRY_SCHEMA, {
+      primaryKey: 'profile, id',
+      indexes: SUB_AGENTS_REGISTRY_INDEXES,
     })
 
     // Collaboration runs

@@ -126,10 +126,22 @@ const displayMessagesWithForkDivider = computed<Message[]>(() => {
       }
     }
     if (lastUserIndex >= 0) {
+      let insertionIndex = lastUserIndex + 1;
+      for (let index = lastUserIndex + 1; index < otherMessages.length; index += 1) {
+        const candidate = otherMessages[index];
+        const isCurrentReply =
+          candidate.role === "assistant"
+          || (candidate.role === "system" && candidate.systemType === "error")
+          || (candidate.role === "command" && candidate.systemType === "error");
+        if (isCurrentReply) {
+          insertionIndex = index;
+          break;
+        }
+      }
       messages = [
-        ...otherMessages.slice(0, lastUserIndex + 1),
+        ...otherMessages.slice(0, insertionIndex),
         workflowMessage,
-        ...otherMessages.slice(lastUserIndex + 1),
+        ...otherMessages.slice(insertionIndex),
       ];
     } else {
       messages = [workflowMessage, ...otherMessages];

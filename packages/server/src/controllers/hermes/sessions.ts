@@ -30,6 +30,10 @@ import { readConfigYamlForProfile } from '../../services/config-helpers'
 import { codingAgentRunManager } from '../../services/agent-runner/coding-agent-run-manager'
 import { AgentBridgeClient, getAgentBridgeManager } from '../../services/hermes/agent-bridge'
 import { ensureHermesRunWorkspace } from '../../services/hermes/run-chat/workspace'
+import {
+  canAccessOwnedRecordWithContext,
+  effectiveSessionOwnerId,
+} from '../../services/hermes/session-access'
 
 function getPendingDeletedSessionIds(): Set<string> {
   return getGroupChatServer()?.getStorage().getPendingDeletedSessionIds() || new Set<string>()
@@ -48,6 +52,15 @@ function filterPendingDeletedConversationSummaries(items: ConversationSummary[])
 function requestedProfile(ctx: any): string | undefined {
   const value = ctx.state?.profile?.name || (typeof ctx.query?.profile === 'string' ? ctx.query.profile.trim() : '')
   return value || undefined
+}
+
+function rawRequestedUserContext(ctx: any): string | undefined {
+  const queryValue = typeof ctx.query?.user_id === 'string' ? ctx.query.user_id.trim() : ''
+  if (queryValue) return queryValue
+  const headerValue = typeof ctx.headers?.['x-hermes-user-context'] === 'string'
+    ? ctx.headers['x-hermes-user-context'].trim()
+    : ''
+  return headerValue || undefined
 }
 
 function runtimeProvider(provider: string): string {
@@ -91,24 +104,45 @@ function canAccessProfile(ctx: any, profile: string | null | undefined): boolean
   return !allowed || allowed.has(profile || 'default')
 }
 
+function canAccessSessionRecord(ctx: any, session: { user_id?: string | number | null; profile?: string | null } | null | undefined): boolean {
+  if (!session) return true
+  if (!canAccessOwnedRecordWithContext(ctx.state?.user, session, rawRequestedUserContext(ctx))) return false
+  return canAccessProfile(ctx, session.profile)
+}
+
 function filterByAllowedProfiles<T>(ctx: any, items: T[]): T[] {
   const allowed = allowedProfileSet(ctx)
   if (!allowed) return items
   return items.filter(item => allowed.has(((item as any).profile as string | null | undefined) || 'default'))
 }
 
+function filterBySessionAccess<T extends { user_id?: string | number | null; profile?: string | null }>(ctx: any, items: T[]): T[] {
+  return items.filter(item => canAccessSessionRecord(ctx, item))
+}
+
 function denySessionAccess(ctx: any, session: any | null | undefined): boolean {
-  if (!session || canAccessProfile(ctx, session.profile)) return false
+  if (!session || canAccessSessionRecord(ctx, session)) return false
   ctx.status = 403
-  ctx.body = { error: `Profile "${session.profile || 'default'}" is not available for this user` }
+  ctx.body = { error: 'Session is not available for this user' }
   return true
 }
 
 function denyCollaborationRunAccess(ctx: any, record: { profile?: string | null; session_id?: string | null } | null | undefined): boolean {
   if (!record) return false
+  const hasExplicitOwner = record && Object.prototype.hasOwnProperty.call(record, 'user_id') && (record as any).user_id != null
+  if (hasExplicitOwner && !canAccessOwnedRecordWithContext(ctx.state?.user, record as { user_id?: string | number | null }, rawRequestedUserContext(ctx))) {
+    ctx.status = 403
+    ctx.body = { error: 'Collaboration run is not available for this user' }
+    return true
+  }
   if (record.session_id) {
     const session = localGetSessionDetail(String(record.session_id)) || localGetSession(String(record.session_id))
     if (session && denySessionAccess(ctx, session)) return true
+  }
+  if (!hasExplicitOwner && ctx.state?.user?.role !== 'super_admin') {
+    ctx.status = 403
+    ctx.body = { error: 'Collaboration run is not available for this user' }
+    return true
   }
   if (canAccessProfile(ctx, record.profile)) return false
   ctx.status = 403
@@ -313,7 +347,10 @@ export async function listConversations(ctx: any) {
   const limit = ctx.query.limit ? parseInt(ctx.query.limit as string, 10) : undefined
 
   const profile = explicitProfileFilter(ctx)
-  const sessions = localListSessions(profile, source, limit && limit > 0 ? limit : 200)
+  const sessions = filterBySessionAccess(
+    ctx,
+    localListSessions(profile, source, limit && limit > 0 ? limit : 200),
+  )
   const summaries: ConversationSummary[] = sessions.map(s => ({
     id: s.id,
     profile: s.profile || null,
@@ -387,7 +424,7 @@ export async function list(ctx: any) {
   const allSessions = localListSessions(profile, source, effectiveLimit)
   const knownProfiles = profile ? null : new Set(listProfileNamesFromDisk())
   ctx.body = {
-    sessions: filterPendingDeletedSessions(filterByAllowedProfiles(ctx, allSessions).filter(s =>
+    sessions: filterPendingDeletedSessions(filterBySessionAccess(ctx, filterByAllowedProfiles(ctx, allSessions)).filter(s =>
       isRequestedSessionSource(source, s.source) &&
       (!knownProfiles || knownProfiles.has(s.profile || 'default')),
     )),
@@ -399,7 +436,7 @@ export async function count(ctx: any) {
   const profile = explicitProfileFilter(ctx)
   const allSessions = localListSessions(profile, source, 2147483647)
   const knownProfiles = profile ? null : new Set(listProfileNamesFromDisk())
-  const sessions = filterPendingDeletedSessions(filterByAllowedProfiles(ctx, allSessions).filter(s =>
+  const sessions = filterPendingDeletedSessions(filterBySessionAccess(ctx, filterByAllowedProfiles(ctx, allSessions)).filter(s =>
     isRequestedSessionSource(source, s.source) &&
     (!knownProfiles || knownProfiles.has(s.profile || 'default')),
   ))
@@ -422,7 +459,7 @@ export async function listHermesSessions(ctx: any) {
       ...(profile ? { ...session, profile } : session),
       webui_imported: importedIds.has(session.id),
     }))
-  ctx.body = { sessions: filterPendingDeletedSessions(filterByAllowedProfiles(ctx, allSessions).filter(s => isHermesHistorySessionSource(s.source))) }
+  ctx.body = { sessions: filterPendingDeletedSessions(filterBySessionAccess(ctx, filterByAllowedProfiles(ctx, allSessions)).filter(s => isHermesHistorySessionSource(s.source))) }
 }
 
 export async function search(ctx: any) {
@@ -433,7 +470,7 @@ export async function search(ctx: any) {
   const results = localSearchSessions(profile, q, limit && limit > 0 ? limit : 20)
   const knownProfiles = profile ? null : new Set(listProfileNamesFromDisk())
   ctx.body = {
-    results: filterPendingDeletedSessions(filterByAllowedProfiles(ctx, results).filter(s =>
+    results: filterPendingDeletedSessions(filterBySessionAccess(ctx, filterByAllowedProfiles(ctx, results)).filter(s =>
       isRequestedSessionSource(source, s.source) &&
       (!knownProfiles || knownProfiles.has(s.profile || 'default')),
     )),
@@ -462,6 +499,11 @@ export async function listCollaborationRuns(ctx: any) {
   if (session && denySessionAccess(ctx, session)) return
   const limit = ctx.query.limit ? parseInt(ctx.query.limit as string, 10) : 50
   const runs = listSessionCollaborationRuns(sessionId, limit)
+    .filter(record => {
+      if (record.user_id != null) return canAccessOwnedRecordWithContext(ctx.state?.user, record, rawRequestedUserContext(ctx))
+      if (session) return canAccessSessionRecord(ctx, session)
+      return ctx.state?.user?.role === 'super_admin'
+    })
     .filter(record => canAccessProfile(ctx, record.profile))
   ctx.body = { runs }
 }
@@ -614,6 +656,7 @@ export async function importHermesSession(ctx: any) {
 
   const existing = localGetSessionDetail(sessionId)
   if (existing) {
+    if (denySessionAccess(ctx, existing)) return
     ctx.body = { ok: true, imported: false, session: existing }
     return
   }
@@ -641,6 +684,7 @@ export async function importHermesSession(ctx: any) {
     id: detail.id,
     profile,
     source: 'cli',
+    user_id: effectiveSessionOwnerId(ctx.state?.user, rawRequestedUserContext(ctx)),
     model: profileDefault.model,
     provider: profileDefault.provider,
     title: detail.title || undefined,
@@ -648,7 +692,7 @@ export async function importHermesSession(ctx: any) {
 
   localUpdateSession(detail.id, {
     source: 'cli',
-    user_id: detail.user_id,
+    user_id: effectiveSessionOwnerId(ctx.state?.user, rawRequestedUserContext(ctx)),
     model: profileDefault.model,
     provider: profileDefault.provider,
     title: detail.title,
@@ -695,6 +739,11 @@ export async function remove(ctx: any) {
   const sessionId = ctx.params.id
   const existing = localGetSession(sessionId)
   if (denySessionAccess(ctx, existing)) return
+  if (!existing && ctx.state?.user?.role !== 'super_admin') {
+    ctx.status = 403
+    ctx.body = { error: 'Session is not available for this user' }
+    return
+  }
   const hermesProfile = requestedProfile(ctx) || existing?.profile || getActiveProfileName()
   const codingAgentSession = isCodingAgentSession(existing)
   if (codingAgentSession) codingAgentRunManager.stop(sessionId, { reportClosed: false })
@@ -754,6 +803,16 @@ export async function batchRemove(ctx: any) {
   for (const target of targets) {
     const { id } = target
     const existing = localGetSession(id)
+    if (existing && !canAccessSessionRecord(ctx, existing)) {
+      results.failed++
+      results.errors.push({ id, error: 'Session is not available for this user' })
+      continue
+    }
+    if (!existing && ctx.state?.user?.role !== 'super_admin') {
+      results.failed++
+      results.errors.push({ id, error: 'Session is not available for this user' })
+      continue
+    }
     const targetProfile = target.profile || existing?.profile
     if (targetProfile && !canAccessProfile(ctx, targetProfile)) {
       results.failed++
@@ -805,12 +864,24 @@ export async function usageBatch(ctx: any) {
     ctx.body = {}
     return
   }
-  const idList = ids.split(',').filter(Boolean)
+  const idList = ids
+    .split(',')
+    .filter(Boolean)
+    .filter(id => {
+      const session = localGetSession(id)
+      if (!session) return ctx.state?.user?.role === 'super_admin'
+      return canAccessSessionRecord(ctx, session)
+    })
   ctx.body = getUsageBatch(idList)
 }
 
 export async function usageSingle(ctx: any) {
   const session = localGetSession(ctx.params.id)
+  if (!session && ctx.state?.user?.role !== 'super_admin') {
+    ctx.status = 404
+    ctx.body = { error: 'Session not found' }
+    return
+  }
   if (denySessionAccess(ctx, session)) return
   const result = getUsage(ctx.params.id)
   if (!result) {
@@ -850,7 +921,12 @@ export async function setWorkspace(ctx: any) {
   const existing = getSession(id)
   if (denySessionAccess(ctx, existing)) return
   if (!existing) {
-    createSession({ id, profile: requestedProfile(ctx) || 'default', title: '' })
+    createSession({
+      id,
+      profile: requestedProfile(ctx) || 'default',
+      title: '',
+      user_id: effectiveSessionOwnerId(ctx.state?.user, rawRequestedUserContext(ctx)),
+    })
   }
   updateSession(id, { workspace: workspace || null } as any)
   ctx.body = { ok: true }
@@ -877,10 +953,21 @@ export async function setModel(ctx: any) {
   const cleanProvider = (provider || '').trim()
   const codingAgentSession = isCodingAgentSession(existing)
   const workspace = !codingAgentSession
-    ? await ensureHermesRunWorkspace(profile, existing?.workspace)
+    ? await ensureHermesRunWorkspace(profile, existing?.workspace, {
+        userId: existing?.user_id || effectiveSessionOwnerId(ctx.state?.user, rawRequestedUserContext(ctx)),
+        sessionId: id,
+      })
     : undefined
   if (!existing) {
-    createSession({ id, profile, title: '', model: cleanModel, provider: cleanProvider, workspace })
+    createSession({
+      id,
+      profile,
+      title: '',
+      model: cleanModel,
+      provider: cleanProvider,
+      workspace,
+      user_id: effectiveSessionOwnerId(ctx.state?.user, rawRequestedUserContext(ctx)),
+    })
   }
   const updates: Record<string, string> = { model: cleanModel, provider: cleanProvider }
   if (!codingAgentSession && existing && !existing.workspace && workspace) updates.workspace = workspace

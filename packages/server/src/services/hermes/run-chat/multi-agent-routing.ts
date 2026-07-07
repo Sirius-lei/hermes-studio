@@ -71,6 +71,7 @@ export interface MultiAgentRouteDecision {
   routeText: string
   hermesInstructions: string | null
   inputText: string
+  conversationContext: string
   todo: string[]
   constraints: string[]
   plan: MultiAgentExecutionPlan | null
@@ -200,6 +201,16 @@ function inferCategoryFromAgent(agent: MultiAgentRouteCandidate | null) {
 
 function summarizeText(text: string, maxLength = 72) {
   return text.length > maxLength ? `${text.slice(0, maxLength).trim()}...` : text
+}
+
+function buildConversationAwareRequirement(inputText: string, conversationContext?: string) {
+  const context = String(conversationContext || '').trim()
+  if (!context) return inputText
+  return [
+    '以下是当前 session 最近对话上下文，请结合上下文理解本轮用户补充说明：',
+    context,
+    `最新用户消息：${inputText}`,
+  ].join('\n\n')
 }
 
 function normalizeCandidates(candidates: MultiAgentRouteCandidate[]) {
@@ -510,8 +521,11 @@ function buildBaseRouteDecision(input: {
   enabled?: boolean
   input: string | ContentBlock[]
   candidates?: MultiAgentRouteCandidate[]
+  conversationContext?: string
 }): MultiAgentRouteDecision {
   const inputText = extractTextForPreview(input.input).trim() || contentBlocksToString(input.input).trim()
+  const conversationContext = String(input.conversationContext || '').trim()
+  const conversationAwareRequirement = buildConversationAwareRequirement(inputText, conversationContext)
   const enabled = input.enabled === true
   if (!enabled) {
     return {
@@ -527,6 +541,7 @@ function buildBaseRouteDecision(input: {
       routeText: '多智能体协作未开启，继续由 Hermes 默认链路处理。',
       hermesInstructions: null,
       inputText,
+      conversationContext,
       todo: [],
       constraints: [],
       plan: null,
@@ -536,9 +551,9 @@ function buildBaseRouteDecision(input: {
 
   const casual = isCasualChatMessage(inputText)
   const candidates = normalizeCandidates(input.candidates || [])
-  const terms = extractIntentTerms(inputText)
+  const terms = extractIntentTerms(conversationAwareRequirement)
   const best = chooseCandidate(candidates, terms)
-  const categoryFromContent = inferCategoryFromContent(inputText)
+  const categoryFromContent = inferCategoryFromContent(conversationAwareRequirement)
   const categoryFromAgent = inferCategoryFromAgent(best?.agent || null)
   const category = categoryFromContent !== '通用任务' ? categoryFromContent : categoryFromAgent
   const shouldPlan = !casual
@@ -598,12 +613,14 @@ function buildBaseRouteDecision(input: {
       routeText,
       hermesInstructions: null,
       inputText,
+      conversationContext,
       todo: [],
       constraints: [],
       plan: null,
       delegatedNodeIds: [],
     }) : null,
     inputText,
+    conversationContext,
     todo: shouldPlan ? ['理解需求', '选择执行路径'] : [],
     constraints: [],
     plan: shouldPlan ? buildFallbackExecutionPlan(summarizeText(inputText), routeText) : null,
@@ -789,6 +806,7 @@ function summarizeObservation(text: string, maxLength = 360) {
 
 function buildReplanFollowUpInput(args: {
   requirement: string
+  conversationContext?: string
   observation: string
   todo: string[]
   responseStrategy: string
@@ -796,6 +814,9 @@ function buildReplanFollowUpInput(args: {
   const remainingTodo = args.todo.map((item, index) => `${index + 1}. ${item}`).join('\n')
   return [
     '继续上一轮多智能体协作。',
+    args.conversationContext
+      ? `最近对话上下文：\n${args.conversationContext}`
+      : '',
     `原始用户需求：${args.requirement}`,
     `已收到的子智能体阶段成果：${summarizeObservation(args.observation, 420)}`,
     args.todo.length > 0 ? `请继续执行以下剩余任务：\n${remainingTodo}` : '',
@@ -833,6 +854,7 @@ export async function resolveMultiAgentRoute(input: {
   enabled?: boolean
   input: string | ContentBlock[]
   candidates?: MultiAgentRouteCandidate[]
+  conversationContext?: string
   profile: string
   provider?: string
   model?: string
@@ -843,6 +865,10 @@ export async function resolveMultiAgentRoute(input: {
   if (!base.enabled || !base.shouldPlan) return base
 
   const normalizedCandidates = normalizeCandidates(input.candidates || [])
+  const conversationAwareRequirement = buildConversationAwareRequirement(
+    base.inputText,
+    base.conversationContext || input.conversationContext,
+  )
   try {
     input.onProgress?.({
       stage: 'understand',
@@ -856,7 +882,7 @@ export async function resolveMultiAgentRoute(input: {
     })
     const routeReasoningPromise = streamTaskRouteReasoning({
       profile: input.profile,
-      requirement: base.inputText,
+      requirement: conversationAwareRequirement,
       provider: input.provider,
       model: input.model,
       agents: normalizedCandidates,
@@ -871,7 +897,7 @@ export async function resolveMultiAgentRoute(input: {
     }).catch(() => null)
     const routed = await generateTaskRouteDecision({
       profile: input.profile,
-      requirement: base.inputText,
+      requirement: conversationAwareRequirement,
       provider: input.provider,
       model: input.model,
       agents: normalizedCandidates,
@@ -925,6 +951,7 @@ export async function resolveMultiAgentRoute(input: {
       selectedAgent,
       routeText,
       inputText: base.inputText,
+      conversationContext: base.conversationContext,
       todo,
       constraints,
       hermesInstructions: null,
@@ -970,7 +997,7 @@ export async function resolveMultiAgentRoute(input: {
     })
     const generated = await generateTaskPlan({
       profile: input.profile,
-      requirement: base.inputText,
+      requirement: conversationAwareRequirement,
       provider: input.provider,
       model: input.model,
       agents: normalizedCandidates,
@@ -1085,11 +1112,15 @@ export async function resolveMultiAgentReplan(input: {
 
   let replanned: GeneratedTaskReplanDecision
   try {
+    const conversationAwareRequirement = buildConversationAwareRequirement(
+      input.previous.inputText,
+      input.previous.conversationContext,
+    )
     replanned = await generateTaskReplanDecision({
       profile: input.profile,
       provider: input.provider,
       model: input.model,
-      requirement: input.previous.inputText,
+      requirement: conversationAwareRequirement,
       observation,
       currentPlan: currentPlanForReplan(input.previous),
       agents: normalizeCandidates(input.candidates || []),
@@ -1173,6 +1204,7 @@ export async function resolveMultiAgentReplan(input: {
     routeDecision,
     followUpInput: buildReplanFollowUpInput({
       requirement: input.previous.inputText,
+      conversationContext: input.previous.conversationContext,
       observation,
       todo: replanned.todo,
       responseStrategy: replanned.response_strategy,

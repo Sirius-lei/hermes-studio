@@ -1,5 +1,22 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
-import { hasApiKey, isStoredSuperAdmin } from '@/api/client'
+import { hasApiKey, isStoredSuperAdmin, setActiveUserContextId } from '@/api/client'
+
+function normalizeUserContextQuery(value: unknown): string | null {
+  if (typeof value === 'string') {
+    const normalized = value.trim()
+    return normalized || null
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (typeof item === 'string' && item.trim()) return item.trim()
+    }
+  }
+  return null
+}
+
+function isHermesRouteName(name: unknown): name is string {
+  return typeof name === 'string' && name.startsWith('hermes.')
+}
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -168,7 +185,24 @@ const router = createRouter({
   ],
 })
 
-router.beforeEach((to, _from, next) => {
+router.beforeEach((to, from, next) => {
+  const incomingUserContext = normalizeUserContextQuery(to.query.user_id)
+  const previousUserContext = normalizeUserContextQuery(from.query.user_id)
+
+  if (isHermesRouteName(to.name) && !incomingUserContext && previousUserContext) {
+    setActiveUserContextId(previousUserContext)
+    next({
+      name: to.name,
+      params: to.params,
+      query: { ...to.query, user_id: previousUserContext },
+      hash: to.hash,
+      replace: true,
+    })
+    return
+  }
+
+  setActiveUserContextId(isHermesRouteName(to.name) ? incomingUserContext : null)
+
   // Public pages don't need auth
   if (to.meta.public) {
     // Already has key, skip login

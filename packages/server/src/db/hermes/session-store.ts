@@ -219,6 +219,7 @@ export function createBranchedSession(data: {
   agent_mode?: string
   agent_session_id?: string
   agent_native_session_id?: string
+  user_id?: string | number | null
   model?: string
   provider?: string
   title?: string
@@ -257,8 +258,8 @@ export function createBranchedSession(data: {
     ).run(data.ended_at, 'branched', data.parent_session_id)
 
     db.prepare(
-      `INSERT INTO ${SESSIONS_TABLE} (id, profile, source, agent, agent_mode, agent_session_id, agent_native_session_id, model, provider, title, parent_session_id, started_at, last_active, workspace, message_count)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO ${SESSIONS_TABLE} (id, profile, source, agent, agent_mode, agent_session_id, agent_native_session_id, user_id, model, provider, title, parent_session_id, started_at, last_active, workspace, message_count)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       data.id,
       data.profile || 'default',
@@ -267,6 +268,7 @@ export function createBranchedSession(data: {
       data.agent_mode || '',
       data.agent_session_id || '',
       data.agent_native_session_id || '',
+      data.user_id == null ? null : String(data.user_id),
       data.model || '',
       data.provider || '',
       data.title || null,
