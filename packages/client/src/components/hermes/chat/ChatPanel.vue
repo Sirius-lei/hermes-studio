@@ -98,15 +98,15 @@ type MultiAgentPlanTask = {
   executorType: "hermes" | "subagent"
   agentId: string
   agentName: string
-  status: "todo" | "doing" | "done" | "blocked"
-  outcome: "unknown" | "success" | "failure"
+  status: "todo" | "doing" | "done" | "partial" | "blocked" | "unsafe" | "failed" | "waiting_replan" | "invalidated" | "skipped"
+  outcome: "unknown" | "success" | "partial" | "failure" | "unsafe"
 }
 
 type MultiAgentPlannerStep = {
   id: string
   title: string
   detail: string
-  status: "pending" | "running" | "done"
+  status: "pending" | "running" | "done" | "error"
 }
 
 const multiAgentMode = ref(false);
@@ -210,7 +210,19 @@ const multiAgentTodoSteps = computed<MultiAgentPlannerStep[]>(() => {
       id: task.id,
       title: task.title,
       detail: task.summary || "等待执行。",
-      status: task.status === "done" ? "done" : task.status === "doing" ? "running" : "pending",
+      status: task.status === "done"
+        ? "done"
+        : task.status === "doing"
+          ? "running"
+          : task.status === "partial"
+            || task.status === "unsafe"
+            || task.status === "blocked"
+            || task.status === "failed"
+            || task.status === "waiting_replan"
+            || task.status === "invalidated"
+            || task.status === "skipped"
+            ? "error"
+            : "pending",
     }));
   }
   return [];

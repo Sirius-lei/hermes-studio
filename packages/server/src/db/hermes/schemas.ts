@@ -244,6 +244,38 @@ export const COLLABORATION_RUNS_INDEXES = {
 }
 
 // ============================================================================
+// Pending Subagent Tasks
+// ============================================================================
+
+export const PENDING_SUBAGENT_TASKS_TABLE = 'pending_subagent_tasks'
+
+export const PENDING_SUBAGENT_TASKS_SCHEMA: Record<string, string> = {
+  session_id: 'TEXT PRIMARY KEY',
+  task_id: 'TEXT NOT NULL',
+  collaboration_run_id: 'TEXT',
+  profile: "TEXT NOT NULL DEFAULT 'default'",
+  node_id: "TEXT NOT NULL DEFAULT ''",
+  agent_id: "TEXT NOT NULL DEFAULT ''",
+  agent_name: "TEXT NOT NULL DEFAULT ''",
+  status: "TEXT NOT NULL DEFAULT 'clarify_required'",
+  objective: "TEXT NOT NULL DEFAULT ''",
+  question: "TEXT NOT NULL DEFAULT ''",
+  required_fields_json: "TEXT NOT NULL DEFAULT '[]'",
+  clarification_json: "TEXT NOT NULL DEFAULT '{}'",
+  route_decision_json: "TEXT NOT NULL DEFAULT '{}'",
+  result_json: "TEXT NOT NULL DEFAULT '{}'",
+  last_result_summary: "TEXT NOT NULL DEFAULT ''",
+  last_visible_output: "TEXT NOT NULL DEFAULT ''",
+  created_at: 'INTEGER NOT NULL',
+  updated_at: 'INTEGER NOT NULL',
+}
+
+export const PENDING_SUBAGENT_TASKS_INDEXES = {
+  idx_pending_subagent_tasks_profile: 'CREATE INDEX IF NOT EXISTS idx_pending_subagent_tasks_profile ON pending_subagent_tasks(profile)',
+  idx_pending_subagent_tasks_updated_at: 'CREATE INDEX IF NOT EXISTS idx_pending_subagent_tasks_updated_at ON pending_subagent_tasks(updated_at)',
+}
+
+// ============================================================================
 // Compression Snapshot (compression-snapshot.ts)
 // ============================================================================
 
@@ -831,6 +863,11 @@ export function initAllHermesTables(): void {
     // Collaboration runs
     syncTable(COLLABORATION_RUNS_TABLE, COLLABORATION_RUNS_SCHEMA, {
       indexes: COLLABORATION_RUNS_INDEXES,
+    })
+
+    // Pending subagent clarify tasks
+    syncTable(PENDING_SUBAGENT_TASKS_TABLE, PENDING_SUBAGENT_TASKS_SCHEMA, {
+      indexes: PENDING_SUBAGENT_TASKS_INDEXES,
     })
 
     // Compression snapshot

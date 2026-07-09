@@ -319,3 +319,110 @@ test('builds real todo and canvas nodes from route.todo when planner nodes are m
   await expect(multiAgentPanel).toContainText('2 / 3 完成')
   await expect(multiAgentPanel).toContainText('问数智能体')
 })
+
+test('keeps downstream nodes blocked from success after delegated node failure', async ({ page }, testInfo) => {
+  await authenticate(page, TEST_ACCESS_KEY, 'research')
+  await mockHermesApi(page)
+  await mockChatSocket(page)
+
+  await page.addInitScript(() => {
+    window.localStorage.removeItem('hermes.multiAgent.workflowArchives.v1')
+    window.localStorage.setItem('hermes.subAgents.frontendDraft.v4', JSON.stringify([
+      {
+        id: 'data-agent',
+        name: '问数智能体',
+        description: '负责涉案数据检索',
+        baseUrl: 'https://example.invalid',
+        status: 'active',
+        runtimeConfig: {
+          enabled: true,
+          chatPath: '/v1/chat/completions',
+        },
+      },
+    ]))
+  })
+
+  await page.goto('/#/hermes/chat')
+  await page.getByRole('button', { name: /开启多智能体协作模式|开启多智能体|多智能体/ }).click()
+
+  await sendChatMessage(page, '继续核验张三涉案信息')
+  const run = await waitForRun(page, 0)
+
+  await emitSocketEvent(page, run.session_id, {
+    event: 'run.started',
+    run_id: 'run-ma-failure-gate',
+  })
+  await emitSocketEvent(page, run.session_id, {
+    event: 'agent.event',
+    kind: 'multi_agent_route',
+    mode: 'delegate_subagent',
+    category: '数据任务',
+    reason: '命中问数智能体能力，进入协作执行。',
+    text: '多智能体协作：已匹配问数智能体，准备检索涉案记录。',
+    selected_agent: { id: 'data-agent', name: '问数智能体' },
+    plan: {
+      objective: '继续核验张三涉案信息',
+      status: 'running',
+      currentNodeId: 'task_1',
+      nodes: [
+        { id: 'understand', title: '理解需求与约束', phase: '分析', status: 'done', executor: { type: 'hermes', name: '主智能体' }, summary: '已提取查询目标。' },
+        { id: 'route', title: '确认执行路径', phase: '路由', status: 'done', executor: { type: 'hermes', name: '主智能体' }, summary: '已确认委派问数智能体。' },
+        { id: 'task_1', title: '检索涉案记录', phase: '执行', status: 'doing', executor: { type: 'subagent', id: 'data-agent', name: '问数智能体' }, summary: '正在检索涉案记录。' },
+        { id: 'task_2', title: '身份归并与去重', phase: '执行', status: 'todo', executor: { type: 'hermes', name: '主智能体' }, summary: '等待检索结果。' },
+        { id: 'task_3', title: '汇总结果并回复用户', phase: '汇总', status: 'todo', executor: { type: 'hermes', name: '主智能体' }, summary: '等待身份归并完成。' },
+        { id: 'respond', title: '汇总阶段成果并回复用户', phase: '汇总', status: 'todo', executor: { type: 'hermes', name: '主智能体' }, summary: '等待最终回复。' },
+      ],
+      dependencies: [
+        { from: 'understand', to: 'route', type: 'blocks' },
+        { from: 'route', to: 'task_1', type: 'blocks' },
+        { from: 'task_1', to: 'task_2', type: 'blocks' },
+        { from: 'task_2', to: 'task_3', type: 'blocks' },
+        { from: 'task_3', to: 'respond', type: 'blocks' },
+      ],
+    },
+  })
+
+  const multiAgentPanel = page.getByTestId('multi-agent-panel')
+  await expect(multiAgentPanel).toContainText('检索涉案记录')
+  await expect(multiAgentPanel).toContainText('身份归并与去重')
+
+  await emitSocketEvent(page, run.session_id, {
+    event: 'subagent.complete',
+    run_id: 'run-ma-failure-gate',
+    collaboration_run_id: 'collab-failure-gate-1',
+    subagent_id: 'data-agent',
+    agent_name: '问数智能体',
+    plan_node_ids: ['task_1'],
+    blocked_plan_node_ids: ['task_2', 'task_3', 'respond'],
+    status: 'failed',
+    node_status: 'failed',
+    summary: 'fetch failed for http://172.16.50.149:8768/v1/chat/completions',
+  })
+
+  await expect(multiAgentPanel).toContainText('等待重规划')
+  await expect(multiAgentPanel).not.toContainText('4 / 4 完成')
+  await expect(multiAgentPanel.locator('.multi-agent-todo-item.is-error')).toContainText('检索涉案记录')
+  await expect(multiAgentPanel.locator('.multi-agent-todo-item.is-warning').first()).toContainText('身份归并与去重')
+
+  await emitSocketEvent(page, run.session_id, {
+    event: 'assistant.message',
+    run_id: 'run-ma-failure-gate',
+    message_id: 'assistant-failure-gate-1',
+    content: '问数智能体在“检索涉案记录”节点执行失败，原因是子智能体接口不可达。由于后续“身份归并与去重”“汇总结果并回复用户”依赖该检索结果，我已暂停这些节点，等待重新规划。',
+  })
+  await emitSocketEvent(page, run.session_id, {
+    event: 'run.failed',
+    run_id: 'run-ma-failure-gate',
+    assistant_feedback_sent: true,
+    error: 'sub-agent 问数智能体 failed: fetch failed for http://172.16.50.149:8768/v1/chat/completions',
+  })
+
+  await expect(multiAgentPanel).toContainText('执行失败')
+  await expect(multiAgentPanel).toContainText('已跳过')
+  await expect(page.getByText('我已暂停这些节点，等待重新规划。')).toBeVisible()
+
+  await page.screenshot({
+    path: testInfo.outputPath('multi-agent-failure-gating.png'),
+    fullPage: true,
+  })
+})

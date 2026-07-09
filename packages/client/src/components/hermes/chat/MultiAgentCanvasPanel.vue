@@ -22,8 +22,8 @@ type ExecutionTask = {
   executorType: "hermes" | "subagent"
   agentId: string
   agentName: string
-  status: "todo" | "doing" | "done" | "blocked"
-  outcome: "unknown" | "success" | "failure"
+  status: "todo" | "doing" | "done" | "partial" | "blocked" | "unsafe" | "failed" | "waiting_replan" | "invalidated" | "skipped"
+  outcome: "unknown" | "success" | "partial" | "failure" | "unsafe"
 }
 
 type TodoEntry = {
@@ -34,8 +34,8 @@ type TodoEntry = {
   dependsOn: string[]
   agentName: string
   executorType: "hermes" | "subagent"
-  status: "pending" | "running" | "done" | "error"
-  outcome: "unknown" | "success" | "failure"
+  status: "pending" | "running" | "done" | "warning" | "error"
+  outcome: "unknown" | "success" | "partial" | "failure" | "unsafe"
 }
 
 type PlanCardStep = {
@@ -56,7 +56,7 @@ type CanvasNodeLayout = {
 type CanvasEdgeLayout = {
   id: string
   path: string
-  tone: "blue" | "green" | "gray" | "red"
+  tone: "blue" | "green" | "gray" | "amber" | "red"
   animated: boolean
 }
 
@@ -159,18 +159,24 @@ const effectiveTodoEntries = computed<TodoEntry[]>(() => {
         id: task.id,
         index: task.index,
         title: task.title,
-      detail: task.summary || "等待执行。",
-      dependsOn: task.dependsOn || [],
-      agentName: task.agentName || "",
-      executorType: task.executorType,
-      outcome: task.outcome,
-      status: task.status === "done"
-        ? "done"
-        : task.status === "doing" || isCurrentPendingTask
-          ? "running"
-          : task.status === "blocked"
-            ? "error"
-            : "pending",
+        detail: task.summary || "等待执行。",
+        dependsOn: task.dependsOn || [],
+        agentName: task.agentName || "",
+        executorType: task.executorType,
+        outcome: task.outcome,
+        status: task.status === "done"
+          ? "done"
+          : task.status === "doing" || isCurrentPendingTask
+            ? "running"
+            : task.status === "partial"
+              || task.status === "unsafe"
+              || task.status === "waiting_replan"
+              || task.status === "invalidated"
+              || task.status === "skipped"
+              ? "warning"
+              : task.status === "blocked" || task.status === "failed"
+                ? "error"
+                : "pending",
       }
     })
   }
@@ -235,6 +241,8 @@ function plannerStatusLabel(status: TodoEntry["status"]) {
       return "已完成"
     case "running":
       return "执行中..."
+    case "warning":
+      return "等待重规划"
     case "error":
       return "失败"
     default:
@@ -243,7 +251,13 @@ function plannerStatusLabel(status: TodoEntry["status"]) {
 }
 
 function outcomeBadgeLabel(outcome: TodoEntry["outcome"], status: TodoEntry["status"] | ExecutionTask["status"]) {
+  if (status === "warning" || status === "waiting_replan" || status === "invalidated" || status === "skipped") {
+    return outcome === "unsafe" ? "不可汇总" : "已暂停"
+  }
+  if (status === "error" || status === "failed" || status === "blocked") return "失败"
   if (outcome === "success") return "成功"
+  if (outcome === "partial") return "部分完成"
+  if (outcome === "unsafe") return "不可汇总"
   if (outcome === "failure") return "失败"
   if (status === "running" || status === "doing") return "运行中"
   return "待定"
@@ -313,10 +327,16 @@ const effectiveCanvasTasks = computed<ExecutionTask[]>(() => {
       status: entry.status === "done"
         ? "done"
         : entry.status === "running"
-        ? "doing"
-        : entry.status === "error"
-          ? "blocked"
-          : "todo",
+          ? "doing"
+          : entry.status === "warning"
+            ? (entry.outcome === "unsafe"
+                ? "unsafe"
+                : entry.outcome === "partial"
+                  ? "partial"
+                  : "waiting_replan")
+            : entry.status === "error"
+              ? "failed"
+              : "todo",
   }))
 })
 
@@ -470,7 +490,8 @@ const canvasNodeMap = computed(() =>
 )
 
 function edgeTone(status: ExecutionTask["status"]): CanvasEdgeLayout["tone"] {
-  if (status === "blocked") return "red"
+  if (status === "blocked" || status === "failed") return "red"
+  if (status === "unsafe" || status === "partial" || status === "waiting_replan" || status === "invalidated" || status === "skipped") return "amber"
   if (status === "doing") return "blue"
   if (status === "done") return "green"
   return "gray"
@@ -511,6 +532,17 @@ function canvasNodeStateLabel(status: ExecutionTask["status"]) {
       return "已完成"
     case "doing":
       return "执行中..."
+    case "partial":
+      return "部分完成"
+    case "unsafe":
+      return "不可汇总"
+    case "waiting_replan":
+      return "等待重规划"
+    case "invalidated":
+      return "已失效"
+    case "skipped":
+      return "已跳过"
+    case "failed":
     case "blocked":
       return "失败"
     default:
@@ -759,6 +791,7 @@ function selectHistoryOffset(offset: number) {
                   <path d="M4 10.5 8 14.5 16 6.5" />
                 </svg>
                 <span v-else-if="entry.status === 'running'" class="multi-agent-spinner"></span>
+                <span v-else-if="entry.status === 'warning'" class="multi-agent-warning-mark">~</span>
                 <span v-else-if="entry.status === 'error'" class="multi-agent-error-mark">!</span>
                 <span v-else>{{ entry.index }}</span>
               </span>
@@ -770,7 +803,7 @@ function selectHistoryOffset(offset: number) {
                     <span class="multi-agent-agent-chip" :class="`is-${entry.executorType}`">
                       {{ todoAgentLabel(entry) }}
                     </span>
-                    <span class="multi-agent-outcome-chip" :class="`is-${entry.outcome}`">
+                    <span class="multi-agent-outcome-chip" :class="[`is-${entry.outcome}`, { 'is-warning': entry.status === 'warning' }]">
                       {{ outcomeBadgeLabel(entry.outcome, entry.status) }}
                     </span>
                   </div>
@@ -840,6 +873,9 @@ function selectHistoryOffset(offset: number) {
                 <marker id="edge-green" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
                   <path d="M 0 0 L 10 5 L 0 10 z" fill="#22c55e" />
                 </marker>
+                <marker id="edge-amber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 0 L 10 5 L 0 10 z" fill="#f59e0b" />
+                </marker>
                 <marker id="edge-gray" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
                   <path d="M 0 0 L 10 5 L 0 10 z" fill="#cbd5e1" />
                 </marker>
@@ -882,9 +918,21 @@ function selectHistoryOffset(offset: number) {
                 agentName: node.task.agentName,
                 executorType: node.task.executorType,
                 outcome: node.task.outcome,
-                status: node.task.status === 'done' ? 'done' : node.task.status === 'doing' ? 'running' : node.task.status === 'blocked' ? 'error' : 'pending',
+                status: node.task.status === 'done'
+                  ? 'done'
+                  : node.task.status === 'doing'
+                    ? 'running'
+                    : node.task.status === 'failed' || node.task.status === 'blocked'
+                      ? 'error'
+                      : node.task.status === 'partial'
+                        || node.task.status === 'unsafe'
+                        || node.task.status === 'waiting_replan'
+                        || node.task.status === 'invalidated'
+                        || node.task.status === 'skipped'
+                        ? 'warning'
+                        : 'pending',
               }) }}</small>
-              <span class="multi-agent-canvas-node-outcome" :class="`is-${node.task.outcome}`">
+              <span class="multi-agent-canvas-node-outcome" :class="[`is-${node.task.outcome}`, { 'is-warning': node.task.status === 'waiting_replan' || node.task.status === 'invalidated' || node.task.status === 'skipped' }]">
                 {{ outcomeBadgeLabel(node.task.outcome, node.task.status) }}
               </span>
               <span class="multi-agent-canvas-node-state">{{ canvasNodeStateLabel(node.task.status) }}</span>
@@ -1459,6 +1507,13 @@ function selectHistoryOffset(offset: number) {
     text-decoration: line-through;
     text-decoration-color: rgba(148, 163, 184, 0.72);
   }
+
+  &.is-warning {
+    margin-inline: -8px;
+    padding-inline: 8px 14px;
+    background: rgba(255, 251, 235, 0.88);
+    border: 1px solid rgba(251, 191, 36, 0.36);
+  }
 }
 
 .multi-agent-todo-index {
@@ -1502,6 +1557,12 @@ function selectHistoryOffset(offset: number) {
   background: rgba(254, 242, 242, 0.96);
 }
 
+.multi-agent-todo-item.is-warning .multi-agent-todo-index {
+  border-color: rgba(245, 158, 11, 0.42);
+  color: #d97706;
+  background: rgba(255, 251, 235, 0.98);
+}
+
 .multi-agent-spinner {
   width: 13px;
   height: 13px;
@@ -1513,6 +1574,11 @@ function selectHistoryOffset(offset: number) {
 
 .multi-agent-error-mark {
   font-size: 12px;
+  font-weight: 700;
+}
+
+.multi-agent-warning-mark {
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -1616,6 +1682,19 @@ function selectHistoryOffset(offset: number) {
     color: #16a34a;
   }
 
+  &.is-partial,
+  &.is-unsafe {
+    border-color: rgba(245, 158, 11, 0.28);
+    background: rgba(255, 251, 235, 0.98);
+    color: #d97706;
+  }
+
+  &.is-warning {
+    border-color: rgba(245, 158, 11, 0.28);
+    background: rgba(255, 251, 235, 0.98);
+    color: #d97706;
+  }
+
   &.is-failure {
     border-color: rgba(248, 113, 113, 0.28);
     background: rgba(254, 242, 242, 0.96);
@@ -1662,6 +1741,10 @@ function selectHistoryOffset(offset: number) {
 
   &.is-green {
     stroke: #22c55e;
+  }
+
+  &.is-amber {
+    stroke: #f59e0b;
   }
 
   &.is-gray {
@@ -1734,7 +1817,18 @@ function selectHistoryOffset(offset: number) {
   color: #16a34a;
 }
 
-.multi-agent-canvas-node.is-blocked {
+.multi-agent-canvas-node.is-partial,
+.multi-agent-canvas-node.is-unsafe,
+.multi-agent-canvas-node.is-waiting_replan,
+.multi-agent-canvas-node.is-invalidated,
+.multi-agent-canvas-node.is-skipped {
+  border-color: #f59e0b;
+  background: rgba(255, 251, 235, 0.98);
+  color: #d97706;
+}
+
+.multi-agent-canvas-node.is-blocked,
+.multi-agent-canvas-node.is-failed {
   border-color: #f87171;
   background: rgba(254, 242, 242, 0.96);
   color: #dc2626;
@@ -1762,7 +1856,16 @@ function selectHistoryOffset(offset: number) {
   background: #22c55e;
 }
 
-.multi-agent-canvas-node.is-blocked .multi-agent-canvas-node-badge {
+.multi-agent-canvas-node.is-partial .multi-agent-canvas-node-badge,
+.multi-agent-canvas-node.is-unsafe .multi-agent-canvas-node-badge,
+.multi-agent-canvas-node.is-waiting_replan .multi-agent-canvas-node-badge,
+.multi-agent-canvas-node.is-invalidated .multi-agent-canvas-node-badge,
+.multi-agent-canvas-node.is-skipped .multi-agent-canvas-node-badge {
+  background: #f59e0b;
+}
+
+.multi-agent-canvas-node.is-blocked .multi-agent-canvas-node-badge,
+.multi-agent-canvas-node.is-failed .multi-agent-canvas-node-badge {
   background: #ef4444;
 }
 
@@ -1792,6 +1895,17 @@ function selectHistoryOffset(offset: number) {
   &.is-success {
     border-color: rgba(34, 197, 94, 0.28);
     color: #16a34a;
+  }
+
+  &.is-partial,
+  &.is-unsafe {
+    border-color: rgba(245, 158, 11, 0.28);
+    color: #d97706;
+  }
+
+  &.is-warning {
+    border-color: rgba(245, 158, 11, 0.28);
+    color: #d97706;
   }
 
   &.is-failure {

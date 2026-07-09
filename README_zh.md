@@ -272,6 +272,9 @@ hermes-web-ui start
 单容器部署，内置 Hermes Agent 运行时：
 
 ```bash
+# 先准备宿主机映射出来的 Hermes 配置目录
+docker compose run --rm hermes-webui prepare-hermes-home
+
 # 使用预构建镜像（推荐）
 WEBUI_IMAGE=ekkoye8888/hermes-web-ui docker compose up -d
 
@@ -285,6 +288,7 @@ docker compose logs -f hermes-webui
 
 - Hermes 持久化数据目录：`./hermes_data`
 - Web UI 认证 Token 存储在 `./hermes_data/hermes-web-ui/.token`
+- 当 `HERMES_DOCKER_REQUIRE_PROFILE_CONFIG=1` 时，首次启动前先编辑 `./hermes_data/config.yaml`
 - 首次启动并开启认证时，Token 会打印到容器日志中
 - 运行参数全部由 `docker-compose.yml` 环境变量驱动
 

@@ -1,6 +1,6 @@
 type SnapshotStatus = 'idle' | 'running' | 'completed' | 'failed'
-type NodeStatus = 'todo' | 'doing' | 'done' | 'blocked'
-type NodeOutcome = 'unknown' | 'success' | 'failure'
+type NodeStatus = 'todo' | 'doing' | 'done' | 'partial' | 'blocked' | 'unsafe' | 'failed' | 'waiting_replan' | 'invalidated' | 'skipped'
+type NodeOutcome = 'unknown' | 'success' | 'partial' | 'failure' | 'unsafe'
 type ThinkingStatus = 'pending' | 'running' | 'done'
 
 export interface CollaborationSnapshotNode {
@@ -85,16 +85,38 @@ function summarizeText(value: unknown, max = 220): string {
 }
 
 function normalizeNodeStatus(value: unknown, fallback: NodeStatus): NodeStatus {
-  return value === 'todo' || value === 'doing' || value === 'done' || value === 'blocked'
+  return value === 'todo'
+    || value === 'doing'
+    || value === 'done'
+    || value === 'partial'
+    || value === 'blocked'
+    || value === 'unsafe'
+    || value === 'failed'
+    || value === 'waiting_replan'
+    || value === 'invalidated'
+    || value === 'skipped'
     ? value
     : fallback
 }
 
 function normalizeNodeOutcome(value: unknown, status?: NodeStatus): NodeOutcome {
-  if (value === 'unknown' || value === 'success' || value === 'failure') return value
+  if (value === 'unknown' || value === 'success' || value === 'partial' || value === 'failure' || value === 'unsafe') return value
   if (status === 'done') return 'success'
-  if (status === 'blocked') return 'failure'
+  if (status === 'partial') return 'partial'
+  if (status === 'unsafe') return 'unsafe'
+  if (status === 'blocked' || status === 'failed' || status === 'waiting_replan' || status === 'invalidated' || status === 'skipped') return 'failure'
   return 'unknown'
+}
+
+function isTerminalNodeStatus(status: NodeStatus) {
+  return status === 'done'
+    || status === 'partial'
+    || status === 'unsafe'
+    || status === 'blocked'
+    || status === 'failed'
+    || status === 'waiting_replan'
+    || status === 'invalidated'
+    || status === 'skipped'
 }
 
 function routeTodoNodeId(index: number): string {
@@ -365,7 +387,7 @@ function nextReadyNodeId(snapshot: CollaborationSnapshotState, exclude = new Set
   const nodes = snapshot.planNodes.filter(node => !RESERVED_NODE_IDS.has(node.id))
   for (const node of nodes) {
     if (exclude.has(node.id)) continue
-    if (node.status === 'done' || node.status === 'blocked' || node.status === 'doing') continue
+    if (isTerminalNodeStatus(node.status) || node.status === 'doing') continue
     const depsReady = (node.dependsOn || []).every(depId => {
       const dep = snapshot.planNodes.find(item => item.id === depId)
       return !dep || dep.status === 'done'
@@ -373,6 +395,44 @@ function nextReadyNodeId(snapshot: CollaborationSnapshotState, exclude = new Set
     if (depsReady) return node.id
   }
   return null
+}
+
+function collectBlockedDependentNodeIds(snapshot: CollaborationSnapshotState, sourceNodeIds: string[]): string[] {
+  const sourceSet = new Set(sourceNodeIds.filter(Boolean))
+  if (sourceSet.size === 0) return []
+  const queue = [...sourceSet]
+  const blocked = new Set<string>()
+
+  while (queue.length > 0) {
+    const currentNodeId = queue.shift() || ''
+    if (!currentNodeId) continue
+    for (const dependency of snapshot.planDependencies) {
+      if (dependency.type !== 'blocks' || dependency.from !== currentNodeId) continue
+      const nextNodeId = dependency.to
+      if (!nextNodeId || sourceSet.has(nextNodeId) || blocked.has(nextNodeId) || nextNodeId === 'understand' || nextNodeId === 'route') continue
+      blocked.add(nextNodeId)
+      queue.push(nextNodeId)
+    }
+  }
+
+  return snapshot.planNodes
+    .filter(node => blocked.has(node.id))
+    .map(node => node.id)
+}
+
+function resolveBlockedPlanNodeIds(
+  snapshot: CollaborationSnapshotState,
+  payload: Record<string, unknown>,
+  targetNodeId: string,
+): string[] {
+  const explicit = Array.isArray(payload.blocked_plan_node_ids)
+    ? payload.blocked_plan_node_ids.map(textValue).filter(Boolean)
+    : []
+  if (explicit.length > 0) {
+    const validIds = new Set(snapshot.planNodes.map(node => node.id))
+    return explicit.filter(nodeId => validIds.has(nodeId) && nodeId !== targetNodeId)
+  }
+  return collectBlockedDependentNodeIds(snapshot, [targetNodeId])
 }
 
 function normalizeSingleRunningNode(snapshot: CollaborationSnapshotState, runningNodeId: string | null): CollaborationSnapshotState {
@@ -399,8 +459,7 @@ function resolveTargetNodeId(snapshot: CollaborationSnapshotState, payload: Reco
       !RESERVED_NODE_IDS.has(node.id)
       && node.executor.type === 'subagent'
       && textValue(node.executor.id) === subagentId
-      && node.status !== 'done'
-      && node.status !== 'blocked',
+      && !isTerminalNodeStatus(node.status)
     )
     if (candidate) return candidate.id
   }
@@ -602,33 +661,117 @@ export function applySubagentEvent(
   const goal = textValue(payload.goal)
   const text = textValue(payload.text || payload.preview)
   const summary = textValue(payload.summary)
-  const preview = eventName === 'subagent.start'
-    ? (goal || '子任务已启动')
-    : eventName === 'subagent.tool'
-      ? `${toolName ? `调用工具 ${toolName}` : '调用工具'}${text ? `：${text}` : ''}`
-      : eventName === 'subagent.progress'
-        ? (text || '子任务执行中')
-        : (summary || text || goal || '子任务已完成')
+  const eventStatus = textValue(payload.status)
+  const nodeStatus = textValue(payload.node_status || payload.status)
+  const groundingStatus = textValue(payload.grounding_status)
+  const finalizable = payload.finalizable === true
+  const isClarify = eventName === 'subagent.clarify_required'
+  const isFailure = eventName === 'subagent.complete' && (eventStatus === 'failed' || eventStatus === 'blocked' || nodeStatus === 'failed' || nodeStatus === 'blocked')
+  const isPartial = eventName === 'subagent.complete' && (eventStatus === 'partial' || nodeStatus === 'partial' || groundingStatus === 'partial' || groundingStatus === 'truncated')
+  const isUnsafe = eventName === 'subagent.complete' && (!isFailure && !isClarify && (groundingStatus === 'unsafe_to_finalize' || groundingStatus === 'unverified' || finalizable === false))
+  const shouldGateDependents = isFailure || isPartial || isUnsafe || eventName === 'subagent.result_rejected' || eventName === 'subagent.finalization_blocked'
+  const blockedPlanNodeIds = shouldGateDependents
+    ? resolveBlockedPlanNodeIds(snapshot, payload, targetNodeId)
+    : []
+  const blockedPlanNodeIdSet = new Set(blockedPlanNodeIds)
+  const dependencyGateReason = textValue(payload.dependency_gate_reason || payload.reason || payload.summary || payload.text)
+  const completionNodeStatus: NodeStatus = isFailure
+    ? 'failed'
+    : isUnsafe
+      ? 'unsafe'
+      : isPartial
+        ? 'partial'
+        : 'done'
+  const completionOutcome: NodeOutcome = completionNodeStatus === 'done'
+    ? 'success'
+    : completionNodeStatus === 'partial'
+      ? 'partial'
+      : completionNodeStatus === 'unsafe'
+        ? 'unsafe'
+        : 'failure'
+  const preview = eventName === 'subagent.task_sent'
+    ? (text || summary || goal || '主智能体已下发子任务')
+    : eventName === 'subagent.task_accepted'
+      ? (text || summary || goal || '子智能体已接单')
+      : eventName === 'subagent.start'
+        ? (goal || '子任务已启动')
+        : eventName === 'subagent.tool'
+          ? `${toolName ? `调用工具 ${toolName}` : '调用工具'}${text ? `：${text}` : ''}`
+          : eventName === 'subagent.clarify_required'
+            ? (text || summary || textValue(payload.question) || '等待用户补充信息')
+            : eventName === 'subagent.progress'
+              ? (text || '子任务执行中')
+              : eventName === 'subagent.artifact_published'
+                ? (summary || text || '节点产物已发布')
+                : eventName === 'subagent.result_received'
+                  ? (summary || text || '主智能体已收到节点回执')
+                  : eventName === 'subagent.result_rejected'
+                    ? (summary || text || '当前节点结果未通过汇总校验')
+                    : eventName === 'subagent.finalization_blocked'
+                      ? (text || textValue(payload.reason) || '最终汇总已被阻断')
+                      : (summary || text || goal || '子任务已完成')
 
-  let next = normalizeSingleRunningNode(snapshot, eventName === 'subagent.complete' ? null : targetNodeId)
+  const shouldLockNode = eventName === 'subagent.complete'
+    || eventName === 'subagent.result_rejected'
+    || eventName === 'subagent.finalization_blocked'
+  let next = normalizeSingleRunningNode(snapshot, shouldLockNode ? null : targetNodeId)
   next = {
     ...next,
     text: preview || next.text,
-    currentNodeId: eventName === 'subagent.complete'
+    currentNodeId: shouldLockNode
       ? next.currentNodeId
       : targetNodeId,
     planNodes: next.planNodes.map(node => {
       if (node.id === 'understand' || node.id === 'route') {
         return { ...node, status: 'done', outcome: 'success' }
       }
-      if (node.id !== targetNodeId) return node
-      if (eventName === 'subagent.complete') {
-        const failed = textValue(payload.status) && textValue(payload.status) !== 'completed'
+      if (blockedPlanNodeIdSet.has(node.id)) {
+        const shouldInvalidate = node.status === 'done'
+          || node.status === 'doing'
+          || node.status === 'partial'
+          || node.status === 'unsafe'
+        const nextStatus: NodeStatus = node.status === 'failed'
+          ? 'failed'
+          : shouldInvalidate
+            ? 'invalidated'
+            : 'waiting_replan'
         return {
           ...node,
-          status: failed ? 'blocked' : 'done',
-          outcome: failed ? 'failure' : 'success',
+          status: nextStatus,
+          outcome: 'failure',
+          summary: dependencyGateReason
+            ? node.status === 'failed'
+              ? (node.summary || `前置节点失败或不可最终化：${dependencyGateReason}。当前节点已暂停。`)
+              : shouldInvalidate
+              ? `前置节点失败或不可最终化：${dependencyGateReason}。当前节点已有旧结果已失效，等待重新规划。`
+              : `前置节点失败或不可最终化：${dependencyGateReason}。当前节点没有合法输入，已暂停并等待重新规划。`
+            : node.status === 'failed'
+              ? (node.summary || '当前节点已失败。')
+              : shouldInvalidate
+              ? '前置节点失败或不可最终化，当前节点已有旧结果已失效，等待重新规划。'
+              : '前置节点失败或不可最终化，当前节点没有合法输入，已暂停并等待重新规划。',
+        }
+      }
+      if (node.id !== targetNodeId) return node
+      if (eventName === 'subagent.complete') {
+        return {
+          ...node,
+          status: completionNodeStatus,
+          outcome: completionOutcome,
           summary: summary || text || goal || node.summary,
+          executor: {
+            type: 'subagent',
+            id: subagentId || node.executor.id,
+            name: agentName || node.executor.name,
+          },
+        }
+      }
+      if (eventName === 'subagent.result_rejected' || eventName === 'subagent.finalization_blocked') {
+        return {
+          ...node,
+          status: isUnsafe ? 'unsafe' : 'partial',
+          outcome: isUnsafe ? 'unsafe' : 'partial',
+          summary: summary || text || textValue(payload.reason) || goal || node.summary,
           executor: {
             type: 'subagent',
             id: subagentId || node.executor.id,
@@ -649,19 +792,55 @@ export function applySubagentEvent(
       }
     }),
   }
+  if (blockedPlanNodeIds.length > 0) {
+    const blockedTitles = next.planNodes
+      .filter(node => blockedPlanNodeIdSet.has(node.id))
+      .map(node => node.title)
+      .filter(Boolean)
+    next = appendActivity(next, {
+      id: `route:dependency-gate:${targetNodeId}:${Date.now()}`,
+      kind: 'route',
+      title: '暂停后续节点',
+      text: blockedTitles.length > 0
+        ? `由于前置节点未完成，${blockedTitles.join('、')} 已暂停，等待重新规划。`
+        : '由于前置节点未完成，后续依赖节点已暂停，等待重新规划。',
+      status: 'error',
+      timestamp: Date.now(),
+      agentId: subagentId || undefined,
+      agentName: agentName || undefined,
+    })
+  }
   next = appendActivity(next, {
     id: `${eventName}:${subagentId || 'subagent'}:${Date.now()}`,
     kind: eventName,
-    title: eventName === 'subagent.start'
-      ? '子智能体启动'
-      : eventName === 'subagent.tool'
-        ? `工具调用${toolName ? `：${toolName}` : ''}`
-        : eventName === 'subagent.progress'
-          ? '执行进展'
-          : (textValue(payload.status) && textValue(payload.status) !== 'completed' ? '子智能体失败' : '子智能体完成'),
-    text: summary || text || goal || preview,
+    title: eventName === 'subagent.task_sent'
+      ? '主智能体下发任务'
+      : eventName === 'subagent.task_accepted'
+        ? '子智能体接单'
+        : eventName === 'subagent.start'
+          ? '子智能体启动'
+          : eventName === 'subagent.tool'
+            ? `工具调用${toolName ? `：${toolName}` : ''}`
+            : eventName === 'subagent.clarify_required'
+              ? '等待用户补充'
+              : eventName === 'subagent.progress'
+                ? '执行进展'
+                : eventName === 'subagent.artifact_published'
+                  ? '发布 artifact'
+                  : eventName === 'subagent.result_received'
+                    ? '收到节点回执'
+                    : eventName === 'subagent.result_rejected'
+                      ? '拒绝直接汇总'
+                      : eventName === 'subagent.finalization_blocked'
+                        ? '阻断最终汇总'
+                        : (isFailure ? '子智能体失败' : isPartial ? '子智能体部分完成' : isUnsafe ? '结果不可直接汇总' : '子智能体完成'),
+    text: summary || text || textValue(payload.question) || goal || preview,
     status: eventName === 'subagent.complete'
-      ? (textValue(payload.status) && textValue(payload.status) !== 'completed' ? 'error' : 'done')
+      ? (isFailure ? 'error' : isPartial || isUnsafe ? 'info' : 'done')
+      : eventName === 'subagent.result_rejected' || eventName === 'subagent.finalization_blocked'
+        ? 'info'
+      : eventName === 'subagent.clarify_required'
+        ? 'info'
       : 'running',
     timestamp: Date.now(),
     agentId: subagentId || undefined,
@@ -671,11 +850,17 @@ export function applySubagentEvent(
   })
 
   if (eventName === 'subagent.complete') {
-    const failed = textValue(payload.status) && textValue(payload.status) !== 'completed'
-    if (failed) {
+    if (isFailure) {
       return {
         ...next,
-        status: 'failed',
+        status: 'running',
+        currentNodeId: targetNodeId,
+      }
+    }
+    if (isPartial || isUnsafe) {
+      return {
+        ...next,
+        status: 'running',
         currentNodeId: targetNodeId,
       }
     }
@@ -695,6 +880,24 @@ export function applySubagentEvent(
     }
   }
 
+  if (eventName === 'subagent.clarify_required') {
+    return {
+      ...next,
+      status: 'running',
+      currentNodeId: targetNodeId,
+      text: preview || next.text,
+    }
+  }
+
+  if (eventName === 'subagent.result_rejected' || eventName === 'subagent.finalization_blocked') {
+    return {
+      ...next,
+      status: 'running',
+      currentNodeId: targetNodeId,
+      text: preview || next.text,
+    }
+  }
+
   return next
 }
 
@@ -705,7 +908,15 @@ export function applyTerminalEvent(
 ): CollaborationSnapshotState {
   const nextNodes = snapshot.planNodes.map(node => {
     if (outcome === 'completed') {
-      if (node.status === 'blocked') return node
+      if (
+        node.status === 'blocked'
+        || node.status === 'partial'
+        || node.status === 'unsafe'
+        || node.status === 'failed'
+        || node.status === 'waiting_replan'
+        || node.status === 'invalidated'
+        || node.status === 'skipped'
+      ) return node
       if (node.id === 'respond') {
         return {
           ...node,
@@ -720,8 +931,44 @@ export function applyTerminalEvent(
         outcome: 'success' as const,
       }
     }
-    if (node.id === snapshot.currentNodeId) return { ...node, status: 'blocked' as const, outcome: 'failure' as const }
-    if (node.id === 'respond' && node.status === 'doing') return { ...node, status: 'blocked' as const, outcome: 'failure' as const }
+    if (node.status === 'waiting_replan') {
+      return {
+        ...node,
+        status: 'skipped' as const,
+        outcome: 'failure' as const,
+        summary: node.summary || '本轮恢复未完成，当前节点已跳过。',
+      }
+    }
+    if (node.id === 'respond' && node.status === 'doing') {
+      return {
+        ...node,
+        status: 'skipped' as const,
+        outcome: 'failure' as const,
+        summary: node.summary || '由于前置节点失败，本轮不再进入最终汇总。',
+      }
+    }
+    if (node.id === snapshot.currentNodeId) {
+      if (
+        node.status === 'partial'
+        || node.status === 'unsafe'
+        || node.status === 'failed'
+        || node.status === 'invalidated'
+        || node.status === 'skipped'
+      ) return node
+      return {
+        ...node,
+        status: 'failed' as const,
+        outcome: 'failure' as const,
+      }
+    }
+    if (node.status === 'doing') {
+      return {
+        ...node,
+        status: 'invalidated' as const,
+        outcome: 'failure' as const,
+        summary: node.summary || '本轮执行已终止，当前节点结果已失效。',
+      }
+    }
     return node
   })
   const base = {

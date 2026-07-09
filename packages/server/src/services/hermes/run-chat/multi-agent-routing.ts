@@ -39,7 +39,7 @@ export interface MultiAgentPlanNode {
   id: string
   title: string
   phase: string
-  status: 'todo' | 'doing' | 'done' | 'blocked'
+  status: 'todo' | 'doing' | 'done' | 'partial' | 'unsafe' | 'blocked' | 'failed' | 'waiting_replan' | 'invalidated' | 'skipped'
   executor: MultiAgentPlanNodeExecutor
   summary: string
 }
@@ -712,7 +712,12 @@ function fallbackTaskCount(decision: MultiAgentRouteDecision) {
   return Math.max(2, Math.min(5, decision.todo.length || 2))
 }
 
-function buildExecutionPlanFromRouterTodo(decision: MultiAgentRouteDecision): MultiAgentExecutionPlan | null {
+function buildExecutionPlanFromRouterTodo(
+  decision: MultiAgentRouteDecision,
+  options: {
+    nodeIdPrefix?: string
+  } = {},
+): MultiAgentExecutionPlan | null {
   if (!decision.shouldPlan || decision.executionMode === 'hermes_native' && decision.intent === 'casual_chat') return null
   const hermesExecutor: MultiAgentPlanNodeExecutor = { type: 'hermes', name: 'Hermes' }
   const selectedExecutor: MultiAgentPlanNodeExecutor = decision.executionMode === 'delegate_subagent' && decision.selectedAgent
@@ -721,8 +726,9 @@ function buildExecutionPlanFromRouterTodo(decision: MultiAgentRouteDecision): Mu
   const todo = decision.todo.length > 0
     ? decision.todo.slice(0, 5)
     : Array.from({ length: fallbackTaskCount(decision) }, (_, index) => `执行步骤 ${index + 1}`)
+  const nodeIdPrefix = String(options.nodeIdPrefix || 'task_router').trim() || 'task_router'
   const taskNodes = todo.map((item, index): MultiAgentPlanNode => ({
-    id: `task_router_${index + 1}`,
+    id: `${nodeIdPrefix}_${index + 1}`,
     title: item,
     phase: index === 0 ? '分析' : index === todo.length - 1 ? '汇总' : '执行',
     status: 'todo',
@@ -1177,7 +1183,7 @@ export async function resolveMultiAgentReplan(input: {
     plan: null,
     delegatedNodeIds: [],
   }
-  const plan = buildExecutionPlanFromRouterTodo(routeDecisionBase) || buildFallbackExecutionPlan(
+  const plan = buildExecutionPlanFromRouterTodo(routeDecisionBase, { nodeIdPrefix: 'replan_task_router' }) || buildFallbackExecutionPlan(
     summarizeText(input.previous.inputText),
     routeText,
   )

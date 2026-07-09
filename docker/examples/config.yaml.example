@@ -1,0 +1,17 @@
+model:
+  provider: openai
+  default: replace-with-your-model
+  context_length: 256000
+
+providers:
+  openai:
+    base_url: https://api.openai.com/v1
+    api_key: replace-with-real-api-key
+    default_model: replace-with-your-model
+    models:
+      replace-with-your-model:
+        context_length: 256000
+
+agent:
+  max_turns: 60
+  timeout: 600

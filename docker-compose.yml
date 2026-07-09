@@ -13,16 +13,19 @@ services:
       - "${PREVIEW_FRONTEND_PORT:-8651}:8651"
       - "${XAI_OAUTH_PORT:-56121}:56121"
     volumes:
-      - ${HERMES_DATA_DIR:-./hermes_data}:/home/agent/.hermes
-      - ${HERMES_DATA_DIR:-./hermes_data}/hermes-web-ui:/home/agent/.hermes-web-ui
+      - ${HERMES_HOME_DIR:-./hermes_data}:/home/agent/.hermes
+      - ${HERMES_WEB_UI_HOME_DIR:-./hermes_data/hermes-web-ui}:/home/agent/.hermes-web-ui
     environment:
       - PORT=${PORT:-6060}
       - BIND_HOST=0.0.0.0
       - HERMES_HOME=/home/agent/.hermes
       - HERMES_WEB_UI_HOME=/home/agent/.hermes-web-ui
+      - HERMES_ACTIVE_PROFILE=${HERMES_ACTIVE_PROFILE:-default}
+      - HERMES_DOCKER_REQUIRE_PROFILE_CONFIG=${HERMES_DOCKER_REQUIRE_PROFILE_CONFIG:-1}
       - HERMES_WEB_UI_MANAGED_GATEWAY=1
       - HERMES_WEB_UI_REQUIRE_AGENT_BRIDGE=1
       - HERMES_AGENT_BRIDGE_ENDPOINT=${HERMES_AGENT_BRIDGE_ENDPOINT:-tcp://127.0.0.1:18765}
+      - HERMES_AGENT_BRIDGE_AUTO_RESTART=${HERMES_AGENT_BRIDGE_AUTO_RESTART:-1}
       - HERMES_AGENT_BRIDGE_WORKER_TRANSPORT=${HERMES_AGENT_BRIDGE_WORKER_TRANSPORT:-tcp}
       - HERMES_AGENT_BRIDGE_WORKER_PORT_BASE=${HERMES_AGENT_BRIDGE_WORKER_PORT_BASE:-18780}
       - HERMES_AGENT_BRIDGE_WARM_PROFILES=${HERMES_AGENT_BRIDGE_WARM_PROFILES:-active}

@@ -49,13 +49,13 @@ export interface MultiAgentRunOptions {
   candidates?: MultiAgentRunCandidate[]
 }
 
-export type MultiAgentNodeOutcomeState = 'unknown' | 'success' | 'failure'
+export type MultiAgentNodeOutcomeState = 'unknown' | 'success' | 'partial' | 'failure' | 'unsafe'
 
 export interface MultiAgentPlanNodeState {
   id: string
   title: string
   phase: string
-  status: 'todo' | 'doing' | 'done' | 'blocked'
+  status: 'todo' | 'doing' | 'done' | 'partial' | 'blocked' | 'unsafe' | 'failed' | 'waiting_replan' | 'invalidated' | 'skipped'
   outcome: MultiAgentNodeOutcomeState
   dependsOn: string[]
   executor: {
@@ -74,7 +74,7 @@ export interface MultiAgentPlanDependencyState {
 
 export interface MultiAgentExecutionEventState {
   id: string
-  kind: 'route' | 'subagent.start' | 'subagent.tool' | 'subagent.progress' | 'subagent.complete'
+  kind: 'route' | 'subagent.task_sent' | 'subagent.task_accepted' | 'subagent.start' | 'subagent.tool' | 'subagent.progress' | 'subagent.artifact_published' | 'subagent.result_received' | 'subagent.result_rejected' | 'subagent.finalization_blocked' | 'subagent.clarify_required' | 'subagent.complete'
   title: string
   text: string
   status: 'info' | 'running' | 'done' | 'error'
@@ -162,7 +162,16 @@ function isMultiAgentStatus(value: unknown): value is MultiAgentRouteState['stat
 }
 
 function isPlanNodeStatus(value: unknown): value is MultiAgentPlanNodeState['status'] {
-  return value === 'todo' || value === 'doing' || value === 'done' || value === 'blocked'
+  return value === 'todo'
+    || value === 'doing'
+    || value === 'done'
+    || value === 'partial'
+    || value === 'blocked'
+    || value === 'unsafe'
+    || value === 'failed'
+    || value === 'waiting_replan'
+    || value === 'invalidated'
+    || value === 'skipped'
 }
 
 function isThinkingStepStatus(value: unknown): value is MultiAgentThinkingStepState['status'] {
@@ -455,7 +464,16 @@ function normalizeMultiAgentNodeStatus(
   value: unknown,
   fallback: MultiAgentPlanNodeState['status'] = 'todo',
 ): MultiAgentPlanNodeState['status'] {
-  return value === 'todo' || value === 'doing' || value === 'done' || value === 'blocked'
+  return value === 'todo'
+    || value === 'doing'
+    || value === 'done'
+    || value === 'partial'
+    || value === 'blocked'
+    || value === 'unsafe'
+    || value === 'failed'
+    || value === 'waiting_replan'
+    || value === 'invalidated'
+    || value === 'skipped'
     ? value
     : fallback
 }
@@ -464,10 +482,23 @@ function normalizeMultiAgentNodeOutcome(
   value: unknown,
   status?: MultiAgentPlanNodeState['status'],
 ): MultiAgentNodeOutcomeState {
-  if (value === 'success' || value === 'failure' || value === 'unknown') return value
+  if (value === 'success' || value === 'partial' || value === 'failure' || value === 'unsafe' || value === 'unknown') return value
   if (status === 'done') return 'success'
-  if (status === 'blocked') return 'failure'
+  if (status === 'partial') return 'partial'
+  if (status === 'unsafe') return 'unsafe'
+  if (status === 'blocked' || status === 'failed' || status === 'waiting_replan' || status === 'invalidated' || status === 'skipped') return 'failure'
   return 'unknown'
+}
+
+function isTerminalMultiAgentNodeStatus(status: MultiAgentPlanNodeState['status']) {
+  return status === 'done'
+    || status === 'partial'
+    || status === 'unsafe'
+    || status === 'blocked'
+    || status === 'failed'
+    || status === 'waiting_replan'
+    || status === 'invalidated'
+    || status === 'skipped'
 }
 
 const GENERIC_SUBAGENT_TOOL_NAMES = new Set(['bash', 'sh', 'zsh', 'fish', 'cmd', 'powershell', 'pwsh'])
@@ -478,6 +509,59 @@ function normalizeSubagentToolName(value: unknown): string {
   return GENERIC_SUBAGENT_TOOL_NAMES.has(toolName.toLowerCase())
     ? '运行时命令'
     : toolName
+}
+
+function resolveSubagentCompletionVisualState(evt: Record<string, unknown>): {
+  toolStatus: 'running' | 'done' | 'error'
+  nodeStatus: MultiAgentPlanNodeState['status']
+  nodeOutcome: MultiAgentNodeOutcomeState
+  blockedByGrounding: boolean
+} {
+  const eventStatus = sanitizeMultiAgentText(evt.status || '')
+  const nodeStatusValue = sanitizeMultiAgentText(evt.node_status || evt.status || '')
+  const groundingStatus = sanitizeMultiAgentText(evt.grounding_status || '')
+  const explicitFailure = eventStatus === 'failed'
+    || eventStatus === 'blocked'
+    || nodeStatusValue === 'failed'
+    || nodeStatusValue === 'blocked'
+  if (explicitFailure) {
+    return {
+      toolStatus: 'error',
+      nodeStatus: 'failed',
+      nodeOutcome: 'failure',
+      blockedByGrounding: false,
+    }
+  }
+  const unsafe = groundingStatus === 'unsafe_to_finalize'
+    || groundingStatus === 'unverified'
+    || (evt.finalizable === false && eventStatus !== 'clarify_required')
+  if (unsafe) {
+    return {
+      toolStatus: 'error',
+      nodeStatus: 'unsafe',
+      nodeOutcome: 'unsafe',
+      blockedByGrounding: true,
+    }
+  }
+  const partial = eventStatus === 'partial'
+    || nodeStatusValue === 'partial'
+    || groundingStatus === 'partial'
+    || groundingStatus === 'truncated'
+  if (partial) {
+    return {
+      toolStatus: 'error',
+      nodeStatus: 'partial',
+      nodeOutcome: 'partial',
+      blockedByGrounding: true,
+    }
+  }
+  const completed = evt.node_completed === true || eventStatus === 'completed'
+  return {
+    toolStatus: completed ? 'done' : 'running',
+    nodeStatus: completed ? 'done' : 'doing',
+    nodeOutcome: completed ? 'success' : 'unknown',
+    blockedByGrounding: false,
+  }
 }
 
 function buildSubagentEventToolCallId(input: {
@@ -2533,7 +2617,7 @@ export const useChatStore = defineStore('chat', () => {
     if (!route) return false
     return route.planNodes.some(node =>
       !RESERVED_MULTI_AGENT_NODE_IDS.has(node.id)
-      && (node.status === 'doing' || node.status === 'done' || node.status === 'blocked'),
+        && (node.status === 'doing' || isTerminalMultiAgentNodeStatus(node.status)),
     )
   }
 
@@ -2548,7 +2632,7 @@ export const useChatStore = defineStore('chat', () => {
     return route.planNodes.find(node => {
       if (excluded.has(node.id)) return false
       if (!options.includeRespond && RESERVED_MULTI_AGENT_NODE_IDS.has(node.id)) return false
-      if (node.status === 'done' || node.status === 'blocked' || node.status === 'doing') return false
+      if (isTerminalMultiAgentNodeStatus(node.status) || node.status === 'doing') return false
       const dependenciesReady = (node.dependsOn || []).every(dependsOn => {
         const dependency = route.planNodes.find(item => item.id === dependsOn)
         return !dependency || dependency.status === 'done'
@@ -2607,10 +2691,75 @@ export const useChatStore = defineStore('chat', () => {
     })
   }
 
+  function collectBlockedDependentPlanNodeIds(route: MultiAgentRouteState, sourceNodeIds: string[]) {
+    const sourceSet = new Set(sourceNodeIds.filter(Boolean))
+    if (sourceSet.size === 0) return []
+    const queue = [...sourceSet]
+    const blocked = new Set<string>()
+
+    while (queue.length > 0) {
+      const currentNodeId = queue.shift() || ''
+      if (!currentNodeId) continue
+      route.planDependencies.forEach((dependency) => {
+        if (dependency.type !== 'blocks' || dependency.from !== currentNodeId) return
+        const nextNodeId = dependency.to
+        if (!nextNodeId || sourceSet.has(nextNodeId) || blocked.has(nextNodeId) || nextNodeId === 'understand' || nextNodeId === 'route') return
+        blocked.add(nextNodeId)
+        queue.push(nextNodeId)
+      })
+    }
+
+    return route.planNodes
+      .filter(node => blocked.has(node.id))
+      .map(node => node.id)
+  }
+
+  function blockDependentMultiAgentNodes(
+    sessionId: string,
+    sourceNodeIds: string[],
+    reason: string,
+    explicitBlockedNodeIds: string[] = [],
+  ) {
+    const current = multiAgentRoutes.value.get(sessionId)
+    if (!current) return []
+    const sourceSet = new Set(sourceNodeIds.filter(Boolean))
+    const blockedNodeIds = explicitBlockedNodeIds.length > 0
+      ? explicitBlockedNodeIds.filter(nodeId => current.planNodes.some(node => node.id === nodeId) && !sourceSet.has(nodeId))
+      : collectBlockedDependentPlanNodeIds(current, sourceNodeIds)
+    if (blockedNodeIds.length === 0) return []
+    const blockedIdSet = new Set(blockedNodeIds)
+    const pausedSummary = reason
+      ? `前置节点失败或不可最终化：${reason}。当前节点没有合法输入，已暂停并等待重新规划。`
+      : '前置节点失败或不可最终化，当前节点没有合法输入，已暂停并等待重新规划。'
+    const invalidatedSummary = reason
+      ? `前置节点失败或不可最终化：${reason}。当前节点的旧执行结果已失效，等待重新规划。`
+      : '前置节点失败或不可最终化，当前节点的旧执行结果已失效，等待重新规划。'
+    setMultiAgentRouteState(sessionId, {
+      ...current,
+      planNodes: current.planNodes.map(node => blockedIdSet.has(node.id)
+        ? {
+            ...node,
+            status: node.status === 'failed'
+              ? 'failed'
+              : node.status === 'done' || node.status === 'doing' || node.status === 'partial' || node.status === 'unsafe'
+                ? 'invalidated'
+                : 'waiting_replan',
+            outcome: 'failure',
+            summary: node.status === 'failed'
+              ? (node.summary || pausedSummary)
+              : node.status === 'done' || node.status === 'doing' || node.status === 'partial' || node.status === 'unsafe'
+                ? invalidatedSummary
+                : pausedSummary,
+          }
+        : node),
+    })
+    return blockedNodeIds
+  }
+
   function isMultiAgentPlanNodeExecutable(route: MultiAgentRouteState, nodeId: string) {
     const node = route.planNodes.find(item => item.id === nodeId)
     if (!node || RESERVED_MULTI_AGENT_NODE_IDS.has(node.id)) return false
-    if (node.status === 'done' || node.status === 'blocked') return false
+    if (isTerminalMultiAgentNodeStatus(node.status)) return false
     if (node.status === 'doing') return true
     return (node.dependsOn || []).every(dependsOn => {
       const dependency = route.planNodes.find(item => item.id === dependsOn)
@@ -2626,7 +2775,7 @@ export const useChatStore = defineStore('chat', () => {
     if (readyExplicit) return [readyExplicit]
     const unfinishedExplicit = explicit.find((id) => {
       const node = current.planNodes.find(item => item.id === id)
-      return Boolean(node) && node!.status !== 'done' && node!.status !== 'blocked'
+      return Boolean(node) && !isTerminalMultiAgentNodeStatus(node!.status)
     })
     if (unfinishedExplicit) return [unfinishedExplicit]
     const matched = current.planNodes.filter(node =>
@@ -2638,8 +2787,8 @@ export const useChatStore = defineStore('chat', () => {
     if (matched.length === 0) return []
     const readyMatched = matched.find(node => isMultiAgentPlanNodeExecutable(current, node.id))
     if (readyMatched) return [readyMatched.id]
-    const unfinished = matched.find(node => node.status !== 'done' && node.status !== 'blocked')
-    return unfinished ? [unfinished.id] : [matched[0]!.id]
+    const unfinished = matched.find(node => !isTerminalMultiAgentNodeStatus(node.status))
+    return unfinished ? [unfinished.id] : []
   }
 
   function resolveRespondDependsOn(sessionId: string, fallbackNodeIds: string[] = []) {
@@ -2786,7 +2935,15 @@ export const useChatStore = defineStore('chat', () => {
               : node.summary,
           }
         }
-        if (node.status !== 'blocked') {
+        if (
+          node.status !== 'blocked'
+          && node.status !== 'partial'
+          && node.status !== 'unsafe'
+          && node.status !== 'failed'
+          && node.status !== 'waiting_replan'
+          && node.status !== 'invalidated'
+          && node.status !== 'skipped'
+        ) {
           return {
             ...node,
             status: 'done',
@@ -2800,17 +2957,40 @@ export const useChatStore = defineStore('chat', () => {
           summary: node.summary,
         }
       }
-      if (node.id === currentNodeId) {
+      if (node.status === 'waiting_replan') {
         return {
           ...node,
-          status: 'blocked',
+          status: 'skipped',
+          outcome: 'failure',
+          summary: node.summary || '本轮恢复未完成，当前节点已跳过。',
+        }
+      }
+      if (node.id === 'respond' && node.status === 'doing') {
+        return {
+          ...node,
+          status: 'skipped',
+          outcome: 'failure',
+          summary: node.summary || '由于前置节点失败，本轮不再进入最终汇总。',
+        }
+      }
+      if (node.id === currentNodeId) {
+        if (
+          node.status === 'partial'
+          || node.status === 'unsafe'
+          || node.status === 'failed'
+          || node.status === 'invalidated'
+          || node.status === 'skipped'
+        ) return node
+        return {
+          ...node,
+          status: 'failed',
           outcome: 'failure',
         }
       }
       if (node.id === 'respond') {
         return {
           ...node,
-          status: node.status === 'doing' ? 'blocked' : node.status,
+          status: node.status === 'doing' ? 'skipped' : node.status,
           outcome: node.status === 'doing' ? 'failure' : node.outcome,
           summary: node.summary,
         }
@@ -2818,8 +2998,16 @@ export const useChatStore = defineStore('chat', () => {
       if (node.id === 'execute' && node.status === 'doing') {
         return {
           ...node,
-          status: 'blocked',
+          status: 'failed',
           outcome: 'failure',
+        }
+      }
+      if (node.status === 'doing') {
+        return {
+          ...node,
+          status: 'invalidated',
+          outcome: 'failure',
+          summary: node.summary || '本轮执行已终止，当前节点结果已失效。',
         }
       }
       return node
@@ -2861,6 +3049,15 @@ export const useChatStore = defineStore('chat', () => {
     const collaborationRunId = typeof (evt as any).collaboration_run_id === 'string' && (evt as any).collaboration_run_id
       ? String((evt as any).collaboration_run_id)
       : ''
+    const currentRouteForEvent = multiAgentRoutes.value.get(sessionId)
+    if (
+      collaborationRunId
+      && currentRouteForEvent?.runId
+      && !currentRouteForEvent.runId.startsWith('pending:')
+      && currentRouteForEvent.runId !== collaborationRunId
+    ) {
+      return
+    }
     if (collaborationRunId) {
       mutateMultiAgentRouteState(sessionId, route => ({
         ...route,
@@ -2883,8 +3080,7 @@ export const useChatStore = defineStore('chat', () => {
     const summary = sanitizeMultiAgentText((evt as any).summary || '')
     const outputText = sanitizeMultiAgentText((evt as any).output || (evt as any).visible_output || '')
     const artifactSummary = summarizeSubagentArtifacts((evt as any).artifacts)
-    const nodeCompleted = (evt as any).node_completed === true
-    const nodeStatus = sanitizeMultiAgentText((evt as any).node_status || '')
+    const groundingStatus = sanitizeMultiAgentText((evt as any).grounding_status || '')
     const duration = Number((evt as any).duration_seconds ?? (evt as any).duration)
     const agentName = sanitizeMultiAgentText((evt as any).subagent_name || (evt as any).agent_name || '')
     const rawToolCallId = sanitizeMultiAgentText((evt as any).tool_call_id || '')
@@ -2895,9 +3091,18 @@ export const useChatStore = defineStore('chat', () => {
       || goal
       || `执行节点 ${label}`
     const subagentStreamId = `subagent-stream:${subagentId || agentName || 'subagent'}:${targetNodeId}`
+    const explicitBlockedNodeIds = Array.isArray((evt as any).blocked_plan_node_ids)
+      ? ((evt as any).blocked_plan_node_ids as unknown[]).map(item => String(item || '').trim()).filter(Boolean)
+      : []
+    const dependencyGateReason = sanitizeMultiAgentText((evt as any).dependency_gate_reason || (evt as any).reason || summary || text || outputText || '')
 
+    const completionState = resolveSubagentCompletionVisualState(evt as unknown as Record<string, unknown>)
     let preview = text || summary || goal
-    if (eventName === 'subagent.start') {
+    if (eventName === 'subagent.task_sent') {
+      preview = text || summary || goal || `主智能体已向 ${agentName || '子智能体'} 下发当前节点任务`
+    } else if (eventName === 'subagent.task_accepted') {
+      preview = text || summary || goal || `${agentName || '子智能体'} 已接单`
+    } else if (eventName === 'subagent.start') {
       preview = goal ? `开始执行：${goal}` : `子任务 ${label} 已启动`
     } else if (eventName === 'subagent.tool') {
       const verb = toolEventKind === 'tool_call_start'
@@ -2912,11 +3117,21 @@ export const useChatStore = defineStore('chat', () => {
       preview = `${toolName ? `${verb} ${toolName}` : `子任务 ${label} 调用工具`}${text ? `：${text}` : ''}`
     } else if (eventName === 'subagent.progress') {
       preview = text || `子任务 ${label} 执行中`
+    } else if (eventName === 'subagent.clarify_required') {
+      preview = outputText || summary || sanitizeMultiAgentText((evt as any).question || '') || `子任务 ${label} 等待补充信息`
+    } else if (eventName === 'subagent.artifact_published') {
+      preview = artifactSummary || text || summary || '节点结果已发布 artifact'
+    } else if (eventName === 'subagent.result_received') {
+      preview = summary || outputText || artifactSummary || text || '主智能体已收到节点回执'
+    } else if (eventName === 'subagent.result_rejected') {
+      preview = summary || outputText || artifactSummary || text || '当前节点结果未通过最终汇总校验'
+    } else if (eventName === 'subagent.finalization_blocked') {
+      preview = sanitizeMultiAgentText((evt as any).reason || '') || summary || outputText || artifactSummary || text || '当前节点结果不足以进入最终汇总'
     } else if (eventName === 'subagent.complete') {
       const status = String((evt as any).status || 'completed')
-      preview = status === 'completed'
-        ? (outputText || summary || text || artifactSummary || goal || `子任务 ${label} 已完成`)
-        : (summary || outputText || text || `子任务 ${label} 执行失败`)
+      preview = status === 'completed' && completionState.toolStatus === 'done'
+        ? (outputText || summary || artifactSummary || text || goal || `子任务 ${label} 已完成`)
+        : (summary || outputText || artifactSummary || text || `子任务 ${label} 未能安全完成`)
     }
 
     const toolCallId = buildSubagentEventToolCallId({
@@ -2930,17 +3145,16 @@ export const useChatStore = defineStore('chat', () => {
 
     const msgs = getSessionMsgs(sessionId)
     const existing = msgs.find(m => m.role === 'tool' && m.toolCallId === toolCallId)
-    const toolStatus = eventName === 'subagent.complete'
-      ? (
-          ((evt as any).status && String((evt as any).status) !== 'completed')
-          || nodeCompleted === false
-          || nodeStatus === 'blocked'
-          || nodeStatus === 'failed'
-            ? 'error'
-            : 'done'
-        )
-      : 'running'
-    const nodeDisplayText = outputText || summary || text || artifactSummary || goal || preview
+    const toolStatus = eventName === 'subagent.clarify_required'
+      ? 'done'
+      : eventName === 'subagent.complete'
+        ? completionState.toolStatus
+        : eventName === 'subagent.result_rejected' || eventName === 'subagent.finalization_blocked'
+          ? 'error'
+          : eventName === 'subagent.result_received' || eventName === 'subagent.artifact_published'
+            ? 'done'
+            : 'running'
+    const nodeDisplayText = outputText || summary || artifactSummary || goal || preview || text
 
     if (eventName === 'subagent.start' && planNodeIds.length > 0) {
       completeDependentHermesNodes(sessionId, planNodeIds, '已完成前置校验，进入子智能体执行阶段。')
@@ -2948,7 +3162,24 @@ export const useChatStore = defineStore('chat', () => {
 
     if (planNodeIds.length > 0) {
       patchMultiAgentPlanNodes(sessionId, planNodeIds, {
-        status: toolStatus === 'error' ? 'blocked' : toolStatus === 'done' ? 'done' : 'doing',
+        status: eventName === 'subagent.clarify_required'
+          ? 'doing'
+          : eventName === 'subagent.complete'
+            ? completionState.nodeStatus
+            : eventName === 'subagent.result_rejected'
+              ? (groundingStatus === 'unsafe_to_finalize' || groundingStatus === 'unverified' ? 'unsafe' : 'partial')
+              : eventName === 'subagent.finalization_blocked'
+                ? (groundingStatus === 'unsafe_to_finalize' || groundingStatus === 'unverified' ? 'unsafe' : 'partial')
+                : toolStatus === 'done'
+                  ? 'doing'
+                  : 'doing',
+        outcome: eventName === 'subagent.complete'
+          ? completionState.nodeOutcome
+          : eventName === 'subagent.result_rejected'
+            ? (groundingStatus === 'unsafe_to_finalize' || groundingStatus === 'unverified' ? 'unsafe' : 'partial')
+            : eventName === 'subagent.finalization_blocked'
+              ? (groundingStatus === 'unsafe_to_finalize' || groundingStatus === 'unverified' ? 'unsafe' : 'partial')
+              : 'unknown',
         executor: {
           type: 'subagent',
           id: subagentId,
@@ -2961,8 +3192,20 @@ export const useChatStore = defineStore('chat', () => {
         id: 'execute',
         title: `执行子任务：${agentName || '子智能体'}`,
         phase: '执行',
-        status: toolStatus === 'error' ? 'blocked' : toolStatus === 'done' ? 'done' : 'doing',
-        outcome: toolStatus === 'error' ? 'failure' : toolStatus === 'done' ? 'success' : 'unknown',
+        status: eventName === 'subagent.clarify_required'
+          ? 'doing'
+          : eventName === 'subagent.complete'
+            ? completionState.nodeStatus
+            : eventName === 'subagent.result_rejected' || eventName === 'subagent.finalization_blocked'
+              ? (groundingStatus === 'unsafe_to_finalize' || groundingStatus === 'unverified' ? 'unsafe' : 'partial')
+              : 'doing',
+        outcome: eventName === 'subagent.clarify_required'
+          ? 'unknown'
+          : eventName === 'subagent.complete'
+            ? completionState.nodeOutcome
+            : eventName === 'subagent.result_rejected' || eventName === 'subagent.finalization_blocked'
+              ? (groundingStatus === 'unsafe_to_finalize' || groundingStatus === 'unverified' ? 'unsafe' : 'partial')
+              : 'unknown',
         dependsOn: ['route'],
         executor: {
           type: 'subagent',
@@ -2972,18 +3215,24 @@ export const useChatStore = defineStore('chat', () => {
         summary: nodeDisplayText,
       })
     }
+    const blockedDependentNodeIds = (
+      eventName === 'subagent.complete' && completionState.nodeStatus !== 'done'
+    ) || eventName === 'subagent.result_rejected' || eventName === 'subagent.finalization_blocked'
+      ? blockDependentMultiAgentNodes(sessionId, planNodeIds.length > 0 ? planNodeIds : [targetNodeId], dependencyGateReason, explicitBlockedNodeIds)
+      : []
+    const existingRespondNode = multiAgentRoutes.value.get(sessionId)?.planNodes.find(node => node.id === 'respond')
     upsertMultiAgentPlanNode(sessionId, {
       id: 'respond',
       title: '汇总阶段成果并回复用户',
       phase: '汇总',
-      status: 'todo',
-      outcome: 'unknown',
+      status: existingRespondNode?.status || 'todo',
+      outcome: existingRespondNode?.outcome || 'unknown',
       dependsOn: respondDependsOn,
       executor: {
         type: 'hermes',
         name: '主智能体',
       },
-      summary: '等待执行节点完成后组织最终回复。',
+      summary: existingRespondNode?.summary || '等待执行节点完成后组织最终回复。',
     })
     const update: Partial<Message> = {
       toolName: 'delegate_task',
@@ -2995,14 +3244,26 @@ export const useChatStore = defineStore('chat', () => {
         : undefined,
       toolDuration: Number.isFinite(duration) ? duration : undefined,
       toolResult: eventName === 'subagent.complete'
+        || eventName === 'subagent.clarify_required'
+        || eventName === 'subagent.artifact_published'
+        || eventName === 'subagent.result_received'
+        || eventName === 'subagent.result_rejected'
+        || eventName === 'subagent.finalization_blocked'
         ? JSON.stringify({
-            status: (evt as any).status || 'completed',
+            status: (evt as any).status || (eventName === 'subagent.clarify_required' ? 'clarify_required' : 'completed'),
             summary: summary || outputText || text,
             output: outputText || undefined,
-            artifacts: normalizeSubagentArtifacts((evt as any).artifacts),
-            node_completed: (evt as any).node_completed,
-            node_status: (evt as any).node_status,
-            api_calls: (evt as any).api_calls,
+          question: (evt as any).question,
+          reason: (evt as any).reason,
+          required_fields: (evt as any).required_fields,
+          artifacts: normalizeSubagentArtifacts((evt as any).artifacts),
+          grounding_status: (evt as any).grounding_status,
+          output_completeness: (evt as any).output_completeness,
+          finalizable: (evt as any).finalizable,
+          structured_output: (evt as any).structured_output,
+          node_completed: (evt as any).node_completed,
+          node_status: (evt as any).node_status,
+          api_calls: (evt as any).api_calls,
             input_tokens: (evt as any).input_tokens,
             output_tokens: (evt as any).output_tokens,
           }, null, 2)
@@ -3014,25 +3275,59 @@ export const useChatStore = defineStore('chat', () => {
     appendMultiAgentActivity(sessionId, {
       id: `${toolCallId}:${eventName}:${Date.now()}`,
       kind: eventName as MultiAgentExecutionEventState['kind'],
-      title: eventName === 'subagent.start'
-        ? '子智能体启动'
-        : eventName === 'subagent.tool'
-          ? `工具调用${toolName ? `：${toolName}` : ''}`
-          : eventName === 'subagent.progress'
-            ? '执行进展'
-            : '子智能体完成',
+      title: eventName === 'subagent.task_sent'
+        ? '主智能体下发任务'
+        : eventName === 'subagent.task_accepted'
+          ? '子智能体接单'
+          : eventName === 'subagent.start'
+            ? '子智能体启动'
+            : eventName === 'subagent.tool'
+              ? `工具调用${toolName ? `：${toolName}` : ''}`
+              : eventName === 'subagent.clarify_required'
+                ? '等待用户补充'
+                : eventName === 'subagent.progress'
+                  ? '执行进展'
+                  : eventName === 'subagent.artifact_published'
+                    ? '发布 artifact'
+                    : eventName === 'subagent.result_received'
+                      ? '收到节点回执'
+                      : eventName === 'subagent.result_rejected'
+                        ? '拒绝直接汇总'
+                        : eventName === 'subagent.finalization_blocked'
+                          ? '阻断最终汇总'
+                          : (completionState.nodeStatus === 'failed'
+                              ? '子智能体失败'
+                              : completionState.nodeStatus === 'partial'
+                                ? '子智能体部分完成'
+                                : completionState.nodeStatus === 'unsafe'
+                                  ? '结果不可直接汇总'
+                                  : '子智能体完成'),
       text: nodeDisplayText,
       status: eventName === 'subagent.complete'
-        ? (toolStatus === 'error' ? 'error' : 'done')
+        ? (completionState.nodeStatus === 'failed' ? 'error' : completionState.nodeStatus === 'done' ? 'done' : 'info')
+        : eventName === 'subagent.result_rejected' || eventName === 'subagent.finalization_blocked'
+          ? 'info'
+        : eventName === 'subagent.clarify_required'
+          ? 'info'
         : 'running',
       timestamp: Date.now(),
       agentId: subagentId,
       agentName: agentName || undefined,
       toolName: toolName || undefined,
-      output: eventName === 'subagent.complete' ? nodeDisplayText : undefined,
+      output: eventName === 'subagent.complete' || eventName === 'subagent.clarify_required' ? nodeDisplayText : undefined,
     })
 
-    if (eventName === 'subagent.tool' || eventName === 'subagent.progress') {
+    if (
+      eventName === 'subagent.task_sent'
+      || eventName === 'subagent.task_accepted'
+      || eventName === 'subagent.tool'
+      || eventName === 'subagent.progress'
+      || eventName === 'subagent.artifact_published'
+      || eventName === 'subagent.result_received'
+      || eventName === 'subagent.result_rejected'
+      || eventName === 'subagent.finalization_blocked'
+      || eventName === 'subagent.clarify_required'
+    ) {
       upsertWorkflowSubagentStream(sessionId, {
         id: subagentStreamId,
         nodeId: targetNodeId,
@@ -3040,30 +3335,76 @@ export const useChatStore = defineStore('chat', () => {
         agentName: agentName || '子智能体',
         title: targetNodeTitle,
         text: nodeDisplayText,
-        status: 'running',
+        status: eventName === 'subagent.clarify_required'
+          ? 'done'
+          : eventName === 'subagent.result_rejected' || eventName === 'subagent.finalization_blocked'
+            ? 'error'
+            : eventName === 'subagent.result_received' || eventName === 'subagent.artifact_published'
+              ? 'done'
+              : 'running',
         toolName: toolName || undefined,
       })
-      const title = eventName === 'subagent.tool'
-        ? `工具调用${toolName ? `：${toolName}` : ''}`
-        : '子智能体进展'
+      const title = eventName === 'subagent.task_sent'
+        ? '主智能体下发任务'
+        : eventName === 'subagent.task_accepted'
+          ? '子智能体接单'
+          : eventName === 'subagent.tool'
+            ? `工具调用${toolName ? `：${toolName}` : ''}`
+            : eventName === 'subagent.clarify_required'
+              ? '等待用户补充'
+              : eventName === 'subagent.artifact_published'
+                ? '发布 artifact'
+                : eventName === 'subagent.result_received'
+                  ? '收到节点回执'
+                  : eventName === 'subagent.result_rejected'
+                    ? '拒绝直接汇总'
+                    : eventName === 'subagent.finalization_blocked'
+                      ? '阻断最终汇总'
+                      : '子智能体进展'
       patchWorkflow(sessionId, workflow => ({
         ...workflow,
-        subtitle: agentName ? `${agentName} 执行中` : '子智能体执行中',
+        subtitle: eventName === 'subagent.clarify_required'
+          ? (agentName ? `${agentName} 等待补充` : '等待补充信息')
+          : eventName === 'subagent.result_rejected' || eventName === 'subagent.finalization_blocked'
+            ? '当前节点结果不足以进入最终汇总'
+            : blockedDependentNodeIds.length > 0
+              ? '前置节点失败，后续节点已暂停'
+              : (agentName ? `${agentName} 执行中` : '子智能体执行中'),
         current: nodeDisplayText,
-        status: 'running',
+        status: eventName === 'subagent.result_rejected' || eventName === 'subagent.finalization_blocked' ? 'error' : 'running',
       }))
       patchWorkflowStep(sessionId, 'execute', {
         title: agentName ? `执行：${agentName}` : '执行子智能体',
         detail: nodeDisplayText,
-        status: 'running',
+        status: eventName === 'subagent.result_rejected' || eventName === 'subagent.finalization_blocked' ? 'error' : 'running',
       })
       upsertWorkflowEvent(sessionId, {
         id: eventName === 'subagent.tool'
           ? `${toolCallId}:tool:${toolName || 'tool'}`
+          : eventName === 'subagent.task_sent'
+            ? `${toolCallId}:task-sent`
+          : eventName === 'subagent.task_accepted'
+            ? `${toolCallId}:task-accepted`
+          : eventName === 'subagent.clarify_required'
+            ? `${toolCallId}:clarify`
+          : eventName === 'subagent.artifact_published'
+            ? `${toolCallId}:artifact`
+          : eventName === 'subagent.result_received'
+            ? `${toolCallId}:result-received`
+          : eventName === 'subagent.result_rejected'
+            ? `${toolCallId}:result-rejected`
+          : eventName === 'subagent.finalization_blocked'
+            ? `${toolCallId}:finalization-blocked`
           : `${toolCallId}:progress`,
         title,
         text: nodeDisplayText,
-        status: 'running',
+        status: eventName === 'subagent.clarify_required'
+          ? 'info'
+          : eventName === 'subagent.result_rejected' || eventName === 'subagent.finalization_blocked'
+            ? 'error'
+            : eventName === 'subagent.result_received' || eventName === 'subagent.artifact_published'
+              ? 'done'
+              : 'running',
         timestamp: Date.now(),
         agentName: agentName || undefined,
         toolName: toolName || undefined,
@@ -3071,7 +3412,7 @@ export const useChatStore = defineStore('chat', () => {
     }
 
     const routeAfterNodePatch = multiAgentRoutes.value.get(sessionId)
-    const nextNodeAfterComplete = eventName === 'subagent.complete' && toolStatus === 'done' && routeAfterNodePatch
+    const nextNodeAfterComplete = eventName === 'subagent.complete' && completionState.nodeStatus === 'done' && routeAfterNodePatch
       ? nextRunnableMultiAgentNode(routeAfterNodePatch, { excludeNodeIds: [targetNodeId] })
       : null
 
@@ -3122,6 +3463,26 @@ export const useChatStore = defineStore('chat', () => {
       })
     }
 
+    if (eventName === 'subagent.clarify_required') {
+      patchWorkflowStep(sessionId, 'respond', {
+        detail: '当前节点等待用户补充信息，主智能体暂不汇总最终结果。',
+        status: 'pending',
+      })
+      patchWorkflow(sessionId, workflow => ({
+        ...workflow,
+        subtitle: agentName ? `${agentName} 等待补充` : '等待补充信息',
+        current: nodeDisplayText,
+        status: 'running',
+      }))
+      updateMultiAgentExecutionState(sessionId, {
+        currentNodeId: targetNodeId,
+        nodeId: targetNodeId,
+        status: 'running',
+        currentNodeSummary: nodeDisplayText,
+        currentNodeStatus: 'doing',
+      })
+    }
+
     if (eventName === 'subagent.complete') {
       upsertWorkflowSubagentStream(sessionId, {
         id: subagentStreamId,
@@ -3130,7 +3491,7 @@ export const useChatStore = defineStore('chat', () => {
         agentName: agentName || '子智能体',
         title: targetNodeTitle,
         text: nodeDisplayText,
-        status: toolStatus === 'done' ? 'done' : 'error',
+        status: completionState.nodeStatus === 'done' ? 'done' : 'error',
         toolName: toolName || undefined,
       })
       recordSubAgentInvocationComplete({
@@ -3138,52 +3499,67 @@ export const useChatStore = defineStore('chat', () => {
         runId: evt.run_id,
         agentId: subagentId,
         agentName,
-        status: toolStatus === 'done' ? 'completed' : 'failed',
+        status: completionState.nodeStatus === 'done' ? 'completed' : 'failed',
         summary: nodeDisplayText,
         durationSeconds: Number.isFinite(duration) ? duration : undefined,
       })
       patchWorkflowStep(sessionId, 'execute', {
-        detail: toolStatus === 'done' && nextNodeAfterComplete
+        detail: completionState.nodeStatus === 'done' && nextNodeAfterComplete
           ? `已完成当前节点，等待主智能体安排下一节点：${nextNodeAfterComplete.title}`
           : nodeDisplayText,
-        status: toolStatus === 'done'
+        status: completionState.nodeStatus === 'done'
           ? (nextNodeAfterComplete ? 'running' : 'done')
-          : 'error',
+          : completionState.nodeStatus === 'partial' || completionState.nodeStatus === 'unsafe'
+            ? 'error'
+            : 'error',
       })
       patchWorkflowStep(sessionId, 'respond', {
-        detail: toolStatus === 'done'
+        detail: completionState.nodeStatus === 'done'
           ? (nextNodeAfterComplete
               ? `仍有剩余节点待执行：${nextNodeAfterComplete.title}`
               : '子智能体已返回阶段成果，等待主智能体汇总。')
-          : '子智能体执行失败，等待错误处理。',
-        status: toolStatus === 'done'
+          : completionState.blockedByGrounding
+            ? (blockedDependentNodeIds.length > 0
+                ? `当前节点结果不完整或不可验证，已暂停 ${blockedDependentNodeIds.length} 个后续依赖节点，主智能体将阻断最终汇总并尝试恢复。`
+                : '当前节点结果不完整或不可验证，主智能体将阻断最终汇总并尝试恢复。')
+            : (blockedDependentNodeIds.length > 0
+                ? `子智能体执行失败，已暂停 ${blockedDependentNodeIds.length} 个后续依赖节点，等待错误处理。`
+                : '子智能体执行失败，等待错误处理。'),
+        status: completionState.nodeStatus === 'done'
           ? (nextNodeAfterComplete ? 'pending' : 'running')
           : 'error',
       })
       upsertWorkflowEvent(sessionId, {
         id: `subagent:${evt.run_id || 'run'}:complete`,
-        title: toolStatus === 'done' ? '子智能体完成' : '子智能体失败',
+        title: completionState.nodeStatus === 'done'
+          ? '子智能体完成'
+          : completionState.nodeStatus === 'partial'
+            ? '子智能体部分完成'
+            : completionState.nodeStatus === 'unsafe'
+              ? '结果不可直接汇总'
+              : '子智能体失败',
         text: nodeDisplayText,
-        status: toolStatus === 'done' ? 'done' : 'error',
+        status: completionState.nodeStatus === 'done' ? 'done' : 'error',
         timestamp: Date.now(),
         agentName: agentName || undefined,
       })
       patchWorkflow(sessionId, workflow => ({
         ...workflow,
-        subtitle: toolStatus === 'done'
+        subtitle: completionState.nodeStatus === 'done'
           ? (nextNodeAfterComplete ? '准备调度下一节点' : '阶段成果已返回')
-          : '子智能体失败',
-        current: toolStatus === 'done' && nextNodeAfterComplete
+          : completionState.blockedByGrounding
+            ? '最终汇总已被阻断'
+            : '子智能体失败',
+        current: completionState.nodeStatus === 'done' && nextNodeAfterComplete
           ? `当前节点已完成，下一节点：${nextNodeAfterComplete.title}`
-          : nodeDisplayText,
-        status: toolStatus === 'done' ? 'running' : 'error',
+          : (blockedDependentNodeIds.length > 0
+              ? `${nodeDisplayText}；已暂停 ${blockedDependentNodeIds.length} 个后续依赖节点。`
+              : nodeDisplayText),
+        status: completionState.nodeStatus === 'done' ? 'running' : 'error',
       }))
       setMultiAgentNodeStatus(sessionId, 'route', {
         summary: '任务路径已确认，执行控制权已交给当前节点。',
       })
-      if (toolStatus === 'error') {
-        finalizeMultiAgentRouteState(sessionId, 'failed')
-      }
     }
 
     if (existing) {
@@ -3198,7 +3574,7 @@ export const useChatStore = defineStore('chat', () => {
       })
     }
 
-    if (eventName === 'subagent.complete' && toolStatus === 'done') {
+    if (eventName === 'subagent.complete' && completionState.nodeStatus === 'done') {
       updateMultiAgentExecutionState(sessionId, {
         status: 'running',
         nodeId: targetNodeId,
@@ -3233,12 +3609,29 @@ export const useChatStore = defineStore('chat', () => {
       return
     }
 
+    if (eventName === 'subagent.clarify_required') {
+      return
+    }
+
+    if (eventName === 'subagent.result_rejected' || eventName === 'subagent.finalization_blocked') {
+      updateMultiAgentExecutionState(sessionId, {
+        currentNodeId: targetNodeId,
+        nodeId: targetNodeId,
+        status: 'running',
+        currentNodeSummary: nodeDisplayText,
+        currentNodeStatus: groundingStatus === 'unsafe_to_finalize' || groundingStatus === 'unverified' ? 'unsafe' : 'partial',
+      })
+      return
+    }
+
     updateMultiAgentExecutionState(sessionId, {
       currentNodeId: targetNodeId,
       nodeId: targetNodeId,
-      status: toolStatus === 'error' ? 'failed' : 'running',
+      status: 'running',
       currentNodeSummary: nodeDisplayText,
-      currentNodeStatus: toolStatus === 'error' ? 'blocked' : 'doing',
+      currentNodeStatus: eventName === 'subagent.complete'
+        ? completionState.nodeStatus
+        : 'doing',
     })
   }
 
@@ -3386,6 +3779,41 @@ export const useChatStore = defineStore('chat', () => {
         commandData: { ...(evt as any) },
       })
     }
+  }
+
+  function handleAssistantMessageEvent(evt: RunEvent) {
+    const sessionId = String(evt.session_id || '').trim()
+    if (!sessionId) return
+    const content = typeof (evt as any).content === 'string'
+      ? (evt as any).content
+      : typeof evt.output === 'string'
+        ? evt.output
+        : ''
+    const normalizedContent = content.trim()
+    if (!normalizedContent) return
+    const messageId = String((evt as any).message_id || `assistant-message:${sessionId}:${evt.run_id || Date.now()}`)
+    const timestampValue = Number((evt as any).timestamp ?? Date.now())
+    const timestamp = Number.isFinite(timestampValue) && timestampValue > 0 ? timestampValue : Date.now()
+    const existing = getSessionMsgs(sessionId).find(message => message.id === messageId)
+    if (existing) {
+      updateMessage(sessionId, existing.id, {
+        role: 'assistant',
+        content,
+        timestamp,
+        isStreaming: false,
+        finishReason: 'stop',
+      })
+      return
+    }
+    addMessage(sessionId, {
+      id: messageId,
+      role: 'assistant',
+      content,
+      timestamp,
+      isStreaming: false,
+      finishReason: 'stop',
+      runMarker: typeof evt.run_id === 'string' ? evt.run_id : undefined,
+    })
   }
 
   function handleAgentEvent(evt: RunEvent) {
@@ -4824,9 +5252,16 @@ export const useChatStore = defineStore('chat', () => {
               break
             }
 
+            case 'subagent.task_sent':
+            case 'subagent.task_accepted':
             case 'subagent.start':
             case 'subagent.tool':
             case 'subagent.progress':
+            case 'subagent.artifact_published':
+            case 'subagent.result_received':
+            case 'subagent.result_rejected':
+            case 'subagent.finalization_blocked':
+            case 'subagent.clarify_required':
             case 'subagent.complete': {
               runHadToolActivity = true
               handleSubagentEvent(sid, evt)
@@ -4853,8 +5288,24 @@ export const useChatStore = defineStore('chat', () => {
               break
             }
 
+            case 'assistant.message': {
+              const msgs = getSessionMsgs(sid)
+              const last = activeAssistantMessageId
+                ? msgs.find(m => m.id === activeAssistantMessageId)
+                : msgs[msgs.length - 1]
+              if (last?.role === 'assistant' && last.isStreaming) {
+                updateMessage(sid, last.id, { isStreaming: false })
+              }
+              activeAssistantMessageId = null
+              handleAssistantMessageEvent(evt)
+              break
+            }
+
             case 'run.completed': {
-              finalizeMultiAgentRouteState(sid, 'completed')
+              const waitingForInput = (evt as any).waiting_for_input === true || (evt as any).status === 'clarify_required'
+              if (!waitingForInput) {
+                finalizeMultiAgentRouteState(sid, 'completed')
+              }
               clearAgentEventMessages(sid)
               const msgs = getSessionMsgs(sid)
               const lastMsg = activeAssistantMessageId
@@ -5006,7 +5457,9 @@ export const useChatStore = defineStore('chat', () => {
                   if ((evt as any).contextTokens != null) target.contextTokens = (evt as any).contextTokens
                 }
               }
-              addAgentErrorMessage(sid, evt.error)
+              if ((evt as any).assistant_feedback_sent !== true) {
+                addAgentErrorMessage(sid, evt.error)
+              }
               settleRunningTools(sid, 'error')
               if ((evt as any).queue_remaining > 0) {
                 queueLengths.value.set(sid, (evt as any).queue_remaining)
@@ -5378,10 +5831,17 @@ export const useChatStore = defineStore('chat', () => {
           break
         }
 
-        case 'subagent.start':
-        case 'subagent.tool':
-        case 'subagent.progress':
-        case 'subagent.complete': {
+            case 'subagent.task_sent':
+            case 'subagent.task_accepted':
+            case 'subagent.start':
+            case 'subagent.tool':
+            case 'subagent.progress':
+            case 'subagent.artifact_published':
+            case 'subagent.result_received':
+            case 'subagent.result_rejected':
+            case 'subagent.finalization_blocked':
+            case 'subagent.clarify_required':
+            case 'subagent.complete': {
           runHadToolActivity = true
           handleSubagentEvent(sid, evt)
           break
@@ -5407,8 +5867,24 @@ export const useChatStore = defineStore('chat', () => {
           break
         }
 
+        case 'assistant.message': {
+          const msgs = getSessionMsgs(sid)
+          const last = activeAssistantMessageId
+            ? msgs.find(m => m.id === activeAssistantMessageId)
+            : msgs[msgs.length - 1]
+          if (last?.role === 'assistant' && last.isStreaming) {
+            updateMessage(sid, last.id, { isStreaming: false })
+          }
+          activeAssistantMessageId = null
+          handleAssistantMessageEvent(evt)
+          break
+        }
+
         case 'run.completed': {
-          finalizeMultiAgentRouteState(sid, 'completed')
+          const waitingForInput = (evt as any).waiting_for_input === true || (evt as any).status === 'clarify_required'
+          if (!waitingForInput) {
+            finalizeMultiAgentRouteState(sid, 'completed')
+          }
           clearAgentEventMessages(sid)
           const hasQueue = (evt as any).queue_remaining > 0
           if (hasQueue) {
@@ -5553,7 +6029,9 @@ export const useChatStore = defineStore('chat', () => {
           } else {
             queueLengths.value.delete(sid)
           }
-          addAgentErrorMessage(sid, evt.error)
+          if ((evt as any).assistant_feedback_sent !== true) {
+            addAgentErrorMessage(sid, evt.error)
+          }
           settleRunningTools(sid, 'error')
           if (!hasQueue) {
             cleanup()

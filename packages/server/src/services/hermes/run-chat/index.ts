@@ -17,6 +17,11 @@ import {
   getCollaborationRun,
   updateCollaborationRun,
 } from '../../../db/hermes/collaboration-run-store'
+import {
+  deletePendingSubagentTask,
+  getPendingSubagentTask,
+  type PendingSubagentTaskRecord,
+} from '../../../db/hermes/pending-subagent-task-store'
 import { listOrDiscoverSubAgentsRegistry } from '../../../db/hermes/sub-agent-store'
 import { getActiveProfileName, getProfileDir, listProfileNamesFromDisk } from '../hermes-profile'
 import { AgentBridgeClient } from '../agent-bridge'
@@ -28,7 +33,11 @@ import { handleSubagentRun } from './handle-subagent-run'
 import { handleAbort } from './abort'
 import { getOrCreateSession, pushState } from './compression'
 import { loadSessionStateFromDb, resolveRunSource } from './load-state'
-import { resolveMultiAgentRoute, type MultiAgentRouteCandidate } from './multi-agent-routing'
+import {
+  resolveMultiAgentRoute,
+  type MultiAgentRouteCandidate,
+  type MultiAgentRouteDecision,
+} from './multi-agent-routing'
 import { handleSessionCommand, isSessionCommand, parseSessionCommand } from './session-command'
 import { contentBlocksToString, extractTextForPreview } from './content-blocks'
 import type { ContentBlock, QueuedRun, SessionState } from './types'
@@ -134,6 +143,84 @@ function buildRecentConversationContext(sessionId: string, sessionMap: Map<strin
   const context = deduped.join('\n').trim()
   if (!context) return ''
   return context.length > 2400 ? context.slice(context.length - 2400).trim() : context
+}
+
+function stringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.map(item => String(item || '').trim()).filter(Boolean)
+}
+
+function restorePendingSubagentDecision(
+  pending: PendingSubagentTaskRecord,
+  latestInput: string,
+): MultiAgentRouteDecision | null {
+  const raw = pending.route_decision_json && typeof pending.route_decision_json === 'object'
+    ? pending.route_decision_json as Record<string, unknown>
+    : {}
+  const selectedRaw = raw.selectedAgent && typeof raw.selectedAgent === 'object'
+    ? raw.selectedAgent as Record<string, unknown>
+    : {}
+  const selectedAgentId = String(selectedRaw.id || pending.agent_id || '').trim()
+  const selectedAgentName = String(selectedRaw.name || pending.agent_name || '').trim()
+  if (!selectedAgentId || !selectedAgentName) return null
+  const baseConversationContext = String(raw.conversationContext || '').trim()
+  const resumeContext = [
+    baseConversationContext,
+    pending.question ? `子智能体上一轮追问：${pending.question}` : '',
+    latestInput ? `用户本轮补充：${latestInput}` : '',
+  ].filter(Boolean).join('\n')
+  return {
+    enabled: raw.enabled !== false,
+    shouldPlan: raw.shouldPlan !== false,
+    summary: String(raw.summary || pending.last_result_summary || pending.objective || '').trim(),
+    intent: String(raw.intent || 'pending_clarify').trim() || 'pending_clarify',
+    category: String(raw.category || '待补充执行').trim() || '待补充执行',
+    confidence: Number(raw.confidence || 0),
+    reason: String(raw.reason || `检测到待恢复子任务，继续交由 ${pending.agent_name} 处理。`).trim(),
+    executionMode: raw.executionMode === 'delegate_subagent' ? 'delegate_subagent' : 'hermes_native',
+    selectedAgent: {
+      id: selectedAgentId,
+      name: selectedAgentName,
+      description: String(selectedRaw.description || '').trim(),
+      baseUrl: String(selectedRaw.baseUrl || '').trim(),
+      chatPath: String(selectedRaw.chatPath || '/v1/chat/completions').trim() || '/v1/chat/completions',
+      enabled: selectedRaw.enabled !== false,
+      skills: Array.isArray(selectedRaw.skills) ? selectedRaw.skills as Array<{ name?: string; description?: string }> : [],
+      tools: Array.isArray(selectedRaw.tools) ? selectedRaw.tools as Array<{ name?: string; description?: string }> : [],
+    },
+    routeText: String(raw.routeText || `多智能体协作：检测到待恢复子任务，继续交由「${pending.agent_name}」执行。`).trim(),
+    hermesInstructions: typeof raw.hermesInstructions === 'string' ? raw.hermesInstructions : null,
+    inputText: String(raw.inputText || pending.objective || '').trim(),
+    conversationContext: resumeContext,
+    todo: stringArray(raw.todo),
+    constraints: stringArray(raw.constraints),
+    plan: raw.plan && typeof raw.plan === 'object' ? raw.plan as any : null,
+    delegatedNodeIds: stringArray(raw.delegatedNodeIds).length > 0
+      ? stringArray(raw.delegatedNodeIds)
+      : (pending.node_id ? [pending.node_id] : []),
+  }
+}
+
+function patchPendingDecisionAgent(
+  decision: MultiAgentRouteDecision,
+  candidates: MultiAgentRouteCandidate[],
+  pending: PendingSubagentTaskRecord,
+): MultiAgentRouteDecision | null {
+  const selected = decision.selectedAgent
+  if (!selected) return null
+  if (selected.baseUrl) return decision
+  const matched = candidates.find(candidate => candidate.id === selected.id || candidate.name === selected.name)
+  if (!matched?.baseUrl) return null
+  return {
+    ...decision,
+    selectedAgent: {
+      ...selected,
+      baseUrl: matched.baseUrl,
+      chatPath: matched.chatPath || selected.chatPath,
+      skills: matched.skills || selected.skills,
+      tools: matched.tools || selected.tools,
+    },
+  }
 }
 
 function currentProfileFromSocket(socket: Socket): string {
@@ -315,14 +402,24 @@ export class ChatRunSocket {
     } else if (eventName.startsWith('subagent.')) {
       nextSnapshot = applySubagentEvent(nextSnapshot, eventName, payload)
     } else if (eventName === 'run.completed') {
-      nextSnapshot = applyTerminalEvent(nextSnapshot, 'completed', payload)
+      if (payload.waiting_for_input === true || payload.status === 'clarify_required') {
+        nextSnapshot = {
+          ...nextSnapshot,
+          status: 'running',
+          text: typeof payload.output === 'string' && payload.output.trim() ? payload.output.trim() : nextSnapshot.text,
+        }
+      } else {
+        nextSnapshot = applyTerminalEvent(nextSnapshot, 'completed', payload)
+      }
     } else if (eventName === 'run.failed') {
       nextSnapshot = applyTerminalEvent(nextSnapshot, 'failed', payload)
     }
     this.syncCollaborationSnapshot(collaborationRunId, nextSnapshot, {
       run_id: typeof payload.run_id === 'string' ? payload.run_id : record.run_id,
       error: typeof payload.error === 'string' ? payload.error : record.error,
-      status: eventName === 'run.completed' ? 'completed' : eventName === 'run.failed' ? 'failed' : 'running',
+      status: eventName === 'run.completed'
+        ? (payload.waiting_for_input === true || payload.status === 'clarify_required' ? 'running' : 'completed')
+        : eventName === 'run.failed' ? 'failed' : 'running',
       route_json: routePatch,
     })
   }
@@ -692,9 +789,15 @@ export class ChatRunSocket {
 
     const sessionId = data.session_id ? String(data.session_id).trim() : ''
     const objectiveText = extractTextForPreview(data.display_input ?? data.input)
+    const pendingSubagentTask = !isCodingAgentExecution(source, data) && sessionId
+      ? getPendingSubagentTask(sessionId)
+      : null
     const socketUser = socket.data.user as AuthenticatedUser | undefined
-    const collaborationRunId = sessionId && data.multi_agent_mode === true
-      ? randomUUID()
+    const collaborationRunId = sessionId
+      ? (
+          pendingSubagentTask?.collaboration_run_id
+          || (data.multi_agent_mode === true ? randomUUID() : null)
+        )
       : null
     const ensureCollaborationRunState = (
       targetRunId: string | null | undefined,
@@ -736,8 +839,63 @@ export class ChatRunSocket {
       this.appendCollaborationEvent(targetRunId, eventName, payload)
     }
 
+    const continueWithHermes = async ({ input, instructions, collaborationRunId: nextCollaborationRunId, objective }: {
+      input: string
+      instructions: string
+      collaborationRunId?: string
+      objective?: string
+    }) => {
+      const bridgeReady = await ensureBridgeReadyForChatRun()
+      if (!bridgeReady.ok) {
+        throw new Error(`Agent Bridge is not reachable: ${bridgeReady.error}`)
+      }
+      if (sessionId) deletePendingSubagentTask(sessionId)
+      const activeCollaborationRunId = nextCollaborationRunId || collaborationRunId || undefined
+      if (nextCollaborationRunId && collaborationRunId && nextCollaborationRunId !== collaborationRunId) {
+        updateCollaborationRun(collaborationRunId, {
+          status: 'failed',
+          error: '子智能体节点执行失败，已切换为主智能体重新规划。',
+          ended_at: Date.now(),
+        })
+      }
+      ensureCollaborationRunState(activeCollaborationRunId, objective || input, 'hermes_native')
+      await handleBridgeRun(
+        this.nsp,
+        socket,
+        {
+          input,
+          display_input: null,
+          display_role: 'command',
+          storage_message: '',
+          session_id: sessionId,
+          model: data.model,
+          provider: data.provider,
+          model_groups: data.model_groups,
+          instructions,
+          workspace: data.workspace,
+          source: data.source,
+          session_source: data.session_source,
+          peerExcludeSocketId: data.peerExcludeSocketId,
+          collaboration_run_id: activeCollaborationRunId,
+          onEvent: (eventName, payload) => {
+            emitCollaborationEvent(eventName, payload, activeCollaborationRunId)
+          },
+        },
+        profile,
+        this.sessionMap,
+        this.bridge,
+        true,
+        loadSessionStateFromDb,
+        this.dequeueNextQueuedRun.bind(this),
+      )
+    }
+
     if (collaborationRunId && sessionId) {
-      ensureCollaborationRunState(collaborationRunId, objectiveText, 'hermes_native')
+      ensureCollaborationRunState(
+        collaborationRunId,
+        objectiveText || pendingSubagentTask?.objective || '',
+        pendingSubagentTask ? 'delegate_subagent' : 'hermes_native',
+      )
     } else if (sessionId) {
       const state = getOrCreateSession(this.sessionMap, sessionId)
       state.collaborationRunId = undefined
@@ -747,6 +905,67 @@ export class ChatRunSocket {
       const conversationContext = sessionId
         ? buildRecentConversationContext(sessionId, this.sessionMap, objectiveText)
         : ''
+      if (pendingSubagentTask && sessionId) {
+        const restored = restorePendingSubagentDecision(pendingSubagentTask, objectiveText || contentBlocksToString(data.input))
+        const resumedDecision = restored
+          ? patchPendingDecisionAgent(restored, effectiveSubAgentCandidates, pendingSubagentTask)
+          : null
+        if (resumedDecision?.selectedAgent?.baseUrl) {
+          const routeEvent = {
+            event: 'agent.event',
+            kind: 'multi_agent_route',
+            mode: resumedDecision.executionMode,
+            intent: resumedDecision.intent,
+            category: resumedDecision.category,
+            confidence: resumedDecision.confidence,
+            reason: `检测到待恢复子任务，继续交由 ${pendingSubagentTask.agent_name} 执行。`,
+            todo: resumedDecision.todo,
+            constraints: resumedDecision.constraints,
+            plan: resumedDecision.plan,
+            collaboration_run_id: collaborationRunId || undefined,
+            selected_agent: resumedDecision.selectedAgent
+              ? {
+                  id: resumedDecision.selectedAgent.id,
+                  name: resumedDecision.selectedAgent.name,
+                  baseUrl: resumedDecision.selectedAgent.baseUrl || '',
+                }
+              : null,
+            text: `多智能体协作：恢复待补充子任务，继续由「${pendingSubagentTask.agent_name}」执行。`,
+          }
+          pushState(this.sessionMap, sessionId, 'agent.event', {
+            ...routeEvent,
+            session_id: sessionId,
+          })
+          emitCollaborationEvent('agent.event', {
+            ...routeEvent,
+            session_id: sessionId,
+          })
+          this.emitToSession(socket, sessionId, 'agent.event', routeEvent)
+          await handleSubagentRun(
+            this.nsp,
+            socket,
+            {
+              ...data,
+              sub_agent_candidates: effectiveSubAgentCandidates,
+              collaboration_run_id: collaborationRunId || undefined,
+              resume_pending_subagent_task: pendingSubagentTask,
+              onEvent: (eventName, payload) => {
+                emitCollaborationEvent(eventName, payload)
+              },
+            },
+            profile,
+            this.sessionMap,
+            resumedDecision,
+            this.dequeueNextQueuedRun.bind(this),
+            skipUserMessage,
+            {
+              continueWithHermes,
+            },
+          )
+          return
+        }
+        deletePendingSubagentTask(sessionId)
+      }
       const routeDecision = await resolveMultiAgentRoute({
         enabled: data.multi_agent_mode === true,
         input: data.input,
@@ -878,50 +1097,7 @@ export class ChatRunSocket {
           this.dequeueNextQueuedRun.bind(this),
           skipUserMessage,
           {
-            continueWithHermes: async ({ input, instructions, collaborationRunId: nextCollaborationRunId, objective }) => {
-              const bridgeReady = await ensureBridgeReadyForChatRun()
-              if (!bridgeReady.ok) {
-                throw new Error(`Agent Bridge is not reachable: ${bridgeReady.error}`)
-              }
-              const activeCollaborationRunId = nextCollaborationRunId || collaborationRunId || undefined
-              if (nextCollaborationRunId && collaborationRunId && nextCollaborationRunId !== collaborationRunId) {
-                updateCollaborationRun(collaborationRunId, {
-                  status: 'failed',
-                  error: '子智能体节点执行失败，已切换为主智能体重新规划。',
-                  ended_at: Date.now(),
-                })
-              }
-              ensureCollaborationRunState(activeCollaborationRunId, objective || input, 'hermes_native')
-              await handleBridgeRun(
-                this.nsp,
-                socket,
-                {
-                  input,
-                  display_input: null,
-                  display_role: 'command',
-                  storage_message: '',
-                  session_id: sessionId,
-                  model: data.model,
-                  provider: data.provider,
-                  model_groups: data.model_groups,
-                  instructions,
-                  workspace: data.workspace,
-                  source: data.source,
-                  session_source: data.session_source,
-                  peerExcludeSocketId: data.peerExcludeSocketId,
-                  collaboration_run_id: activeCollaborationRunId,
-                  onEvent: (eventName, payload) => {
-                    emitCollaborationEvent(eventName, payload, activeCollaborationRunId)
-                  },
-                },
-                profile,
-                this.sessionMap,
-                this.bridge,
-                true,
-                loadSessionStateFromDb,
-                this.dequeueNextQueuedRun.bind(this),
-              )
-            },
+            continueWithHermes,
           },
         )
         return

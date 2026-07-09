@@ -238,4 +238,188 @@ describe('chat store error handling - #1644', () => {
     expect(errorMessage).toBeDefined()
     expect(errorMessage?.content).toBe('Error: Late socket error')
   })
+
+  it('renders delegated failure feedback as an assistant message and skips duplicate terminal error text', async () => {
+    const store = useChatStore()
+    const session = makeSession('session-1')
+    store.sessions = [session]
+    store.activeSessionId = 'session-1'
+    store.activeSession = session
+
+    await store.sendMessage('query data')
+
+    const onEvent = chatApi.startRunViaSocket.mock.calls[0][1] as (event: any) => void
+
+    onEvent({
+      event: 'assistant.message',
+      session_id: 'session-1',
+      run_id: 'run-failure-feedback',
+      message_id: 'assistant-feedback-1',
+      content: '问数智能体在“查询涉案信息”节点执行失败，原因是数据库暂不可用。我正在重新规划后续处理路径。',
+    })
+
+    onEvent({
+      event: 'run.failed',
+      session_id: 'session-1',
+      run_id: 'run-failure-feedback',
+      assistant_feedback_sent: true,
+      error: 'sub-agent 问数智能体 failed: 数据库暂不可用',
+    })
+
+    const assistantMessages = store.activeSession?.messages.filter((message: Message) => message.role === 'assistant') ?? []
+    expect(assistantMessages).toEqual([
+      expect.objectContaining({
+        id: 'assistant-feedback-1',
+        content: '问数智能体在“查询涉案信息”节点执行失败，原因是数据库暂不可用。我正在重新规划后续处理路径。',
+      }),
+    ])
+    expect(store.activeSession?.messages.some((message: Message) => message.systemType === 'error')).toBe(false)
+  })
+
+  it('keeps multi-agent route running and marks node unsafe when delegated result is not finalizable', async () => {
+    const store = useChatStore()
+    const session = makeSession('session-1')
+    store.sessions = [session]
+    store.activeSessionId = 'session-1'
+    store.activeSession = session
+
+    await store.sendMessage('query data')
+
+    const onEvent = chatApi.startRunViaSocket.mock.calls[0][1] as (event: any) => void
+
+    onEvent({ event: 'run.started', session_id: 'session-1', run_id: 'run-unsafe' })
+    onEvent({
+      event: 'agent.event',
+      session_id: 'session-1',
+      collaboration_run_id: 'collab-unsafe-1',
+      kind: 'multi_agent_route',
+      mode: 'delegate_subagent',
+      intent: 'query_case',
+      category: '数据任务',
+      reason: '委派给问数智能体',
+      text: '委派给问数智能体',
+      todo: ['查询涉案记录', '汇总结果'],
+      constraints: [],
+      selected_agent: {
+        id: 'data-agent',
+        name: '问数智能体',
+      },
+      plan: {
+        currentNodeId: 'task_1',
+        nodes: [
+          { id: 'understand', title: '理解需求', phase: '分析', status: 'done', executor: { type: 'hermes', name: '主智能体' }, summary: 'done' },
+          { id: 'route', title: '确认路径', phase: '路由', status: 'done', executor: { type: 'hermes', name: '主智能体' }, summary: 'done' },
+          { id: 'task_1', title: '查询涉案记录', phase: '执行', status: 'doing', executor: { type: 'subagent', id: 'data-agent', name: '问数智能体' }, summary: '执行中' },
+          { id: 'task_2', title: '汇总涉案记录', phase: '汇总', status: 'todo', executor: { type: 'hermes', name: '主智能体' }, summary: '等待 task_1' },
+          { id: 'respond', title: '汇总回复', phase: '汇总', status: 'todo', executor: { type: 'hermes', name: '主智能体' }, summary: '等待汇总' },
+        ],
+        dependencies: [
+          { from: 'understand', to: 'route', type: 'blocks' },
+          { from: 'route', to: 'task_1', type: 'blocks' },
+          { from: 'task_1', to: 'task_2', type: 'blocks' },
+          { from: 'task_2', to: 'respond', type: 'blocks' },
+        ],
+      },
+    })
+
+    onEvent({
+      event: 'subagent.complete',
+      session_id: 'session-1',
+      collaboration_run_id: 'collab-unsafe-1',
+      run_id: 'run-unsafe',
+      subagent_id: 'data-agent',
+      agent_name: '问数智能体',
+      plan_node_ids: ['task_1'],
+      status: 'partial',
+      node_status: 'partial',
+      node_completed: false,
+      grounding_status: 'unsafe_to_finalize',
+      output_completeness: 'truncated',
+      finalizable: false,
+      summary: '只返回部分摘要，不能直接汇总',
+      output: '只返回部分摘要，不能直接汇总',
+      blocked_plan_node_ids: ['task_2', 'respond'],
+    })
+
+    const route = store.multiAgentRoutes.get('session-1')
+    const node = route?.planNodes.find(item => item.id === 'task_1')
+    const blockedTodoNode = route?.planNodes.find(item => item.id === 'task_2')
+    const respondNode = route?.planNodes.find(item => item.id === 'respond')
+    expect(route?.status).toBe('running')
+    expect(node?.status).toBe('unsafe')
+    expect(node?.outcome).toBe('unsafe')
+    expect(blockedTodoNode?.status).toBe('waiting_replan')
+    expect(blockedTodoNode?.outcome).toBe('failure')
+    expect(respondNode?.status).toBe('waiting_replan')
+  })
+
+  it('does not advance downstream nodes to success after a delegated node hard-fails', async () => {
+    const store = useChatStore()
+    const session = makeSession('session-1')
+    store.sessions = [session]
+    store.activeSessionId = 'session-1'
+    store.activeSession = session
+
+    await store.sendMessage('query data')
+
+    const onEvent = chatApi.startRunViaSocket.mock.calls[0][1] as (event: any) => void
+
+    onEvent({ event: 'run.started', session_id: 'session-1', run_id: 'run-failed-node' })
+    onEvent({
+      event: 'agent.event',
+      session_id: 'session-1',
+      collaboration_run_id: 'collab-failed-node-1',
+      kind: 'multi_agent_route',
+      mode: 'delegate_subagent',
+      intent: 'query_case',
+      category: '数据任务',
+      reason: '委派给问数智能体',
+      text: '委派给问数智能体',
+      todo: ['检索涉案记录', '身份归并', '汇总结果'],
+      constraints: [],
+      selected_agent: {
+        id: 'data-agent',
+        name: '问数智能体',
+      },
+      plan: {
+        currentNodeId: 'task_1',
+        nodes: [
+          { id: 'understand', title: '理解需求', phase: '分析', status: 'done', executor: { type: 'hermes', name: '主智能体' }, summary: 'done' },
+          { id: 'route', title: '确认路径', phase: '路由', status: 'done', executor: { type: 'hermes', name: '主智能体' }, summary: 'done' },
+          { id: 'task_1', title: '检索涉案记录', phase: '执行', status: 'doing', executor: { type: 'subagent', id: 'data-agent', name: '问数智能体' }, summary: '执行中' },
+          { id: 'task_2', title: '身份归并', phase: '执行', status: 'todo', executor: { type: 'hermes', name: '主智能体' }, summary: '等待 task_1' },
+          { id: 'task_3', title: '汇总结果', phase: '汇总', status: 'todo', executor: { type: 'hermes', name: '主智能体' }, summary: '等待 task_2' },
+          { id: 'respond', title: '汇总回复', phase: '汇总', status: 'todo', executor: { type: 'hermes', name: '主智能体' }, summary: '等待汇总' },
+        ],
+        dependencies: [
+          { from: 'understand', to: 'route', type: 'blocks' },
+          { from: 'route', to: 'task_1', type: 'blocks' },
+          { from: 'task_1', to: 'task_2', type: 'blocks' },
+          { from: 'task_2', to: 'task_3', type: 'blocks' },
+          { from: 'task_3', to: 'respond', type: 'blocks' },
+        ],
+      },
+    })
+
+    onEvent({
+      event: 'subagent.complete',
+      session_id: 'session-1',
+      collaboration_run_id: 'collab-failed-node-1',
+      run_id: 'run-failed-node',
+      subagent_id: 'data-agent',
+      agent_name: '问数智能体',
+      plan_node_ids: ['task_1'],
+      status: 'failed',
+      node_status: 'failed',
+      summary: 'fetch failed for http://subagent.test/v1/chat/completions',
+      blocked_plan_node_ids: ['task_2', 'task_3', 'respond'],
+    })
+
+    const route = store.multiAgentRoutes.get('session-1')
+    expect(route?.status).toBe('running')
+    expect(route?.planNodes.find(item => item.id === 'task_1')?.status).toBe('failed')
+    expect(route?.planNodes.find(item => item.id === 'task_2')?.status).toBe('waiting_replan')
+    expect(route?.planNodes.find(item => item.id === 'task_3')?.status).toBe('waiting_replan')
+    expect(route?.planNodes.find(item => item.id === 'respond')?.status).toBe('waiting_replan')
+  })
 })

@@ -7,7 +7,7 @@ export type MultiAgentCanvasNodeData = {
   title: string
   phase: string
   summary: string
-  status: "todo" | "doing" | "done" | "blocked"
+  status: "todo" | "doing" | "done" | "blocked" | "partial" | "unsafe" | "failed" | "waiting_replan" | "invalidated" | "skipped"
   agentName: string
   executorType: "hermes" | "subagent"
 }
@@ -20,6 +20,17 @@ const statusLabel = computed(() => {
       return "执行中"
     case "done":
       return "已完成"
+    case "partial":
+      return "部分完成"
+    case "unsafe":
+      return "不可汇总"
+    case "waiting_replan":
+      return "等待重规划"
+    case "invalidated":
+      return "已失效"
+    case "skipped":
+      return "已跳过"
+    case "failed":
     case "blocked":
       return "失败"
     default:
@@ -60,7 +71,7 @@ const actorLabel = computed(() =>
           <path d="M4 10.5 8 14.5 16 6.5" />
         </svg>
         <svg
-          v-else-if="data.status === 'blocked'"
+          v-else-if="data.status === 'blocked' || data.status === 'failed'"
           viewBox="0 0 20 20"
           fill="none"
           stroke="currentColor"
@@ -70,6 +81,7 @@ const actorLabel = computed(() =>
           <path d="M6 6 14 14" />
           <path d="M14 6 6 14" />
         </svg>
+        <span v-else-if="data.status === 'waiting_replan' || data.status === 'invalidated' || data.status === 'skipped'" class="canvas-node-pause"></span>
         <span v-else class="canvas-node-dot"></span>
         <span>{{ statusLabel }}</span>
       </span>
@@ -111,8 +123,17 @@ const actorLabel = computed(() =>
     border-color: rgba(22, 163, 74, 0.28);
   }
 
-  &.is-blocked {
+  &.is-blocked,
+  &.is-failed {
     border-color: rgba(220, 38, 38, 0.28);
+  }
+
+  &.is-partial,
+  &.is-unsafe,
+  &.is-waiting_replan,
+  &.is-invalidated,
+  &.is-skipped {
+    border-color: rgba(245, 158, 11, 0.28);
   }
 }
 
@@ -209,8 +230,17 @@ const actorLabel = computed(() =>
     color: #16a34a;
   }
 
-  &.is-blocked {
+  &.is-blocked,
+  &.is-failed {
     color: #dc2626;
+  }
+
+  &.is-partial,
+  &.is-unsafe,
+  &.is-waiting_replan,
+  &.is-invalidated,
+  &.is-skipped {
+    color: #d97706;
   }
 }
 
@@ -228,6 +258,14 @@ const actorLabel = computed(() =>
   height: 8px;
   border-radius: 999px;
   background: rgba(148, 163, 184, 0.7);
+}
+
+.canvas-node-pause {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 2px solid currentColor;
+  opacity: 0.7;
 }
 
 .canvas-node-summary {

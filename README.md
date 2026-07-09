@@ -266,6 +266,9 @@ Open **http://localhost:8648**
 Single-container deployment with integrated Hermes Agent:
 
 ```bash
+# Prepare mapped Hermes config files first
+docker compose run --rm hermes-webui prepare-hermes-home
+
 # Use pre-built image (Recommended)
 WEBUI_IMAGE=ekkoye8888/hermes-web-ui docker compose up -d
 
@@ -279,6 +282,7 @@ Open **http://localhost:6060**
 
 - Persistent Hermes data is stored in `./hermes_data`
 - Web UI auth token is stored in `./hermes_data/hermes-web-ui/.token`
+- Edit `./hermes_data/config.yaml` before first startup when `HERMES_DOCKER_REQUIRE_PROFILE_CONFIG=1`
 - On first run with auth enabled, the token is printed to container logs
 - All runtime settings are environment-variable driven in `docker-compose.yml`
 
