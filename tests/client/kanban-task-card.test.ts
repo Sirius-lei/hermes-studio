@@ -26,7 +26,7 @@ vi.mock('naive-ui', () => ({
   }),
 }))
 
-vi.mock('@/components/hermes/profiles/ProfileAvatar.vue', () => ({
+vi.mock('@/components/DiTing/profiles/ProfileAvatar.vue', () => ({
   default: defineComponent({
     name: 'ProfileAvatar',
     props: { name: { type: String, required: true }, avatar: { type: Object, required: false }, size: { type: Number, required: false } },
@@ -34,7 +34,7 @@ vi.mock('@/components/hermes/profiles/ProfileAvatar.vue', () => ({
   }),
 }))
 
-import KanbanTaskCard from '@/components/hermes/kanban/KanbanTaskCard.vue'
+import KanbanTaskCard from '@/components/DiTing/kanban/KanbanTaskCard.vue'
 
 describe('KanbanTaskCard i18n', () => {
   afterEach(() => {

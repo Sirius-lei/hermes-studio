@@ -30,10 +30,10 @@ describe('group chat member avatars', () => {
   })
 
   async function initStorage() {
-    const schemas = await import('../../packages/server/src/db/hermes/schemas')
-    schemas.initAllHermesTables()
-    const users = await import('../../packages/server/src/db/hermes/users-store')
-    const { GroupChatServer } = await import('../../packages/server/src/services/hermes/group-chat')
+    const schemas = await import('../../packages/server/src/db/DiTing/schemas')
+    schemas.initAllDiTingTables()
+    const users = await import('../../packages/server/src/db/DiTing/users-store')
+    const { GroupChatServer } = await import('../../packages/server/src/services/DiTing/group-chat')
     httpServer = createServer()
     chatServer = new GroupChatServer(httpServer)
     return {

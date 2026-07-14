@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { authenticate, mockChatSocket, mockHermesApi, TEST_ACCESS_KEY } from './fixtures'
+import { authenticate, mockChatSocket, mockDiTingApi, TEST_ACCESS_KEY } from './fixtures'
 
 const inputPlaceholder = 'Type a message... (Enter to send, Shift+Enter for new line)'
 
@@ -72,9 +72,9 @@ async function setupChatPage(page: Page) {
   await authenticate(page, TEST_ACCESS_KEY, 'research')
   await page.addInitScript((payload) => {
     ;(window as any).__PW_CHAT_SOCKET_RESUMES__ = payload
-    window.localStorage.setItem('hermes_active_session_research', 'session-b')
+    window.localStorage.setItem('DiTing_active_session_research', 'session-b')
   }, resumes)
-  const api = await mockHermesApi(page, { sessions })
+  const api = await mockDiTingApi(page, { sessions })
   await mockChatSocket(page)
   return api
 }
@@ -99,11 +99,11 @@ async function waitForRun(page: Page, index = 0) {
 test('route session id wins over shared active-session localStorage', async ({ page }) => {
   const api = await setupChatPage(page)
 
-  await page.goto('/#/hermes/session/session-a')
+  await page.goto('/#/DiTing/session/session-a')
 
   await expect(page.getByText('Alpha route content')).toBeVisible()
   await expect(page.getByText('Beta route content')).toHaveCount(0)
-  await expect(page).toHaveURL(/#\/hermes\/session\/session-a$/)
+  await expect(page).toHaveURL(/#\/DiTing\/session\/session-a$/)
   expect(api.unexpectedRequests).toEqual([])
 })
 
@@ -113,8 +113,8 @@ test('two tabs can show different sessions and keep them after reload', async ({
   const apiA = await setupChatPage(pageA)
   const apiB = await setupChatPage(pageB)
 
-  await pageA.goto('/#/hermes/session/session-a')
-  await pageB.goto('/#/hermes/session/session-b')
+  await pageA.goto('/#/DiTing/session/session-a')
+  await pageB.goto('/#/DiTing/session/session-b')
 
   await expect(pageA.getByText('Alpha route content')).toBeVisible()
   await expect(pageB.getByText('Beta route content')).toBeVisible()
@@ -124,8 +124,8 @@ test('two tabs can show different sessions and keep them after reload', async ({
 
   await expect(pageA.getByText('Alpha route content')).toBeVisible()
   await expect(pageB.getByText('Beta route content')).toBeVisible()
-  await expect(pageA).toHaveURL(/#\/hermes\/session\/session-a$/)
-  await expect(pageB).toHaveURL(/#\/hermes\/session\/session-b$/)
+  await expect(pageA).toHaveURL(/#\/DiTing\/session\/session-a$/)
+  await expect(pageB).toHaveURL(/#\/DiTing\/session\/session-b$/)
   expect(apiA.unexpectedRequests).toEqual([])
   expect(apiB.unexpectedRequests).toEqual([])
 })
@@ -136,8 +136,8 @@ test('parallel tabs send runs and render progress only for their own session', a
   const apiA = await setupChatPage(pageA)
   const apiB = await setupChatPage(pageB)
 
-  await pageA.goto('/#/hermes/session/session-a')
-  await pageB.goto('/#/hermes/session/session-b')
+  await pageA.goto('/#/DiTing/session/session-a')
+  await pageB.goto('/#/DiTing/session/session-b')
   await expect(pageA.getByText('Alpha route content')).toBeVisible()
   await expect(pageB.getByText('Beta route content')).toBeVisible()
 

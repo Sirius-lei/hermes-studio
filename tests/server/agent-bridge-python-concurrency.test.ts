@@ -29,7 +29,7 @@ import time
 import types
 from pathlib import Path
 
-os.environ["HERMES_AGENT_BRIDGE_WORKER_PROFILE"] = "default"
+os.environ["DiTing_AGENT_BRIDGE_WORKER_PROFILE"] = "default"
 
 tools_pkg = types.ModuleType("tools")
 tools_pkg.__path__ = []
@@ -112,8 +112,8 @@ approval.load_permanent_allowlist = load_permanent_allowlist
 approval.check_execute_code_guard = check_execute_code_guard
 sys.modules["tools.approval"] = approval
 
-path = Path("packages/server/src/services/hermes/agent-bridge/python/hermes_bridge.py")
-spec = importlib.util.spec_from_file_location("hermes_bridge", path)
+path = Path("packages/server/src/services/DiTing/agent-bridge/python/DiTing_bridge.py")
+spec = importlib.util.spec_from_file_location("DiTing_bridge", path)
 bridge = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = bridge
 spec.loader.exec_module(bridge)
@@ -403,7 +403,7 @@ finally:
 ${harness}
 
 barrier = threading.Barrier(2)
-os.environ["HERMES_EXEC_ASK"] = "preexisting-exec-ask"
+os.environ["DiTing_EXEC_ASK"] = "preexisting-exec-ask"
 
 class FakeAgent:
     def __init__(self, session_id):
@@ -473,7 +473,7 @@ if not wait_for(approvals_ready):
         "records": diagnostics,
     })
 
-assert os.environ.get("HERMES_EXEC_ASK") == "1"
+assert os.environ.get("DiTing_EXEC_ASK") == "1"
 assert pool._exec_ask_depth == 2
 
 pool.respond_approval(gateway_approval_ids["session-b"], "always")
@@ -493,7 +493,7 @@ assert records["session-a"].deltas == ["delta:session-a"]
 assert records["session-b"].deltas == ["delta:session-b"]
 assert fake_db.get_messages("session-a")[0]["content"] == "message:session-a"
 assert fake_db.get_messages("session-b")[0]["content"] == "message:session-b"
-assert os.environ.get("HERMES_EXEC_ASK") == "preexisting-exec-ask"
+assert os.environ.get("DiTing_EXEC_ASK") == "preexisting-exec-ask"
 assert pool._exec_ask_depth == 0
 assert pool._approval_handlers == {}
 assert approval._notify == {}
@@ -806,13 +806,13 @@ assert "compress-temp" not in broker._session_worker_key
     runPython(String.raw`
 ${harness}
 
-prod_endpoint = bridge._worker_endpoint("default", "ipc:///tmp/hermes-agent-bridge.sock")
-preview_endpoint = bridge._worker_endpoint("default", "ipc:///tmp/hermes-web-ui-preview/agent-bridge.sock")
+prod_endpoint = bridge._worker_endpoint("default", "ipc:///tmp/DiTing-agent-bridge.sock")
+preview_endpoint = bridge._worker_endpoint("default", "ipc:///tmp/DiTing-web-ui-preview/agent-bridge.sock")
 assert prod_endpoint != preview_endpoint
-assert prod_endpoint == bridge._worker_endpoint("default", "ipc:///tmp/hermes-agent-bridge.sock")
+assert prod_endpoint == bridge._worker_endpoint("default", "ipc:///tmp/DiTing-agent-bridge.sock")
 
-prod_broker = bridge.BridgeBroker("ipc:///tmp/hermes-agent-bridge.sock")
-preview_broker = bridge.BridgeBroker("ipc:///tmp/hermes-web-ui-preview/agent-bridge.sock")
+prod_broker = bridge.BridgeBroker("ipc:///tmp/DiTing-agent-bridge.sock")
+preview_broker = bridge.BridgeBroker("ipc:///tmp/DiTing-web-ui-preview/agent-bridge.sock")
 prod_worker = prod_broker._worker_for_profile("default")
 preview_worker = preview_broker._worker_for_profile("default")
 assert prod_worker.endpoint != preview_worker.endpoint
@@ -823,28 +823,28 @@ assert prod_worker.endpoint != preview_worker.endpoint
     runPython(String.raw`
 ${harness}
 
-os.environ.pop("HERMES_AGENT_BRIDGE_WORKER_TRANSPORT", None)
-os.environ.pop("HERMES_AGENT_BRIDGE_WORKER_PORT_BASE", None)
+os.environ.pop("DiTing_AGENT_BRIDGE_WORKER_TRANSPORT", None)
+os.environ.pop("DiTing_AGENT_BRIDGE_WORKER_PORT_BASE", None)
 
-default_endpoint = bridge._worker_endpoint("default", "ipc:///tmp/hermes-agent-bridge.sock")
+default_endpoint = bridge._worker_endpoint("default", "ipc:///tmp/DiTing-agent-bridge.sock")
 if os.name == "nt":
     assert default_endpoint.startswith("tcp://127.0.0.1:")
 else:
     assert default_endpoint.startswith("ipc://")
 
-os.environ["HERMES_AGENT_BRIDGE_WORKER_TRANSPORT"] = "tcp"
-os.environ["HERMES_AGENT_BRIDGE_WORKER_PORT_BASE"] = "19650"
-tcp_endpoint = bridge._worker_endpoint("default", "ipc:///tmp/hermes-agent-bridge.sock")
+os.environ["DiTing_AGENT_BRIDGE_WORKER_TRANSPORT"] = "tcp"
+os.environ["DiTing_AGENT_BRIDGE_WORKER_PORT_BASE"] = "19650"
+tcp_endpoint = bridge._worker_endpoint("default", "ipc:///tmp/DiTing-agent-bridge.sock")
 assert tcp_endpoint.startswith("tcp://127.0.0.1:")
 assert int(tcp_endpoint.rsplit(":", 1)[1]) >= 19650
 assert int(tcp_endpoint.rsplit(":", 1)[1]) < 20650
 
-os.environ["HERMES_AGENT_BRIDGE_WORKER_TRANSPORT"] = "ipc"
-ipc_endpoint = bridge._worker_endpoint("default", "ipc:///tmp/hermes-agent-bridge.sock")
+os.environ["DiTing_AGENT_BRIDGE_WORKER_TRANSPORT"] = "ipc"
+ipc_endpoint = bridge._worker_endpoint("default", "ipc:///tmp/DiTing-agent-bridge.sock")
 assert ipc_endpoint.startswith("ipc://")
 
-os.environ.pop("HERMES_AGENT_BRIDGE_WORKER_TRANSPORT", None)
-os.environ.pop("HERMES_AGENT_BRIDGE_WORKER_PORT_BASE", None)
+os.environ.pop("DiTing_AGENT_BRIDGE_WORKER_TRANSPORT", None)
+os.environ.pop("DiTing_AGENT_BRIDGE_WORKER_PORT_BASE", None)
 `)
   })
 
@@ -852,11 +852,11 @@ os.environ.pop("HERMES_AGENT_BRIDGE_WORKER_PORT_BASE", None)
     runPython(String.raw`
 ${harness}
 
-os.environ.pop("HERMES_EXEC_ASK", None)
+os.environ.pop("DiTing_EXEC_ASK", None)
 
 class FailingAgent:
     def run_conversation(self, message, **kwargs):
-        assert os.environ.get("HERMES_EXEC_ASK") == "1"
+        assert os.environ.get("DiTing_EXEC_ASK") == "1"
         assert _get_approval_callback() is not None
         raise RuntimeError("boom")
 
@@ -869,7 +869,7 @@ assert record.status == "error"
 assert "boom" in (record.error or "")
 assert session.running is False
 assert session.current_run_id is None
-assert "HERMES_EXEC_ASK" not in os.environ
+assert "DiTing_EXEC_ASK" not in os.environ
 assert pool._exec_ask_depth == 0
 assert pool._exec_ask_previous is None
 assert pool._approval_handlers == {}
@@ -959,7 +959,7 @@ assert second_result["choice"] == "once"
 `)
   })
 
-  it('keeps bound approval session when Hermes propagates callback to tool workers', () => {
+  it('keeps bound approval session when DiTing propagates callback to tool workers', () => {
     runPython(String.raw`
 ${harness}
 
@@ -970,7 +970,7 @@ assert parent_callback is not None
 
 result = {}
 def worker_prompt():
-    # Hermes propagates the terminal approval callback object to worker threads,
+    # DiTing propagates the terminal approval callback object to worker threads,
     # but it does not propagate bridge_pool._run_context because that is a
     # bridge-local threading.local(). The callback itself must carry session-a.
     assert getattr(pool._run_context, "session_id", "") == ""
@@ -1058,8 +1058,8 @@ finally:
     bridge.os.getpid = original_getpid
     bridge.os.environ.pop("ANTHROPIC_AUTH_TOKEN", None)
 
-assert created["env"]["HERMES_AGENT_BRIDGE_BROKER_PID"] == "4242"
-assert created["env"]["HERMES_AGENT_BRIDGE_WORKER_PROFILE"] == "default"
+assert created["env"]["DiTing_AGENT_BRIDGE_BROKER_PID"] == "4242"
+assert created["env"]["DiTing_AGENT_BRIDGE_WORKER_PROFILE"] == "default"
 assert "ANTHROPIC_AUTH_TOKEN" not in created["env"]
 assert created["encoding"] == "utf-8"
 assert created["errors"] == "replace"

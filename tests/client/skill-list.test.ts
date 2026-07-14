@@ -2,13 +2,13 @@
 import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { defineComponent } from 'vue'
-import SkillList from '@/components/hermes/skills/SkillList.vue'
+import SkillList from '@/components/DiTing/skills/SkillList.vue'
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }))
 
-vi.mock('@/api/hermes/skills', () => ({
+vi.mock('@/api/DiTing/skills', () => ({
   toggleSkill: vi.fn(),
   deleteSkillApi: vi.fn(),
 }))

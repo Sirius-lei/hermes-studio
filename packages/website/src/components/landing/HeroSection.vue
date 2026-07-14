@@ -6,7 +6,7 @@ import { useRouter } from 'vue-router'
 const { t } = useI18n()
 const router = useRouter()
 const copied = ref(false)
-const installCmd = 'npm install -g hermes-web-ui'
+const installCmd = 'npm install -g DiTing-web-ui'
 const releaseVersion = __WEBSITE_DOWNLOAD_VERSION__.replace(/^v/, '')
 
 async function copyCmd() {

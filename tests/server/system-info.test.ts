@@ -7,15 +7,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 async function loadSystemInfoWithInjectedVersion(version?: string) {
   vi.resetModules()
-  const appHome = mkdtempSync(join(tmpdir(), 'hermes-system-info-test-'))
+  const appHome = mkdtempSync(join(tmpdir(), 'DiTing-system-info-test-'))
   if (version === undefined) {
     delete (globalThis as any).__APP_VERSION__
   } else {
     ;(globalThis as any).__APP_VERSION__ = version
   }
 
-  vi.doMock('../../packages/server/src/services/hermes/hermes-cli', () => ({
-    getVersion: vi.fn().mockResolvedValue('Hermes Agent v0.15.2\n'),
+  vi.doMock('../../packages/server/src/services/DiTing/DiTing-cli', () => ({
+    getVersion: vi.fn().mockResolvedValue('DiTing Agent v0.15.2\n'),
   }))
 
   vi.doMock('../../packages/server/src/config', () => ({
@@ -40,7 +40,7 @@ describe('public system info', () => {
     ;(globalThis as any).__APP_VERSION__ = 'test'
   })
 
-  it('returns host, os, Hermes Agent, and Web UI versions', async () => {
+  it('returns host, os, DiTing Agent, and Web UI versions', async () => {
     const { getPublicSystemInfo, appHome } = await loadSystemInfoWithInjectedVersion('9.9.9-test')
 
     try {
@@ -54,8 +54,8 @@ describe('public system info', () => {
           release: release(),
           arch: arch(),
         },
-        hermes_agent_version: 'v0.15.2',
-        hermes_web_ui_version: '9.9.9-test',
+        DiTing_agent_version: 'v0.15.2',
+        DiTing_web_ui_version: '9.9.9-test',
       })
     } finally {
       rmSync(appHome, { recursive: true, force: true })

@@ -1,37 +1,37 @@
 <p align="center">
-  <strong>Hermes Studio</strong>
+  <strong>DiTing Studio</strong>
   <a href="./README_zh.md">中文</a>
 </p>
 
 <p align="center">
-  A desktop app, local runtime, and web console for <a href="https://github.com/NousResearch/hermes-agent">Hermes Agent</a>.<br/>
+  A desktop app, local runtime, and web console for <a href="https://github.com/NousResearch/DiTing-agent">DiTing Agent</a>.<br/>
   Chat with agents, manage models and profiles, connect platform channels,<br/>
   automate jobs, inspect files, run coding agents, and keep everything local.
 </p>
 
 <p align="center">
-  <a href="https://github.com/EKKOLearnAI/hermes-studio/releases/latest">Download Hermes Studio Desktop</a>
+  <a href="https://github.com/EKKOLearnAI/DiTing-studio/releases/latest">Download DiTing Studio Desktop</a>
   ·
-  <code>npm install -g hermes-web-ui && hermes-web-ui start</code>
+  <code>npm install -g DiTing-web-ui && DiTing-web-ui start</code>
 </p>
 
 <p align="center">
-  <img src="https://github.com/EKKOLearnAI/hermes-studio/blob/main/packages/client/src/assets/image.gif" alt="Hermes Web UI Demo" width="680"/>
+  <img src="https://github.com/EKKOLearnAI/DiTing-studio/blob/main/packages/client/src/assets/image.gif" alt="DiTing Web UI Demo" width="680"/>
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/hermes-web-ui"><img src="https://img.shields.io/npm/v/hermes-web-ui?style=flat-square&color=blue" alt="npm version"/></a>
-  <a href="https://github.com/EKKOLearnAI/hermes-studio/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/hermes-web-ui?style=flat-square" alt="license"/></a>
-  <a href="https://github.com/EKKOLearnAI/hermes-studio/stargazers"><img src="https://img.shields.io/github/stars/EKKOLearnAI/hermes-studio?style=flat-square" alt="stars"/></a>
+  <a href="https://www.npmjs.com/package/DiTing-web-ui"><img src="https://img.shields.io/npm/v/DiTing-web-ui?style=flat-square&color=blue" alt="npm version"/></a>
+  <a href="https://github.com/EKKOLearnAI/DiTing-studio/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/DiTing-web-ui?style=flat-square" alt="license"/></a>
+  <a href="https://github.com/EKKOLearnAI/DiTing-studio/stargazers"><img src="https://img.shields.io/github/stars/EKKOLearnAI/DiTing-studio?style=flat-square" alt="stars"/></a>
 </p>
 
 ## Core Capabilities
 
-| Area | What Hermes Studio does |
+| Area | What DiTing Studio does |
 | --- | --- |
-| Agent chat | Runs Hermes Agent conversations with streaming responses, tool traces, file upload/download, and persistent local sessions. |
+| Agent chat | Runs DiTing Agent conversations with streaming responses, tool traces, file upload/download, and persistent local sessions. |
 | Local control plane | Manages profiles, providers, models, credentials, memory, skills, plugins, logs, and runtime settings from one dashboard. |
-| Automation | Configures platform channels, cron jobs, Kanban tasks, group-chat rooms, and MCP servers around the same Hermes profiles. |
+| Automation | Configures platform channels, cron jobs, Kanban tasks, group-chat rooms, and MCP servers around the same DiTing profiles. |
 | Workspace tools | Provides a file browser, web terminal, voice input/output, coding-agent runners, device discovery, and performance views. |
 | Distribution | Ships as a desktop app for Windows/macOS/Linux, an npm CLI package, and a Docker image. |
 
@@ -39,9 +39,9 @@
 
 ### AI Chat
 
-- Real-time chat streaming over Socket.IO `/chat-run`; chat runs execute through the Hermes agent bridge
+- Real-time chat streaming over Socket.IO `/chat-run`; chat runs execute through the DiTing agent bridge
 - Multi-session management — create, rename, delete, switch between sessions
-- **Self-built session database** — local SQLite storage for Web UI sessions; Hermes state.db remains a read-only source for Hermes history APIs
+- **Self-built session database** — local SQLite storage for Web UI sessions; DiTing state.db remains a read-only source for DiTing history APIs
 - Session grouping by source (Telegram, Discord, Slack, etc.) with collapsible accordion
 - Active session indicator — live sessions pin to top with spinner icon
 - Sessions sorted by latest message time
@@ -49,8 +49,8 @@
 - Tool call detail expansion (arguments / result)
 - Profile-scoped file uploads
 - File download support — download uploaded files and agent-generated files by resolved path across local, Docker, SSH, and Singularity backends
-- Session search — Ctrl+K search across the Web UI local session database; read-only Hermes history sessions are not included
-- Profile-aware model selector — discovers models available to the signed-in account through authorized Hermes profiles
+- Session search — Ctrl+K search across the Web UI local session database; read-only DiTing history sessions are not included
+- Profile-aware model selector — discovers models available to the signed-in account through authorized DiTing profiles
 - Per-session model display badge and context token usage
 
 ### Platform Channels
@@ -68,8 +68,8 @@ Unified configuration for **8 platforms** in one page:
 | WeChat        | QR code login (scan in browser, auto-save credentials)                 |
 | WeCom         | Bot ID / Secret                                                        |
 
-- Credential management writes to `~/.hermes/.env`
-- Channel behavior settings write to `~/.hermes/config.yaml`
+- Credential management writes to `~/.DiTing/.env`
+- Channel behavior settings write to `~/.DiTing/config.yaml`
 - Per-platform configured/unconfigured status detection
 
 ### Usage Analytics
@@ -94,7 +94,7 @@ Unified configuration for **8 platforms** in one page:
 
 ### Model Management
 
-- Auto-discover models from credential pool (`~/.hermes/auth.json`)
+- Auto-discover models from credential pool (`~/.DiTing/auth.json`)
 - Fetch available models from each provider endpoint (`/v1/models`)
 - Add, update, and delete providers (preset & custom OpenAI-compatible)
 - OpenAI Codex & Nous Portal OAuth login
@@ -103,7 +103,7 @@ Unified configuration for **8 platforms** in one page:
 
 ### Multi-Profile
 
-- Create, rename, delete, and switch between Hermes profiles
+- Create, rename, delete, and switch between DiTing profiles
 - Clone existing profile or import from archive (`.tar.gz`)
 - Export profile for backup or sharing
 - Profile-scoped configuration, cache, uploads, sessions, jobs, usage, memory, skills, plugins, providers, and model visibility
@@ -113,7 +113,7 @@ Unified configuration for **8 platforms** in one page:
 
 - Browse files on remote backends (local, Docker, SSH, Singularity)
 - Upload, download, rename, copy, move, and delete files
-- Store uploaded files under the selected/requested Hermes profile while keeping downloads path-based for agent-generated artifacts outside the upload directory
+- Store uploaded files under the selected/requested DiTing profile while keeping downloads path-based for agent-generated artifacts outside the upload directory
 - Create directories
 - View file content with syntax highlighting
 
@@ -149,7 +149,7 @@ Unified configuration for **8 platforms** in one page:
 ### Admin & Runtime Management
 
 - Device and LAN peer views for local-network discovery and peer tooling
-- MCP manager for the managed `hermes-studio` MCP server and profile injection
+- MCP manager for the managed `DiTing-studio` MCP server and profile injection
 - Runtime version and version-preview tooling for testing newer builds in isolation
 - Performance monitor views for super administrators
 
@@ -164,16 +164,16 @@ CLI maintenance commands:
 
 ```bash
 # Delete persisted login IP lock records
-hermes-web-ui clear-login-locks
+DiTing-web-ui clear-login-locks
 
 # Delete login locks and restart the running Web UI process
-hermes-web-ui clear-login-locks --restart
+DiTing-web-ui clear-login-locks --restart
 
 # Create or reset the default super administrator login to admin / 123456
-hermes-web-ui reset-default-login
+DiTing-web-ui reset-default-login
 ```
 
-`clear-login-locks` removes `${HERMES_WEB_UI_HOME:-~/.hermes-web-ui}/.login-lock.json`. If the server is running, restart it to clear in-memory lock state. `reset-default-login` updates the Web UI account database; if an `admin` user already exists, its password is reset to `123456` and the account is enabled as a super administrator.
+`clear-login-locks` removes `${DiTing_WEB_UI_HOME:-~/.DiTing-web-ui}/.login-lock.json`. If the server is running, restart it to clear in-memory lock state. `reset-default-login` updates the Web UI account database; if an `admin` user already exists, its password is reset to `123456` and the account is enabled as a super administrator.
 
 ### Settings
 
@@ -190,7 +190,7 @@ hermes-web-ui reset-default-login
 - Read assistant replies aloud from chat and group-chat messages.
 - Providers: browser Web Speech, built-in Edge TTS, OpenAI-compatible `/audio/speech`, custom OpenAI-compatible TTS endpoints, and MiMo.
 - MiMo supports preset voices, voice design prompts, and voice clone reference audio (`.mp3`/`.wav`, max 10 MB) with selectable auth header mode (`Authorization`, `api-key`, or both).
-- Edge/OpenAI-compatible/custom/MiMo playback uses the Web UI backend's unified `/api/hermes/tts/synthesize` endpoint, so stop/pause state is shared and in-flight fetches are aborted when possible.
+- Edge/OpenAI-compatible/custom/MiMo playback uses the Web UI backend's unified `/api/DiTing/tts/synthesize` endpoint, so stop/pause state is shared and in-flight fetches are aborted when possible.
 - Provider API keys and MiMo clone reference audio are saved in server-side TTS settings, with only masked secret status shown back to the browser.
 - Save provider settings in Settings → Voice before using OpenAI/custom/MiMo playback. Message playback sends text and non-secret playback options; the backend reads the stored per-user secret when synthesizing.
 - Turn-based voice input is available from the chat input mic control: start/stop a voice turn, transcribe it, stage the transcript in the current input box for editing, then send it with the normal Send button.
@@ -209,10 +209,10 @@ hermes-web-ui reset-default-login
 ### Desktop App & Updates
 
 - Native Electron shell for Windows, macOS, and Linux
-- Bundles the Web UI runtime and starts the local Hermes Studio server automatically
+- Bundles the Web UI runtime and starts the local DiTing Studio server automatically
 - Uses Cloudflare download endpoints for desktop auto-update metadata and assets first
 - Falls back to GitHub Releases `latest` assets if the Cloudflare update feed is unavailable
-- Windows upgrades attempt to close an existing Hermes Studio process before replacing files
+- Windows upgrades attempt to close an existing DiTing Studio process before replacing files
 
 ---
 
@@ -220,173 +220,173 @@ hermes-web-ui reset-default-login
 
 ### Desktop App (Recommended)
 
-Download the latest **Hermes Studio** desktop installer from
-[GitHub Releases](https://github.com/EKKOLearnAI/hermes-studio/releases/latest).
+Download the latest **DiTing Studio** desktop installer from
+[GitHub Releases](https://github.com/EKKOLearnAI/DiTing-studio/releases/latest).
 
 Desktop builds are published for macOS, Windows, and Linux, with separate
 architecture assets where applicable. The desktop app bundles the Web UI
-runtime and stores Hermes Agent data in the native Hermes location:
+runtime and stores DiTing Agent data in the native DiTing location:
 
-- Windows: `%LOCALAPPDATA%\hermes` (falls back to `%APPDATA%\hermes`)
-- macOS/Linux: `~/.hermes`
+- Windows: `%LOCALAPPDATA%\DiTing` (falls back to `%APPDATA%\DiTing`)
+- macOS/Linux: `~/.DiTing`
 
 The desktop wrapper stores its own Web UI state separately in
-`~/.hermes-web-ui` unless `HERMES_WEB_UI_HOME` is set.
+`~/.DiTing-web-ui` unless `DiTing_WEB_UI_HOME` is set.
 
 After the packaged desktop app starts, it installs managed command shims so the
-desktop app, bundled Hermes Agent CLI, and bundled Web UI CLI do not conflict:
+desktop app, bundled DiTing Agent CLI, and bundled Web UI CLI do not conflict:
 
 | Command | Description |
 | --- | --- |
-| `hermes-studio` | Open the Hermes Studio desktop app |
-| `hermes-studio cli ...` | Run the bundled Hermes Agent CLI |
-| `hermes-studio web ...` | Run the bundled `hermes-web-ui` command |
-| `hermes-studio -h` | Show wrapper help |
-| `hermes-studio-mcp` | Run the managed Web UI MCP bridge |
+| `DiTing-studio` | Open the DiTing Studio desktop app |
+| `DiTing-studio cli ...` | Run the bundled DiTing Agent CLI |
+| `DiTing-studio web ...` | Run the bundled `DiTing-web-ui` command |
+| `DiTing-studio -h` | Show wrapper help |
+| `DiTing-studio-mcp` | Run the managed Web UI MCP bridge |
 
-Use `hermes-studio cli -h` for Hermes Agent CLI help and
-`hermes-studio web -h` for Web UI CLI help.
+Use `DiTing-studio cli -h` for DiTing Agent CLI help and
+`DiTing-studio web -h` for Web UI CLI help.
 
 Desktop auto-updates read the latest feed from
 `https://download.ekkolearnai.com/latest` first. If that endpoint is
 unavailable, the updater falls back to
-`https://github.com/EKKOLearnAI/hermes-studio/releases/latest/download`.
+`https://github.com/EKKOLearnAI/DiTing-studio/releases/latest/download`.
 
 ### npm
 
 ```bash
-npm install -g hermes-web-ui
-hermes-web-ui start
+npm install -g DiTing-web-ui
+DiTing-web-ui start
 ```
 
 Open **http://localhost:8648**
 
 ### Docker Compose
 
-Single-container deployment with integrated Hermes Agent:
+Single-container deployment with integrated DiTing Agent:
 
 ```bash
-# Prepare mapped Hermes config files first
-docker compose run --rm hermes-webui prepare-hermes-home
+# Prepare mapped DiTing config files first
+docker compose run --rm DiTing-webui prepare-DiTing-home
 
 # Use pre-built image (Recommended)
-WEBUI_IMAGE=ekkoye8888/hermes-web-ui docker compose up -d
+WEBUI_IMAGE=ekkoye8888/DiTing-web-ui docker compose up -d
 
 # Or build from source
 docker compose up -d --build
 
-docker compose logs -f hermes-webui
+docker compose logs -f DiTing-webui
 ```
 
 Open **http://localhost:6060**
 
-- Persistent Hermes data is stored in `./hermes_data`
-- Web UI auth token is stored in `./hermes_data/hermes-web-ui/.token`
-- Edit `./hermes_data/config.yaml` before first startup when `HERMES_DOCKER_REQUIRE_PROFILE_CONFIG=1`
+- Persistent DiTing data is stored in `./DiTing_data`
+- Web UI auth token is stored in `./DiTing_data/DiTing-web-ui/.token`
+- Edit `./DiTing_data/config.yaml` before first startup when `DiTing_DOCKER_REQUIRE_PROFILE_CONFIG=1`
 - On first run with auth enabled, the token is printed to container logs
 - All runtime settings are environment-variable driven in `docker-compose.yml`
 
 For detailed notes and troubleshooting, see [`docs/docker.md`](./docs/docker.md).
 
-The Docker image carries the Hermes Agent runtime in the same container and the
-entrypoint auto-discovers the bundled Hermes CLI / bridge Python before the Web
+The Docker image carries the DiTing Agent runtime in the same container and the
+entrypoint auto-discovers the bundled DiTing CLI / bridge Python before the Web
 UI starts.
 
-### Hermes Agent Runtime Discovery
+### DiTing Agent Runtime Discovery
 
 When Web UI starts backend chat features, it prefers a source checkout that
-contains `run_agent.py` such as `~/.hermes/hermes-agent`. If no source checkout
+contains `run_agent.py` such as `~/.DiTing/DiTing-agent`. If no source checkout
 is found, it falls back to the Python environment used by the installed
-`hermes` command, then the system Python. This supports both source installs
-and package installs such as `pip install hermes-agent`.
+`DiTing` command, then the system Python. This supports both source installs
+and package installs such as `pip install DiTing-agent`.
 
 ## Web UI Environment Variables
 
-These variables configure Hermes Web UI, its local Hermes runtime integration, and development/preview helpers. Provider API keys and Hermes Agent settings are normally managed through Hermes profiles; environment variables here are process-level overrides.
+These variables configure DiTing Web UI, its local DiTing runtime integration, and development/preview helpers. Provider API keys and DiTing Agent settings are normally managed through DiTing profiles; environment variables here are process-level overrides.
 
 | Variable | Default | Description |
 | --- | --- | --- |
 | `PORT` | `8648` | Web UI listen port. |
 | `BIND_HOST` | `0.0.0.0` | Web UI bind host. Set `::` explicitly for IPv6. |
-| `HERMES_WEB_UI_HOME` | `~/.hermes-web-ui` | Web UI data home for auth token, credentials, logs, DB, and default uploads. `HERMES_WEBUI_STATE_DIR` is also supported as a compatibility alias. |
-| `HERMES_WEBUI_STATE_DIR` | unset | Compatibility alias for `HERMES_WEB_UI_HOME`. |
-| `HERMES_WEB_UI_DISABLE_MCP_AUTOINJECT` | unset | Disable startup injection of the managed `hermes-studio` MCP server into Hermes profile configs. |
-| `HERMES_WEB_UI_ALLOW_TRANSIENT_MCP_AUTOINJECT` | unset | Allow managed MCP injection when `HERMES_WEB_UI_HOME` is under a temporary directory, such as Version Preview runtimes. |
-| `UPLOAD_DIR` | `$HERMES_WEB_UI_HOME/upload` | Upload root override. Files are stored below profile-scoped subdirectories. |
+| `DiTing_WEB_UI_HOME` | `~/.DiTing-web-ui` | Web UI data home for auth token, credentials, logs, DB, and default uploads. `DiTing_WEBUI_STATE_DIR` is also supported as a compatibility alias. |
+| `DiTing_WEBUI_STATE_DIR` | unset | Compatibility alias for `DiTing_WEB_UI_HOME`. |
+| `DiTing_WEB_UI_DISABLE_MCP_AUTOINJECT` | unset | Disable startup injection of the managed `DiTing-studio` MCP server into DiTing profile configs. |
+| `DiTing_WEB_UI_ALLOW_TRANSIENT_MCP_AUTOINJECT` | unset | Allow managed MCP injection when `DiTing_WEB_UI_HOME` is under a temporary directory, such as Version Preview runtimes. |
+| `UPLOAD_DIR` | `$DiTing_WEB_UI_HOME/upload` | Upload root override. Files are stored below profile-scoped subdirectories. |
 | `CORS_ORIGINS` | same host only | Comma- or space-separated cross-origin allowlist for HTTP, Socket.IO, and WebSocket requests. Set `*` only when you intentionally need legacy wildcard CORS. |
-| `AUTH_TOKEN` | auto-generated | Explicit bearer token. If unset, Web UI creates one under `HERMES_WEB_UI_HOME`. |
+| `AUTH_TOKEN` | auto-generated | Explicit bearer token. If unset, Web UI creates one under `DiTing_WEB_UI_HOME`. |
 | `AUTH_JWT_SECRET` | `AUTH_TOKEN` | JWT signing secret override for username/password sessions. |
-| `PROFILE` | `default` | Startup/default Hermes profile. Runtime requests use the profile selected by the frontend and authorized for the current account. |
+| `PROFILE` | `default` | Startup/default DiTing profile. Runtime requests use the profile selected by the frontend and authorized for the current account. |
 | `LOG_LEVEL` | `info` | Server log level. |
 | `BRIDGE_LOG_LEVEL` | `$LOG_LEVEL` or `info` | Bridge log level. |
 | `MAX_DOWNLOAD_SIZE` | `200MB` | Maximum file download size. |
 | `MAX_EDIT_SIZE` | `10MB` | Maximum editable file size. |
 | `WORKSPACE_BASE` | current user's home directory | Base directory for workspace browsing. |
-| `HERMES_HOME` | platform default | Hermes data home. Windows uses `%LOCALAPPDATA%\hermes`; macOS/Linux uses `~/.hermes`. |
-| `HERMES_BIN` | `hermes` | Custom Hermes CLI binary path. |
-| `HERMES_AGENT_ROOT` | auto-discovered | Hermes Agent source checkout containing `run_agent.py`. |
-| `HERMES_AGENT_BRIDGE_PYTHON` | auto-discovered | Python interpreter used to launch the agent bridge. |
-| `HERMES_AGENT_BRIDGE_UV` | auto-discovered | `uv` executable used to launch the agent bridge when available. |
+| `DiTing_HOME` | platform default | DiTing data home. Windows uses `%LOCALAPPDATA%\DiTing`; macOS/Linux uses `~/.DiTing`. |
+| `DiTing_BIN` | `DiTing` | Custom DiTing CLI binary path. |
+| `DiTing_AGENT_ROOT` | auto-discovered | DiTing Agent source checkout containing `run_agent.py`. |
+| `DiTing_AGENT_BRIDGE_PYTHON` | auto-discovered | Python interpreter used to launch the agent bridge. |
+| `DiTing_AGENT_BRIDGE_UV` | auto-discovered | `uv` executable used to launch the agent bridge when available. |
 | `UV` | auto-discovered | Fallback `uv` executable path. |
 | `PYTHON` | auto-discovered | Fallback Python executable for the agent bridge. |
-| `HERMES_AGENT_BRIDGE_ENDPOINT` | platform default | Agent bridge broker endpoint. Windows defaults to `tcp://127.0.0.1:18765`; macOS/Linux defaults to `ipc:///tmp/hermes-agent-bridge.sock`. |
-| `HERMES_AGENT_BRIDGE_TIMEOUT_MS` | `120000` | Timeout for Node requests to the bridge broker. |
-| `HERMES_AGENT_BRIDGE_CONNECT_RETRY_MS` | `5000` | Short retry window for connecting to the bridge socket. |
-| `HERMES_AGENT_BRIDGE_STARTUP_TIMEOUT_MS` | `120000` | Timeout while waiting for the Python bridge to become ready. |
-| `HERMES_AGENT_BRIDGE_STOP_ON_SHUTDOWN` | enabled | Stop the bridge broker during Web UI shutdown and restart. Set `0`, `false`, `no`, or `off` to keep the bridge across restarts. |
-| `HERMES_AGENT_BRIDGE_AUTO_RESTART` | enabled | Auto-restart the bridge broker after unexpected exit. Set `0`, `false`, `no`, or `off` to disable. |
-| `HERMES_AGENT_BRIDGE_RESTART_DELAY_MS` | `1000` | Base delay for bridge auto-restart backoff. |
-| `HERMES_AGENT_BRIDGE_PLATFORM` | `cli` | Platform identity passed to Hermes Agent. |
-| `HERMES_AGENT_BRIDGE_WORKER_TRANSPORT` | platform default | Profile worker transport. Set `tcp` for loopback TCP or `ipc`/`unix` for Unix domain sockets; defaults to Windows TCP and macOS/Linux IPC. |
-| `HERMES_AGENT_BRIDGE_WORKER_PORT_BASE` | `18780` | Base port for TCP worker endpoints. |
-| `HERMES_AGENT_BRIDGE_WARM_PROFILES` | unset (`active` in Docker) | Prestart specific profile workers. Supports `active`, `default`, or comma-separated profile names. |
-| `HERMES_AGENT_BRIDGE_WORKER_IDLE_TIMEOUT_SECONDS` | `1800` (`86400` in Docker) | Worker idle timeout before the broker unloads an inactive profile worker. |
-| `HERMES_AGENT_BRIDGE_SESSION_IDLE_TIMEOUT_SECONDS` | `1800` (`86400` in Docker) | Session idle timeout before a worker unloads an inactive chat session. |
-| `HERMES_BRIDGE_PROVIDER` | profile/default | Provider override for bridge runs. |
-| `HERMES_BRIDGE_TOOLSETS` | profile/default | Toolset override for bridge runs. |
-| `HERMES_BRIDGE_MAX_TURNS` | profile/default | Maximum turn override for bridge runs. |
-| `HERMES_BRIDGE_SUPPRESS_PLATFORM_HINT` | `cli` | Controls bridge platform hint suppression passed to Hermes Agent. |
-| `HERMES_OPENROUTER_APP_REFERER` | `https://hermes-studio.ai` | OpenRouter attribution referer sent by bridge runs. |
-| `HERMES_OPENROUTER_APP_TITLE` | `Hermes Web UI` | OpenRouter attribution title sent by bridge runs. |
-| `HERMES_OPENROUTER_APP_CATEGORIES` | `cli-agent,personal-agent` | OpenRouter attribution categories sent by bridge runs. |
-| `HERMES_WEB_UI_MANAGED_GATEWAY` | enabled | Controls Web UI-managed Hermes gateway process handling. Set `0`, `false`, `no`, or `off` to use `hermes gateway start` instead. |
-| `HERMES_WEB_UI_REQUIRE_AGENT_BRIDGE` | unset (`1` in Docker) | Fail startup when the Hermes agent bridge cannot start. Useful for integrated container deployments. |
-| `HERMES_WEB_UI_DISABLE_GATEWAY_AUTOSTART` | unset | Skip startup gateway checks/autostart. Set `1`, `true`, `yes`, or `on` for dashboard-only deployments where another service owns Hermes gateway lifecycle. |
-| `HERMES_WEB_UI_DISABLE_SKILL_INJECTION` | unset | Skip startup bundled skill injection. Set `1`, `true`, `yes`, or `on` when bundled skills are managed outside Hermes Web UI. When injection is enabled, Web UI updates only skills it previously installed or identical existing bundled copies; local edits and user-owned same-name skills are skipped. |
-| `HERMES_WEB_UI_STOP_GATEWAYS_ON_SHUTDOWN` | enabled in production | Controls whether Web UI shutdown also stops managed gateway processes. Set `0` or `false` to detach them. |
-| `HERMES_GATEWAY_URL` / `GATEWAY_URL` | unset | Explicit Hermes gateway upstream URL for proxy routes. |
-| `GATEWAY_HOST` | `127.0.0.1` | Default Hermes gateway upstream host for proxy routes. |
-| `GATEWAY_PORT` | `8642` | Default Hermes gateway upstream port for proxy routes. |
-| `HERMES_WEB_UI_PREVIEW_REPO` | package repository | GitHub repository used by Version Preview. |
-| `HERMES_WEB_UI_PREVIEW_AGENT_BRIDGE_TRANSPORT` | platform default | Version Preview broker transport. Set `tcp` to use loopback TCP for Preview on macOS/Linux; when unset, Preview follows `HERMES_AGENT_BRIDGE_WORKER_TRANSPORT=tcp`. |
-| `HERMES_WEB_UI_PREVIEW_AGENT_BRIDGE_ENDPOINT` | isolated preview endpoint | Directly overrides the Version Preview broker endpoint. |
-| `HERMES_WEB_UI_BACKEND_PORT` | `8648` | Backend port used by the Vite dev proxy. |
-| `HERMES_WEB_UI_FRONTEND_PORT` | `8649` | Frontend Vite dev server port. |
+| `DiTing_AGENT_BRIDGE_ENDPOINT` | platform default | Agent bridge broker endpoint. Windows defaults to `tcp://127.0.0.1:18765`; macOS/Linux defaults to `ipc:///tmp/DiTing-agent-bridge.sock`. |
+| `DiTing_AGENT_BRIDGE_TIMEOUT_MS` | `120000` | Timeout for Node requests to the bridge broker. |
+| `DiTing_AGENT_BRIDGE_CONNECT_RETRY_MS` | `5000` | Short retry window for connecting to the bridge socket. |
+| `DiTing_AGENT_BRIDGE_STARTUP_TIMEOUT_MS` | `120000` | Timeout while waiting for the Python bridge to become ready. |
+| `DiTing_AGENT_BRIDGE_STOP_ON_SHUTDOWN` | enabled | Stop the bridge broker during Web UI shutdown and restart. Set `0`, `false`, `no`, or `off` to keep the bridge across restarts. |
+| `DiTing_AGENT_BRIDGE_AUTO_RESTART` | enabled | Auto-restart the bridge broker after unexpected exit. Set `0`, `false`, `no`, or `off` to disable. |
+| `DiTing_AGENT_BRIDGE_RESTART_DELAY_MS` | `1000` | Base delay for bridge auto-restart backoff. |
+| `DiTing_AGENT_BRIDGE_PLATFORM` | `cli` | Platform identity passed to DiTing Agent. |
+| `DiTing_AGENT_BRIDGE_WORKER_TRANSPORT` | platform default | Profile worker transport. Set `tcp` for loopback TCP or `ipc`/`unix` for Unix domain sockets; defaults to Windows TCP and macOS/Linux IPC. |
+| `DiTing_AGENT_BRIDGE_WORKER_PORT_BASE` | `18780` | Base port for TCP worker endpoints. |
+| `DiTing_AGENT_BRIDGE_WARM_PROFILES` | unset (`active` in Docker) | Prestart specific profile workers. Supports `active`, `default`, or comma-separated profile names. |
+| `DiTing_AGENT_BRIDGE_WORKER_IDLE_TIMEOUT_SECONDS` | `1800` (`86400` in Docker) | Worker idle timeout before the broker unloads an inactive profile worker. |
+| `DiTing_AGENT_BRIDGE_SESSION_IDLE_TIMEOUT_SECONDS` | `1800` (`86400` in Docker) | Session idle timeout before a worker unloads an inactive chat session. |
+| `DiTing_BRIDGE_PROVIDER` | profile/default | Provider override for bridge runs. |
+| `DiTing_BRIDGE_TOOLSETS` | profile/default | Toolset override for bridge runs. |
+| `DiTing_BRIDGE_MAX_TURNS` | profile/default | Maximum turn override for bridge runs. |
+| `DiTing_BRIDGE_SUPPRESS_PLATFORM_HINT` | `cli` | Controls bridge platform hint suppression passed to DiTing Agent. |
+| `DiTing_OPENROUTER_APP_REFERER` | `https://DiTing-studio.ai` | OpenRouter attribution referer sent by bridge runs. |
+| `DiTing_OPENROUTER_APP_TITLE` | `DiTing Web UI` | OpenRouter attribution title sent by bridge runs. |
+| `DiTing_OPENROUTER_APP_CATEGORIES` | `cli-agent,personal-agent` | OpenRouter attribution categories sent by bridge runs. |
+| `DiTing_WEB_UI_MANAGED_GATEWAY` | enabled | Controls Web UI-managed DiTing gateway process handling. Set `0`, `false`, `no`, or `off` to use `DiTing gateway start` instead. |
+| `DiTing_WEB_UI_REQUIRE_AGENT_BRIDGE` | unset (`1` in Docker) | Fail startup when the DiTing agent bridge cannot start. Useful for integrated container deployments. |
+| `DiTing_WEB_UI_DISABLE_GATEWAY_AUTOSTART` | unset | Skip startup gateway checks/autostart. Set `1`, `true`, `yes`, or `on` for dashboard-only deployments where another service owns DiTing gateway lifecycle. |
+| `DiTing_WEB_UI_DISABLE_SKILL_INJECTION` | unset | Skip startup bundled skill injection. Set `1`, `true`, `yes`, or `on` when bundled skills are managed outside DiTing Web UI. When injection is enabled, Web UI updates only skills it previously installed or identical existing bundled copies; local edits and user-owned same-name skills are skipped. |
+| `DiTing_WEB_UI_STOP_GATEWAYS_ON_SHUTDOWN` | enabled in production | Controls whether Web UI shutdown also stops managed gateway processes. Set `0` or `false` to detach them. |
+| `DiTing_GATEWAY_URL` / `GATEWAY_URL` | unset | Explicit DiTing gateway upstream URL for proxy routes. |
+| `GATEWAY_HOST` | `127.0.0.1` | Default DiTing gateway upstream host for proxy routes. |
+| `GATEWAY_PORT` | `8642` | Default DiTing gateway upstream port for proxy routes. |
+| `DiTing_WEB_UI_PREVIEW_REPO` | package repository | GitHub repository used by Version Preview. |
+| `DiTing_WEB_UI_PREVIEW_AGENT_BRIDGE_TRANSPORT` | platform default | Version Preview broker transport. Set `tcp` to use loopback TCP for Preview on macOS/Linux; when unset, Preview follows `DiTing_AGENT_BRIDGE_WORKER_TRANSPORT=tcp`. |
+| `DiTing_WEB_UI_PREVIEW_AGENT_BRIDGE_ENDPOINT` | isolated preview endpoint | Directly overrides the Version Preview broker endpoint. |
+| `DiTing_WEB_UI_BACKEND_PORT` | `8648` | Backend port used by the Vite dev proxy. |
+| `DiTing_WEB_UI_FRONTEND_PORT` | `8649` | Frontend Vite dev server port. |
 
 ### CLI Commands
 
 | Command                           | Description                        |
 | --------------------------------- | ---------------------------------- |
-| `hermes-web-ui start`             | Start in background (daemon mode)  |
-| `hermes-web-ui start --port 9000` | Start on custom port               |
-| `hermes-web-ui stop`              | Stop background process            |
-| `hermes-web-ui restart`           | Restart background process; stops the bridge by default |
-| `hermes-web-ui status`            | Check if running                   |
-| `hermes-web-ui update`            | Update to latest version & restart |
-| `hermes-web-ui upgrade`           | Alias for `update`                 |
-| `hermes-web-ui -v`                | Show version number                |
-| `hermes-web-ui -h`                | Show help message                  |
+| `DiTing-web-ui start`             | Start in background (daemon mode)  |
+| `DiTing-web-ui start --port 9000` | Start on custom port               |
+| `DiTing-web-ui stop`              | Stop background process            |
+| `DiTing-web-ui restart`           | Restart background process; stops the bridge by default |
+| `DiTing-web-ui status`            | Check if running                   |
+| `DiTing-web-ui update`            | Update to latest version & restart |
+| `DiTing-web-ui upgrade`           | Alias for `update`                 |
+| `DiTing-web-ui -v`                | Show version number                |
+| `DiTing-web-ui -h`                | Show help message                  |
 
-`restart`, `update`, and `upgrade` stop the Agent Bridge broker by default so restarted or updated servers do not reuse stale Python bridge processes. Set `HERMES_AGENT_BRIDGE_STOP_ON_SHUTDOWN=0` before restarting only when you explicitly want to keep the bridge broker and running bridge sessions alive.
+`restart`, `update`, and `upgrade` stop the Agent Bridge broker by default so restarted or updated servers do not reuse stale Python bridge processes. Set `DiTing_AGENT_BRIDGE_STOP_ON_SHUTDOWN=0` before restarting only when you explicitly want to keep the bridge broker and running bridge sessions alive.
 
-`update` / `upgrade` first attempt `npm cache clean --force`, then run `npm install -g hermes-web-ui@latest` and restart. Cache cleanup is best-effort; if it fails, the updater continues with the install.
+`update` / `upgrade` first attempt `npm cache clean --force`, then run `npm install -g DiTing-web-ui@latest` and restart. Cache cleanup is best-effort; if it fails, the updater continues with the install.
 
 ### Auto Configuration
 
 On startup the BFF server automatically:
 
 - Initializes Web UI data directories, local databases, and bundled skills
-- Starts the Hermes agent bridge used by `/chat-run`
+- Starts the DiTing agent bridge used by `/chat-run`
 - Opens browser on successful startup
 
 ---
@@ -394,8 +394,8 @@ On startup the BFF server automatically:
 ## Development
 
 ```bash
-git clone https://github.com/EKKOLearnAI/hermes-studio.git
-cd hermes-web-ui
+git clone https://github.com/EKKOLearnAI/DiTing-studio.git
+cd DiTing-web-ui
 npm install
 npm run dev
 ```
@@ -414,17 +414,17 @@ See [DEVELOPMENT.md](./DEVELOPMENT.md) for project development guidelines.
 ```
 Browser → BFF (Koa, :8648) → Socket.IO /chat-run
                 ↓
-        Hermes agent bridge → Hermes Agent runtime
+        DiTing agent bridge → DiTing Agent runtime
                 ↓
-           Hermes CLI / profiles
+           DiTing CLI / profiles
            profile config.yaml    (channel/provider behavior)
            profile auth.json      (credential pool)
            Tencent iLink API      (WeChat QR login)
 ```
 
-The frontend is designed with **multi-agent extensibility** — all Hermes-specific code is namespaced under `hermes/` directories (API, components, views, stores), making it straightforward to add new agent integrations alongside.
+The frontend is designed with **multi-agent extensibility** — all DiTing-specific code is namespaced under `DiTing/` directories (API, components, views, stores), making it straightforward to add new agent integrations alongside.
 
-The BFF layer handles Socket.IO chat streaming, the Hermes agent bridge, profile-aware file upload and path-based download (multi-backend: local/Docker/SSH/Singularity), session CRUD, account- and profile-scoped management, config/credential management, WeChat QR login, model discovery, skills/memory/plugin management, TTS/STT, coding-agent proxies, MCP/runtime management, log reading, and static file serving.
+The BFF layer handles Socket.IO chat streaming, the DiTing agent bridge, profile-aware file upload and path-based download (multi-backend: local/Docker/SSH/Singularity), session CRUD, account- and profile-scoped management, config/credential management, WeChat QR login, model discovery, skills/memory/plugin management, TTS/STT, coding-agent proxies, MCP/runtime management, log reading, and static file serving.
 
 ## Tech Stack
 
@@ -434,14 +434,14 @@ The BFF layer handles Socket.IO chat streaming, the Hermes agent bridge, profile
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=EKKOLearnAI/hermes-studio&type=Date)](https://star-history.com/#EKKOLearnAI/hermes-studio&Date)
+[![Star History Chart](https://api.star-history.com/svg?repos=EKKOLearnAI/DiTing-studio&type=Date)](https://star-history.com/#EKKOLearnAI/DiTing-studio&Date)
 
-<!-- If the chart above doesn't load, visit https://star-history.com/#EKKOLearnAI/hermes-studio -->
+<!-- If the chart above doesn't load, visit https://star-history.com/#EKKOLearnAI/DiTing-studio -->
 
 ## License
 
 [BSL-1.1](./LICENSE)
 
-The license covers Hermes Studio, the former Hermes Web UI name, the
-`hermes-web-ui` npm package and CLI, desktop applications, firmware, release
+The license covers DiTing Studio, the former DiTing Web UI name, the
+`DiTing-web-ui` npm package and CLI, desktop applications, firmware, release
 artifacts, documentation, and associated files in this repository.

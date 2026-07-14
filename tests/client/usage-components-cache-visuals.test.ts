@@ -37,7 +37,7 @@ const mockUsageStore = vi.hoisted(() => ({
   ],
 }))
 
-vi.mock('@/stores/hermes/usage', () => ({
+vi.mock('@/stores/DiTing/usage', () => ({
   useUsageStore: () => mockUsageStore,
 }))
 
@@ -47,8 +47,8 @@ vi.mock('vue-i18n', () => ({
   }),
 }))
 
-import DailyTrend from '@/components/hermes/usage/DailyTrend.vue'
-import ModelBreakdown from '@/components/hermes/usage/ModelBreakdown.vue'
+import DailyTrend from '@/components/DiTing/usage/DailyTrend.vue'
+import ModelBreakdown from '@/components/DiTing/usage/ModelBreakdown.vue'
 
 describe('usage cache visualizations', () => {
   it('renders cache-read as a visible segment in the daily usage bars', () => {

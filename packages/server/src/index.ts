@@ -11,20 +11,20 @@ import { readFileSync } from 'fs'
 import { config, shouldCreateWebUiDataDir } from './config'
 import { initLoginLimiter } from './services/login-limiter'
 import { bindShutdown } from './services/shutdown'
-import { setupTerminalWebSocket } from './routes/hermes/terminal'
-import { setupKanbanEventsWebSocket } from './routes/hermes/kanban-events'
+import { setupTerminalWebSocket } from './routes/DiTing/terminal'
+import { setupKanbanEventsWebSocket } from './routes/DiTing/kanban-events'
 import { startVersionCheck } from './routes/health'
 import { registerRoutes } from './routes'
-import { setGroupChatServer } from './routes/hermes/group-chat'
-import { setChatRunServer } from './routes/hermes/chat-run'
-import { GroupChatServer } from './services/hermes/group-chat'
-import { ChatRunSocket } from './services/hermes/run-chat'
-import { getAgentBridgeManager, startAgentBridgeManager } from './services/hermes/agent-bridge'
-import { warmAgentBridgeProfilesOnStartup } from './services/hermes/agent-bridge/warmup'
-import { HermesSkillInjector } from './services/hermes/skill-injector'
-import { injectBundledMcpServer } from './services/hermes/studio-mcp-autoinject'
-import { ensureProfileGatewaysRunning } from './services/hermes/gateway-autostart'
-import { refreshConfiguredProviderModelCatalogsInBackground } from './services/hermes/model-catalog-cache'
+import { setGroupChatServer } from './routes/DiTing/group-chat'
+import { setChatRunServer } from './routes/DiTing/chat-run'
+import { GroupChatServer } from './services/DiTing/group-chat'
+import { ChatRunSocket } from './services/DiTing/run-chat'
+import { getAgentBridgeManager, startAgentBridgeManager } from './services/DiTing/agent-bridge'
+import { warmAgentBridgeProfilesOnStartup } from './services/DiTing/agent-bridge/warmup'
+import { DiTingSkillInjector } from './services/DiTing/skill-injector'
+import { injectBundledMcpServer } from './services/DiTing/studio-mcp-autoinject'
+import { ensureProfileGatewaysRunning } from './services/DiTing/gateway-autostart'
+import { refreshConfiguredProviderModelCatalogsInBackground } from './services/DiTing/model-catalog-cache'
 import { scanLanDevices, startLanDiscoveryResponder } from './services/lan-discovery'
 import { getLanPeerSocketManager, getLanPeerSocketPath } from './services/lan-peer-socket'
 import { startGlobalAgentServer } from './services/global-agent/server'
@@ -101,7 +101,7 @@ function safeNetworkInterfaces() {
 }
 
 function isDesktopRuntime(): boolean {
-  return String(process.env.HERMES_DESKTOP || '').trim().toLowerCase() === 'true'
+  return String(process.env.DiTing_DESKTOP || '').trim().toLowerCase() === 'true'
 }
 
 function isLoopbackAddress(address?: string | null): boolean {
@@ -165,20 +165,20 @@ function envFlagEnabled(name: string): boolean {
 }
 
 function gatewayAutostartDisabled(): boolean {
-  return envFlagEnabled('HERMES_WEB_UI_DISABLE_GATEWAY_AUTOSTART')
+  return envFlagEnabled('DiTing_WEB_UI_DISABLE_GATEWAY_AUTOSTART')
 }
 
 function skillInjectionDisabled(): boolean {
-  return envFlagEnabled('HERMES_WEB_UI_DISABLE_SKILL_INJECTION')
+  return envFlagEnabled('DiTing_WEB_UI_DISABLE_SKILL_INJECTION')
 }
 
 function agentBridgeRequired(): boolean {
-  return envFlagEnabled('HERMES_WEB_UI_REQUIRE_AGENT_BRIDGE')
+  return envFlagEnabled('DiTing_WEB_UI_REQUIRE_AGENT_BRIDGE')
 }
 
 async function startRuntimeServicesBeforeListen(): Promise<void> {
   if (gatewayAutostartDisabled()) {
-    console.log('[bootstrap] profile gateway check disabled by HERMES_WEB_UI_DISABLE_GATEWAY_AUTOSTART')
+    console.log('[bootstrap] profile gateway check disabled by DiTing_WEB_UI_DISABLE_GATEWAY_AUTOSTART')
   } else {
     void ensureProfileGatewaysRunning()
       .then(() => console.log('[bootstrap] profile gateways checked'))
@@ -204,7 +204,7 @@ async function startRuntimeServicesBeforeListen(): Promise<void> {
 
 function startRuntimeServicesAfterListen(): void {
   if (gatewayAutostartDisabled()) {
-    console.log('[bootstrap] profile gateway check disabled by HERMES_WEB_UI_DISABLE_GATEWAY_AUTOSTART')
+    console.log('[bootstrap] profile gateway check disabled by DiTing_WEB_UI_DISABLE_GATEWAY_AUTOSTART')
   } else {
     void (async () => {
       try {
@@ -252,7 +252,7 @@ function startLanDiscovery(): void {
 }
 
 export async function bootstrap() {
-  console.log(`hermes-web-ui v${APP_VERSION} starting...`)
+  console.log(`DiTing-web-ui v${APP_VERSION} starting...`)
   await mkdir(config.uploadDir, { recursive: true })
   if (shouldCreateWebUiDataDir()) {
     await mkdir(config.dataDir, { recursive: true })
@@ -260,10 +260,10 @@ export async function bootstrap() {
 
   await initLoginLimiter()
   if (skillInjectionDisabled()) {
-    console.log('[bootstrap] bundled skill injection disabled by HERMES_WEB_UI_DISABLE_SKILL_INJECTION')
+    console.log('[bootstrap] bundled skill injection disabled by DiTing_WEB_UI_DISABLE_SKILL_INJECTION')
   } else {
     try {
-      const skillInjector = new HermesSkillInjector()
+      const skillInjector = new DiTingSkillInjector()
       const injectionResult = await skillInjector.injectMissingSkills()
       if (injectionResult.injected.length > 0) {
         logger.info({
@@ -296,7 +296,7 @@ export async function bootstrap() {
 
   const app = new Koa()
   // Initialize all web-ui SQLite tables
-  const { initAllStores } = await import('./db/hermes/init')
+  const { initAllStores } = await import('./db/DiTing/init')
   initAllStores()
   console.log('[bootstrap] all stores initialized')
 
@@ -361,7 +361,7 @@ export async function bootstrap() {
   console.log('[bootstrap] global agent server ready')
 
   // Session deleter — periodically drain pending session deletes
-  const { SessionDeleter } = await import('./services/hermes/session-deleter')
+  const { SessionDeleter } = await import('./services/DiTing/session-deleter')
   const sessionDeleter = SessionDeleter.getInstance()
   const activeProfile = process.env.PROFILE || 'default'
   sessionDeleter.start(activeProfile)
@@ -371,8 +371,8 @@ export async function bootstrap() {
   servers.forEach((httpServer) => {
     httpServer.on('upgrade', (req: any, socket: any) => {
       const url = new URL(req.url || '', `http://${req.headers.host}`)
-      if (url.pathname !== '/api/hermes/terminal' &&
-        url.pathname !== '/api/hermes/kanban/events' &&
+      if (url.pathname !== '/api/DiTing/terminal' &&
+        url.pathname !== '/api/DiTing/kanban/events' &&
         url.pathname !== getLanPeerSocketPath() &&
         !url.pathname.startsWith('/socket.io/')) {
         socket.destroy()
@@ -408,7 +408,7 @@ export async function bootstrap() {
 }
 
 bootstrap().catch((error) => {
-  console.error('FATAL: Failed to start Hermes Web UI')
+  console.error('FATAL: Failed to start DiTing Web UI')
   console.error(error)
   logger.fatal(error, 'Fatal error during bootstrap')
   process.exit(1)

@@ -27,12 +27,12 @@ jobs:
           TAG: ${{ github.event.inputs.tag }}
         run: |
           set -euo pipefail
-          mkdir -p /tmp/hermes-mac-assets
-          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern 'Hermes.Studio-*-arm64.zip' --dir /tmp/hermes-mac-assets
-          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern 'Hermes.Studio-*-arm64.dmg' --dir /tmp/hermes-mac-assets
-          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern 'Hermes.Studio-*-x64.zip' --dir /tmp/hermes-mac-assets
-          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern 'Hermes.Studio-*-x64.dmg' --dir /tmp/hermes-mac-assets
-          ls -lh /tmp/hermes-mac-assets
+          mkdir -p /tmp/DiTing-mac-assets
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern 'DiTing.Studio-*-arm64.zip' --dir /tmp/DiTing-mac-assets
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern 'DiTing.Studio-*-arm64.dmg' --dir /tmp/DiTing-mac-assets
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern 'DiTing.Studio-*-x64.zip' --dir /tmp/DiTing-mac-assets
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern 'DiTing.Studio-*-x64.dmg' --dir /tmp/DiTing-mac-assets
+          ls -lh /tmp/DiTing-mac-assets
 
       - name: Generate merged latest-mac.yml
         shell: bash
@@ -43,13 +43,13 @@ jobs:
           const { readdirSync, readFileSync, statSync, writeFileSync } = require('node:fs')
           const { join } = require('node:path')
 
-          const dir = '/tmp/hermes-mac-assets'
+          const dir = '/tmp/DiTing-mac-assets'
           const names = readdirSync(dir)
           const byKey = new Map()
           let version = null
 
           for (const name of names) {
-            const match = /^Hermes\.Studio-(.+)-(arm64|x64)\.(zip|dmg)$/.exec(name)
+            const match = /^DiTing\.Studio-(.+)-(arm64|x64)\.(zip|dmg)$/.exec(name)
             if (!match) continue
             if (version && version !== match[1]) {
               throw new Error(`Mixed macOS asset versions: ${version} and ${match[1]}`)

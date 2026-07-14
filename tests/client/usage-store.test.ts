@@ -6,7 +6,7 @@ const usageApiMock = vi.hoisted(() => ({
   fetchUsageStats: vi.fn(),
 }))
 
-vi.mock('@/api/hermes/sessions', () => ({
+vi.mock('@/api/DiTing/sessions', () => ({
   fetchUsageStats: usageApiMock.fetchUsageStats,
 }))
 
@@ -51,7 +51,7 @@ describe('usage store analytics adapter', () => {
       ],
     })
 
-    const { useUsageStore } = await import('@/stores/hermes/usage')
+    const { useUsageStore } = await import('@/stores/DiTing/usage')
     const store = useUsageStore()
     await store.loadSessions()
 
@@ -105,7 +105,7 @@ describe('usage store analytics adapter', () => {
   it('allows callers to request a different period', async () => {
     usageApiMock.fetchUsageStats.mockResolvedValue(emptyStats())
 
-    const { useUsageStore } = await import('@/stores/hermes/usage')
+    const { useUsageStore } = await import('@/stores/DiTing/usage')
     const store = useUsageStore()
     await store.loadSessions(7)
 
@@ -121,7 +121,7 @@ describe('usage store analytics adapter', () => {
       if (days === 7) resolve7 = resolve
     }))
 
-    const { useUsageStore } = await import('@/stores/hermes/usage')
+    const { useUsageStore } = await import('@/stores/DiTing/usage')
     const store = useUsageStore()
     const firstLoad = store.loadSessions(30)
     const secondLoad = store.loadSessions(7)
@@ -149,7 +149,7 @@ describe('usage store analytics adapter', () => {
       if (days === 7) resolve7 = resolve
     }))
 
-    const { useUsageStore } = await import('@/stores/hermes/usage')
+    const { useUsageStore } = await import('@/stores/DiTing/usage')
     const store = useUsageStore()
     const firstLoad = store.loadSessions(30)
     const secondLoad = store.loadSessions(7)

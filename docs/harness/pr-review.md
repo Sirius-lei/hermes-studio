@@ -14,7 +14,7 @@ Use this checklist before pushing or updating a pull request.
 - Client code uses shared API helpers and existing UI patterns.
 - Server routes stay thin and delegate reusable behavior to controllers/services.
 - Web UI state uses `config.appHome` or documented helpers.
-- Hermes Agent state and Web UI state remain separate.
+- DiTing Agent state and Web UI state remain separate.
 - Subprocess calls use argument arrays instead of shell string construction.
 
 ## Tests And Validation

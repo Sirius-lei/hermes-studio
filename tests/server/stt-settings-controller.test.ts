@@ -21,9 +21,9 @@ describe('stt settings controller', () => {
   })
 
   async function initController() {
-    const schemas = await import('../../packages/server/src/db/hermes/schemas')
-    schemas.initAllHermesTables()
-    return await import('../../packages/server/src/controllers/hermes/stt')
+    const schemas = await import('../../packages/server/src/db/DiTing/schemas')
+    schemas.initAllDiTingTables()
+    return await import('../../packages/server/src/controllers/DiTing/stt')
   }
 
   function makeCtx(user: any | null, body: any = {}, params: Record<string, string> = {}, query: Record<string, string> = {}) {
@@ -281,8 +281,8 @@ describe('stt routes', () => {
   beforeEach(() => {
     vi.resetModules()
     vi.clearAllMocks()
-    vi.doUnmock('../../packages/server/src/routes/hermes/stt')
-    vi.doUnmock('../../packages/server/src/controllers/hermes/stt')
+    vi.doUnmock('../../packages/server/src/routes/DiTing/stt')
+    vi.doUnmock('../../packages/server/src/controllers/DiTing/stt')
   })
 
   it('registers the protected STT settings and transcribe routes', async () => {
@@ -297,7 +297,7 @@ describe('stt routes', () => {
     const mcuVoiceTurn = vi.fn(async (ctx: any) => { ctx.body = { route: 'mcuVoiceTurn' } })
     const transcribe = vi.fn(async (ctx: any) => { ctx.body = { route: 'transcribe' } })
 
-    vi.doMock('../../packages/server/src/controllers/hermes/stt', () => ({
+    vi.doMock('../../packages/server/src/controllers/DiTing/stt', () => ({
       listSettings,
       saveActiveProvider,
       saveSettings,
@@ -310,23 +310,23 @@ describe('stt routes', () => {
       transcribe,
     }))
 
-    const { sttProtectedRoutes } = await import('../../packages/server/src/routes/hermes/stt')
+    const { sttProtectedRoutes } = await import('../../packages/server/src/routes/DiTing/stt')
     const protectedPaths = sttProtectedRoutes.stack.map((entry: any) => entry.path)
 
     expect(protectedPaths).toEqual(expect.arrayContaining([
-      '/api/hermes/stt/settings',
-      '/api/hermes/stt/profile-status',
-      '/api/hermes/stt/profile-status/missing-audio',
-      '/api/hermes/mcu/voice-turn',
-      '/api/hermes/stt/settings/active',
-      '/api/hermes/stt/settings/:provider',
-      '/api/hermes/stt/settings/:provider',
-      '/api/hermes/stt/settings/:provider/base-url-preset',
-      '/api/hermes/stt/settings/:provider/secret/:secretName',
-      '/api/hermes/stt/transcribe',
+      '/api/DiTing/stt/settings',
+      '/api/DiTing/stt/profile-status',
+      '/api/DiTing/stt/profile-status/missing-audio',
+      '/api/DiTing/mcu/voice-turn',
+      '/api/DiTing/stt/settings/active',
+      '/api/DiTing/stt/settings/:provider',
+      '/api/DiTing/stt/settings/:provider',
+      '/api/DiTing/stt/settings/:provider/base-url-preset',
+      '/api/DiTing/stt/settings/:provider/secret/:secretName',
+      '/api/DiTing/stt/transcribe',
     ]))
 
-    const transcribeLayer: any = sttProtectedRoutes.stack.find((entry: any) => entry.path === '/api/hermes/stt/transcribe')
+    const transcribeLayer: any = sttProtectedRoutes.stack.find((entry: any) => entry.path === '/api/DiTing/stt/transcribe')
     const ctx: any = { request: { body: {} }, body: null }
 
     await transcribeLayer.stack[0](ctx, undefined)

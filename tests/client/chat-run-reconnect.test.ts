@@ -86,7 +86,7 @@ describe('chat-run socket reconnect handling', () => {
   })
 
   it('keeps transient mobile disconnects alive and resumes after reconnect', async () => {
-    const { startRunViaSocket } = await import('../../packages/client/src/api/hermes/chat')
+    const { startRunViaSocket } = await import('../../packages/client/src/api/DiTing/chat')
     const onEvent = vi.fn()
     const onDone = vi.fn()
     const onError = vi.fn()
@@ -123,7 +123,7 @@ describe('chat-run socket reconnect handling', () => {
   })
 
   it('keeps concurrent resume callbacks scoped to their requested session', async () => {
-    const { resumeSession } = await import('../../packages/client/src/api/hermes/chat')
+    const { resumeSession } = await import('../../packages/client/src/api/DiTing/chat')
     const onSessionA = vi.fn()
     const onSessionB = vi.fn()
 
@@ -146,7 +146,7 @@ describe('chat-run socket reconnect handling', () => {
   })
 
   it('keeps fatal disconnects fatal and removes per-run listeners', async () => {
-    const { startRunViaSocket } = await import('../../packages/client/src/api/hermes/chat')
+    const { startRunViaSocket } = await import('../../packages/client/src/api/DiTing/chat')
     const onError = vi.fn()
 
     startRunViaSocket(
@@ -167,7 +167,7 @@ describe('chat-run socket reconnect handling', () => {
   })
 
   it('does not attach extra reconnect listeners when the session already has handlers', async () => {
-    const { startRunViaSocket } = await import('../../packages/client/src/api/hermes/chat')
+    const { startRunViaSocket } = await import('../../packages/client/src/api/DiTing/chat')
     const body = { session_id: 'session-1', input: 'hello', profile: 'default', source: 'cli' as const }
 
     startRunViaSocket(body, vi.fn(), vi.fn(), vi.fn())
@@ -182,7 +182,7 @@ describe('chat-run socket reconnect handling', () => {
   })
 
   it('fans session.command events to run-local and global handlers', async () => {
-    const { onSessionCommand, startRunViaSocket } = await import('../../packages/client/src/api/hermes/chat')
+    const { onSessionCommand, startRunViaSocket } = await import('../../packages/client/src/api/DiTing/chat')
     const onEvent = vi.fn()
     const onGlobalCommand = vi.fn()
     const offGlobalCommand = onSessionCommand(onGlobalCommand)

@@ -2,6 +2,6 @@
 .gitignore
 node_modules
 dist
-hermes_data
+DiTing_data
 *.log
 .DS_Store

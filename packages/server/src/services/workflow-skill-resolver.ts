@@ -2,9 +2,9 @@ import { homedir } from 'os'
 import { join, resolve } from 'path'
 import { readdir, realpath } from 'fs/promises'
 import { readConfigYamlForProfile, safeReadFile } from './config-helpers'
-import { getProfileDir } from './hermes/hermes-profile'
+import { getProfileDir } from './DiTing/DiTing-profile'
 
-export type WorkflowSkillTarget = 'hermes' | 'claude' | 'codex'
+export type WorkflowSkillTarget = 'DiTing' | 'claude' | 'codex'
 
 export interface ResolvedWorkflowSkill {
   name: string
@@ -16,7 +16,7 @@ export interface ResolvedWorkflowSkill {
 function targetForAgent(agent?: string | null): WorkflowSkillTarget {
   if (agent === 'claude-code') return 'claude'
   if (agent === 'codex') return 'codex'
-  return 'hermes'
+  return 'DiTing'
 }
 
 function expandConfiguredPath(value: string): string {
@@ -59,7 +59,7 @@ async function findSkillDirByName(rootDir: string, skillName: string, visited = 
   return null
 }
 
-async function configuredHermesSkillRoots(profile: string): Promise<string[]> {
+async function configuredDiTingSkillRoots(profile: string): Promise<string[]> {
   const localSkillsDir = join(getProfileDir(profile || 'default'), 'skills')
   const config = await readConfigYamlForProfile(profile || 'default').catch(() => ({} as Record<string, any>))
   const rawDirs = config.skills?.external_dirs
@@ -83,7 +83,7 @@ async function configuredHermesSkillRoots(profile: string): Promise<string[]> {
 }
 
 async function skillRootsForTarget(target: WorkflowSkillTarget, profile: string): Promise<string[]> {
-  if (target === 'hermes') return configuredHermesSkillRoots(profile)
+  if (target === 'DiTing') return configuredDiTingSkillRoots(profile)
   if (target === 'claude') return [join(homedir(), '.claude', 'skills')]
   return [
     join(homedir(), '.agents', 'skills'),

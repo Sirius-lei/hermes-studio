@@ -17,8 +17,8 @@ export interface CapabilityCatalogRecord {
   deliveryMode: 'remote_zip' | 'reference'
 }
 
-const SKILL_CENTER_KEY = 'hermes.subAgentSkillCenter.v1'
-const TOOL_CENTER_KEY = 'hermes.subAgentToolCenter.v1'
+const SKILL_CENTER_KEY = 'DiTing.subAgentSkillCenter.v1'
+const TOOL_CENTER_KEY = 'DiTing.subAgentToolCenter.v1'
 
 const DEFAULT_SKILL_CENTER: CapabilityCatalogRecord[] = [
   {

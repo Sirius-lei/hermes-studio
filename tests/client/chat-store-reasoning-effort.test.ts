@@ -8,7 +8,7 @@ const chatApi = vi.hoisted(() => ({
   getChatRunSocket: vi.fn(() => ({ emit: vi.fn() })),
 }))
 
-vi.mock('@/api/hermes/chat', () => ({
+vi.mock('@/api/DiTing/chat', () => ({
   startRunViaSocket: vi.fn(),
   resumeSession: vi.fn(),
   registerSessionHandlers: chatApi.registerSessionHandlers,
@@ -25,14 +25,14 @@ vi.mock('@/api/client', () => ({
   getActiveProfileName: () => 'default',
 }))
 
-vi.mock('@/api/hermes/sessions', () => ({
+vi.mock('@/api/DiTing/sessions', () => ({
   deleteSession: vi.fn(),
   fetchSession: vi.fn(),
   fetchSessions: vi.fn(),
   setSessionModel: vi.fn(),
 }))
 
-vi.mock('@/api/hermes/download', () => ({
+vi.mock('@/api/DiTing/download', () => ({
   getDownloadUrl: (_path: string, name: string) => `/download/${name}`,
 }))
 
@@ -41,7 +41,7 @@ vi.mock('@/utils/completion-sound', () => ({
   playCompletionSound: vi.fn(),
 }))
 
-import { useChatStore, type Session } from '@/stores/hermes/chat'
+import { useChatStore, type Session } from '@/stores/DiTing/chat'
 
 function makeSession(id = 'session-1'): Session {
   return {
@@ -53,7 +53,7 @@ function makeSession(id = 'session-1'): Session {
   }
 }
 
-const LS_PREFIX = 'hermes:reasoning_effort:'
+const LS_PREFIX = 'DiTing:reasoning_effort:'
 
 describe('chat store per-session reasoning effort', () => {
   beforeEach(() => {

@@ -15,13 +15,13 @@ vi.mock('../../packages/server/src/services/logger', () => ({
   },
 }))
 
-vi.mock('../../packages/server/src/db/hermes/compression-snapshot', () => ({
+vi.mock('../../packages/server/src/db/DiTing/compression-snapshot', () => ({
   getCompressionSnapshot: getCompressionSnapshotMock,
   saveCompressionSnapshot: saveCompressionSnapshotMock,
   deleteCompressionSnapshot: deleteCompressionSnapshotMock,
 }))
 
-vi.mock('../../packages/server/src/services/hermes/agent-bridge', () => ({
+vi.mock('../../packages/server/src/services/DiTing/agent-bridge', () => ({
   AgentBridgeClient: class {
     request = bridgeRequestMock
     destroy = bridgeDestroyMock

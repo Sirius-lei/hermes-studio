@@ -39,7 +39,7 @@
     - `description`
     - `type`（理解 / 检索 / 规划 / 调用子智能体 / 汇总 / 交付）
     - `status`（pending / running / completed / failed / skipped）
-    - `owner`（Hermes / sub-agent id）
+    - `owner`（DiTing / sub-agent id）
     - `depends_on`
     - `output_summary`
     - `error`

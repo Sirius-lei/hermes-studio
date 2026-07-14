@@ -3,27 +3,27 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { join } from 'path'
 import { tmpdir } from 'os'
 
-let hermesHome = ''
+let DiTingHome = ''
 
-function writeHermesFile(path: string, content: string) {
-  mkdirSync(hermesHome, { recursive: true })
-  writeFileSync(join(hermesHome, path), content)
+function writeDiTingFile(path: string, content: string) {
+  mkdirSync(DiTingHome, { recursive: true })
+  writeFileSync(join(DiTingHome, path), content)
 }
 
 function writeConfigYaml(content: string) {
-  writeHermesFile('config.yaml', content)
+  writeDiTingFile('config.yaml', content)
 }
 
 function writeEnv(content = '') {
-  writeHermesFile('.env', content)
+  writeDiTingFile('.env', content)
 }
 
 function writeAuthJson(auth: Record<string, unknown>, path = 'auth.json') {
-  writeHermesFile(path, JSON.stringify(auth, null, 2))
+  writeDiTingFile(path, JSON.stringify(auth, null, 2))
 }
 
 function readAuthJson(path = 'auth.json') {
-  return JSON.parse(readFileSync(join(hermesHome, path), 'utf-8'))
+  return JSON.parse(readFileSync(join(DiTingHome, path), 'utf-8'))
 }
 
 function makeCtx(profile?: string): any {
@@ -43,11 +43,11 @@ async function loadModelsController() {
   vi.doMock('../../packages/server/src/services/app-config', () => ({
     readAppConfig: vi.fn().mockResolvedValue({}),
   }))
-  vi.doMock('../../packages/server/src/services/hermes/copilot-models', () => ({
+  vi.doMock('../../packages/server/src/services/DiTing/copilot-models', () => ({
     getCopilotModelsDetailed: vi.fn().mockResolvedValue([]),
     resolveCopilotOAuthToken: vi.fn().mockResolvedValue(''),
   }))
-  return import('../../packages/server/src/controllers/hermes/models')
+  return import('../../packages/server/src/controllers/DiTing/models')
 }
 
 async function loadCodexAuthController() {
@@ -55,26 +55,26 @@ async function loadCodexAuthController() {
   vi.doMock('../../packages/server/src/services/logger', () => ({
     logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn() },
   }))
-  return import('../../packages/server/src/controllers/hermes/codex-auth')
+  return import('../../packages/server/src/controllers/DiTing/codex-auth')
 }
 
 describe('OpenAI Codex credential pool auth compatibility', () => {
   beforeEach(() => {
-    hermesHome = mkdtempSync(join(tmpdir(), 'hwui-codex-pool-'))
-    process.env.HERMES_HOME = hermesHome
-    process.env.CODEX_HOME = join(hermesHome, 'codex-home')
+    DiTingHome = mkdtempSync(join(tmpdir(), 'hwui-codex-pool-'))
+    process.env.DiTing_HOME = DiTingHome
+    process.env.CODEX_HOME = join(DiTingHome, 'codex-home')
     writeConfigYaml('model:\n  default: gpt-5.5\n  provider: openai-codex\n')
     writeEnv('')
   })
 
   afterEach(() => {
     vi.doUnmock('../../packages/server/src/services/app-config')
-    vi.doUnmock('../../packages/server/src/services/hermes/copilot-models')
+    vi.doUnmock('../../packages/server/src/services/DiTing/copilot-models')
     vi.doUnmock('../../packages/server/src/services/logger')
-    delete process.env.HERMES_HOME
+    delete process.env.DiTing_HOME
     delete process.env.CODEX_HOME
-    if (hermesHome) rmSync(hermesHome, { recursive: true, force: true })
-    hermesHome = ''
+    if (DiTingHome) rmSync(DiTingHome, { recursive: true, force: true })
+    DiTingHome = ''
   })
 
   it('lists OpenAI Codex models when auth.json only has credential_pool entries', async () => {
@@ -128,7 +128,7 @@ describe('OpenAI Codex credential pool auth compatibility', () => {
   })
 
   it('reports Codex status from the request-scoped profile', async () => {
-    mkdirSync(join(hermesHome, 'profiles', 'research'), { recursive: true })
+    mkdirSync(join(DiTingHome, 'profiles', 'research'), { recursive: true })
     writeAuthJson({ version: 1, providers: {}, credential_pool: {} })
     writeAuthJson({
       version: 1,
@@ -149,12 +149,12 @@ describe('OpenAI Codex credential pool auth compatibility', () => {
   })
 
   it('persists Codex OAuth credentials in the request-scoped profile only', async () => {
-    mkdirSync(join(hermesHome, 'profiles', 'research'), { recursive: true })
+    mkdirSync(join(DiTingHome, 'profiles', 'research'), { recursive: true })
 
     const { saveCodexOAuthTokensForProfile } = await loadCodexAuthController()
     saveCodexOAuthTokensForProfile('research', 'research-access-token', 'research-refresh-token')
 
-    expect(existsSync(join(hermesHome, 'auth.json'))).toBe(false)
+    expect(existsSync(join(DiTingHome, 'auth.json'))).toBe(false)
     const auth = readAuthJson('profiles/research/auth.json')
     expect(auth.providers['openai-codex'].tokens.access_token).toBe('research-access-token')
     expect(auth.credential_pool['openai-codex'][0].access_token).toBe('research-access-token')

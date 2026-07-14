@@ -8,8 +8,8 @@ import { useTheme } from '@/composables/useTheme'
 import AppSidebar from '@/components/layout/AppSidebar.vue'
 import DesktopTitleBar from '@/components/layout/DesktopTitleBar.vue'
 import { useKeyboard } from '@/composables/useKeyboard'
-import { useAppStore } from '@/stores/hermes/app'
-import SessionSearchModal from '@/components/hermes/chat/SessionSearchModal.vue'
+import { useAppStore } from '@/stores/DiTing/app'
+import SessionSearchModal from '@/components/DiTing/chat/SessionSearchModal.vue'
 import AuthEventListener from '@/components/auth/AuthEventListener.vue'
 import DefaultCredentialPrompt from '@/components/auth/DefaultCredentialPrompt.vue'
 
@@ -23,7 +23,7 @@ const naiveTheme = computed(() => isDark.value ? darkTheme : null)
 
 const isLoginPage = computed(() => route.name === 'login')
 const usesPageSidebar = computed(() =>
-  ['hermes.chat', 'hermes.session', 'hermes.history', 'hermes.historySession', 'hermes.globalAgent', 'hermes.globalAgentSession', 'hermes.groupChat', 'hermes.groupChatRoom', 'hermes.workflow'].includes(route.name as string),
+  ['DiTing.chat', 'DiTing.session', 'DiTing.history', 'DiTing.historySession', 'DiTing.globalAgent', 'DiTing.globalAgentSession', 'DiTing.groupChat', 'DiTing.groupChatRoom', 'DiTing.workflow'].includes(route.name as string),
 )
 const showAppSidebar = computed(() => !isLoginPage.value && !usesPageSidebar.value)
 const showMobileMenuButton = computed(() => !isLoginPage.value && (showAppSidebar.value || usesPageSidebar.value))
@@ -35,16 +35,16 @@ const nodeVersionLow = computed(() => {
 })
 
 const isDesktopShell = computed(() =>
-  (window as typeof window & { hermesDesktop?: { isDesktop?: boolean } }).hermesDesktop?.isDesktop === true,
+  (window as typeof window & { DiTingDesktop?: { isDesktop?: boolean } }).DiTingDesktop?.isDesktop === true,
 )
 const hasDesktopTitleBar = computed(() => {
-  const platform = (window as typeof window & { hermesDesktop?: { platform?: string } }).hermesDesktop?.platform
+  const platform = (window as typeof window & { DiTingDesktop?: { platform?: string } }).DiTingDesktop?.platform
   return isDesktopShell.value && (platform === 'darwin' || platform === 'win32')
 })
 
 function handleMobileMenuClick() {
   if (usesPageSidebar.value) {
-    window.dispatchEvent(new CustomEvent('hermes:open-page-sidebar'))
+    window.dispatchEvent(new CustomEvent('DiTing:open-page-sidebar'))
     return
   }
   appStore.toggleSidebar()

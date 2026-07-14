@@ -3,7 +3,7 @@
 PlatformIO source project for the ESP32-C3 Wi-Fi setup firmware.
 
 This firmware is intentionally minimal: it manages Wi-Fi provisioning, keeps the
-I2C OLED status/animation UI, and shows a device tab that can discover Hermes Web
+I2C OLED status/animation UI, and shows a device tab that can discover DiTing Web
 UI and desktop endpoints on the LAN. Voice, pairing, relay, webhook, OTA, and
 audio codec flows are currently removed.
 
@@ -38,9 +38,9 @@ begins.
 ## First Boot
 
 1. The device tries the saved Wi-Fi credentials first.
-2. If Wi-Fi is missing or connection fails, it starts the open `HStudio-WIFI`
+2. If Wi-Fi is missing or connection fails, it starts the open `DiTing-WIFI`
    setup hotspot.
-3. Join `HStudio-WIFI` and open `http://192.168.4.1/`.
+3. Join `DiTing-WIFI` and open `http://192.168.4.1/`.
 4. Select the target Wi-Fi SSID from the scanned list, or enter it manually,
    then enter the password and save.
 5. The setup page connects once, shows the router-assigned IP, opens that IP,
@@ -51,13 +51,13 @@ Use `/clear` from the device page to clear saved Wi-Fi and return to setup mode.
 ## LAN Device Discovery
 
 After Wi-Fi is connected, open the device page and use the `设备` tab. The
-firmware sends a UDP `hermes.discover` probe to the fixed Hermes discovery port
-`48640`. Hermes Web UI and desktop responders return `hermes.announce` payloads
+firmware sends a UDP `DiTing.discover` probe to the fixed DiTing discovery port
+`48640`. DiTing Web UI and desktop responders return `DiTing.announce` payloads
 with their `endpoint_kind` (`web`, `desktop`, or `custom`) and HTTP port, so Web
 and desktop endpoints are listed separately.
 
 The device tab also includes an MCU login flow. Select a discovered or manually
-added endpoint, enter the Hermes account and password, and the firmware posts to
+added endpoint, enter the DiTing account and password, and the firmware posts to
 `/api/auth/mcu-login`. On success it shows the returned profile list, stores the
 selected profile locally, and connects to the selected Web UI `/global-agent`
 Socket.IO namespace with the returned login token.

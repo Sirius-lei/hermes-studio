@@ -7,7 +7,7 @@ const mockFetchPendingWriteReview = vi.hoisted(() => vi.fn())
 const mockApprovePendingWrite = vi.hoisted(() => vi.fn())
 const mockRejectPendingWrite = vi.hoisted(() => vi.fn())
 
-vi.mock('@/api/hermes/write-gate', () => ({
+vi.mock('@/api/DiTing/write-gate', () => ({
   fetchPendingWrites: mockFetchPendingWrites,
   fetchPendingWriteReview: mockFetchPendingWriteReview,
   approvePendingWrite: mockApprovePendingWrite,
@@ -31,7 +31,7 @@ vi.mock('naive-ui', async () => {
   }
 })
 
-import PendingWriteApprovals from '@/components/hermes/skills/PendingWriteApprovals.vue'
+import PendingWriteApprovals from '@/components/DiTing/skills/PendingWriteApprovals.vue'
 
 function mountComponent() {
   return mount(PendingWriteApprovals, {
@@ -68,7 +68,7 @@ describe('PendingWriteApprovals', () => {
     mockRejectPendingWrite.mockResolvedValue({ output: 'rejected' })
   })
 
-  it('shows an unsupported state for older Hermes Agent versions', async () => {
+  it('shows an unsupported state for older DiTing Agent versions', async () => {
     mockFetchPendingWrites.mockResolvedValue({ records: [], counts: { memory: 0, skills: 0 }, supported: false })
 
     const wrapper = mountComponent()

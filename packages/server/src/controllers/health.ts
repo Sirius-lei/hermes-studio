@@ -1,8 +1,9 @@
 import { existsSync, readFileSync } from 'fs'
 import { resolve } from 'path'
-import * as hermesCli from '../services/hermes/hermes-cli'
-import { getAgentBridgeManager } from '../services/hermes/agent-bridge/manager'
-import { redactAgentBridgeError } from '../services/hermes/agent-bridge/redact'
+import * as DiTingCli from '../services/DiTing/DiTing-cli'
+import { getAgentBridgeManager } from '../services/DiTing/agent-bridge/manager'
+import { redactAgentBridgeError } from '../services/DiTing/agent-bridge/redact'
+import { normalizeDiTingAgentVersion } from '../services/system-info'
 
 declare const __APP_VERSION__: string
 
@@ -70,15 +71,15 @@ let pendingAgentBridgeHealthRefresh: Promise<AgentBridgeHealthPayload> | null = 
 /**
  * Whether the periodic npm-registry version check is disabled.
  *
- * Useful when hermes-web-ui is bundled inside a packaged distribution
- * (e.g. a desktop app) where the user can't `npm install -g hermes-web-ui@latest`
+ * Useful when DiTing-web-ui is bundled inside a packaged distribution
+ * (e.g. a desktop app) where the user can't `npm install -g DiTing-web-ui@latest`
  * to upgrade — the "update available" prompt would be misleading and
  * the periodic outbound HTTP request to the npm registry is unnecessary.
  *
- * Set HERMES_WEB_UI_DISABLE_UPDATE_CHECK=true (or 1, on, yes) to disable.
+ * Set DiTing_WEB_UI_DISABLE_UPDATE_CHECK=true (or 1, on, yes) to disable.
  */
 function isUpdateCheckDisabled(): boolean {
-  const raw = (process.env.HERMES_WEB_UI_DISABLE_UPDATE_CHECK || '').trim().toLowerCase()
+  const raw = (process.env.DiTing_WEB_UI_DISABLE_UPDATE_CHECK || '').trim().toLowerCase()
   return raw === 'true' || raw === '1' || raw === 'on' || raw === 'yes'
 }
 
@@ -105,7 +106,7 @@ function isNewerVersion(candidate: string, current: string): boolean {
 export async function checkLatestVersion(): Promise<void> {
   if (isUpdateCheckDisabled()) return
   try {
-    const packageName = PACKAGE_INFO?.name || 'hermes-web-ui'
+    const packageName = PACKAGE_INFO?.name || 'DiTing-web-ui'
     const registryName = encodeURIComponent(packageName)
     const res = await fetch(`https://registry.npmjs.org/${registryName}/latest`, { signal: AbortSignal.timeout(10000) })
     if (res.ok) {
@@ -188,13 +189,13 @@ async function refreshAgentBridgeHealth(): Promise<AgentBridgeHealthPayload> {
 }
 
 export async function healthCheck(ctx: any) {
-  const raw = await hermesCli.getVersion()
-  const hermesVersion = raw.split('\n')[0].replace('Hermes Agent ', '') || ''
+  const raw = await DiTingCli.getVersion()
+  const DiTingVersion = normalizeDiTingAgentVersion(raw)
   const agentBridge = await getAgentBridgeHealth()
   ctx.body = {
     status: 'ok',
-    platform: 'hermes-agent',
-    version: hermesVersion,
+    platform: 'DiTing-agent',
+    version: DiTingVersion,
     gateway: 'running',
     webui_version: LOCAL_VERSION,
     webui_latest: isUpdateCheckDisabled() ? '' : cachedLatestVersion,

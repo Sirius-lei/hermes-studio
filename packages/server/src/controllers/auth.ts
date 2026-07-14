@@ -21,9 +21,9 @@ import {
   type UserRole,
   type UserRecord,
   type UserStatus,
-} from '../db/hermes/users-store'
+} from '../db/DiTing/users-store'
 import { issueUserJwt } from '../middleware/user-auth'
-import { listProfileNamesFromDisk } from '../services/hermes/hermes-profile'
+import { listProfileNamesFromDisk } from '../services/DiTing/DiTing-profile'
 import { startOutboundRelayClient, stopOutboundRelayClient } from '../services/global-agent/outbound-relay-client'
 
 /**
@@ -59,7 +59,7 @@ export async function currentUser(ctx: Context) {
       updated_at: user.updated_at,
       last_login_at: user.last_login_at,
       avatar: user.avatar || '',
-      requiresCredentialChange: process.env.HERMES_DESKTOP === 'true'
+      requiresCredentialChange: process.env.DiTing_DESKTOP === 'true'
         ? false
         : user.username === DEFAULT_USERNAME && verifyPassword(DEFAULT_PASSWORD, user.password_hash),
     },
@@ -239,7 +239,7 @@ function requestBaseUrl(ctx: Context): string | undefined {
 /**
  * POST /api/auth/mcu-login
  * Authenticate with the existing username/password login for an MCU/device.
- * When a legacy relay URL is provided, connect this Hermes Studio instance to it.
+ * When a legacy relay URL is provided, connect this DiTing Studio instance to it.
  * Body: { token, id, account, password, url? }.
  */
 export async function microcontrollerLogin(ctx: Context) {

@@ -3,17 +3,17 @@ import { computed, onMounted, ref } from 'vue'
 
 type WindowControlAction = 'minimize' | 'toggle-maximize' | 'close'
 
-interface HermesDesktopBridge {
+interface DiTingDesktopBridge {
   platform?: string
   getWindowState?: () => Promise<{ isMaximized: boolean }>
   windowControl?: (action: WindowControlAction) => Promise<{ isMaximized: boolean }>
 }
 
-type WindowWithHermesDesktop = Window & typeof globalThis & {
-  hermesDesktop?: HermesDesktopBridge
+type WindowWithDiTingDesktop = Window & typeof globalThis & {
+  DiTingDesktop?: DiTingDesktopBridge
 }
 
-const desktop = (window as WindowWithHermesDesktop).hermesDesktop
+const desktop = (window as WindowWithDiTingDesktop).DiTingDesktop
 const platform = desktop?.platform
 const isMac = computed(() => platform === 'darwin')
 const showTitleBar = computed(() => platform === 'darwin' || platform === 'win32')

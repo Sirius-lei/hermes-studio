@@ -1,9 +1,9 @@
 import { expect, test } from '@playwright/test'
-import { authenticate, mockHermesApi, TEST_ACCESS_KEY } from './fixtures'
+import { authenticate, mockDiTingApi, TEST_ACCESS_KEY } from './fixtures'
 
 test('fetches custom provider models through the backend proxy', async ({ page }) => {
   await authenticate(page, TEST_ACCESS_KEY)
-  const api = await mockHermesApi(page)
+  const api = await mockDiTingApi(page)
 
   const thirdPartyRequests: string[] = []
   page.on('request', (request) => {
@@ -13,7 +13,7 @@ test('fetches custom provider models through the backend proxy', async ({ page }
     }
   })
 
-  await page.goto('/#/hermes/models')
+  await page.goto('/#/DiTing/models')
 
   await page.getByRole('button', { name: 'Add Provider' }).click()
   await page.getByRole('button', { name: 'Custom' }).click()
@@ -24,7 +24,7 @@ test('fetches custom provider models through the backend proxy', async ({ page }
   await expect(page.getByText('Found 2 models')).toBeVisible()
   await expect(page.getByText('proxy-model-a')).toBeVisible()
 
-  const proxyRequest = api.requests.find((request) => request.pathname === '/api/hermes/provider-models')
+  const proxyRequest = api.requests.find((request) => request.pathname === '/api/DiTing/provider-models')
   expect(proxyRequest).toBeTruthy()
   expect(proxyRequest?.method).toBe('POST')
   expect(proxyRequest?.headers.authorization).toBe(`Bearer ${TEST_ACCESS_KEY}`)

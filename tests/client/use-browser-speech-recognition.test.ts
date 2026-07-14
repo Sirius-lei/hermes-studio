@@ -139,10 +139,10 @@ describe('useBrowserSpeechRecognition', () => {
     expect(instance.stopCalls).toBe(1)
     expect(recognition.status.value).toBe('stopping')
 
-    instance.emitResult([{ transcript: '  hello   hermes ', isFinal: true }])
+    instance.emitResult([{ transcript: '  hello   DiTing ', isFinal: true }])
     instance.emitEnd()
 
-    await expect(stopPromise).resolves.toBe('hello hermes')
+    await expect(stopPromise).resolves.toBe('hello DiTing')
     expect(recognition.status.value).toBe('idle')
   })
 

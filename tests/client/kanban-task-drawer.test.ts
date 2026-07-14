@@ -37,11 +37,11 @@ vi.mock('@/api/client', () => ({
   request: mockRequest,
 }))
 
-vi.mock('@/api/hermes/kanban', () => ({
+vi.mock('@/api/DiTing/kanban', () => ({
   getTask: mockGetTask,
 }))
 
-vi.mock('@/stores/hermes/kanban', () => ({
+vi.mock('@/stores/DiTing/kanban', () => ({
   useKanbanStore: () => ({
     selectedBoard: 'project-a',
     assignees: [{ name: 'alice', counts: { todo: 1 } }, { name: 'bob', counts: { ready: 1 } }],
@@ -58,7 +58,7 @@ vi.mock('@/stores/hermes/kanban', () => ({
   }),
 }))
 
-vi.mock('@/components/hermes/chat/HistoryMessageList.vue', () => ({
+vi.mock('@/components/DiTing/chat/HistoryMessageList.vue', () => ({
   default: defineComponent({
     name: 'HistoryMessageList',
     props: { session: { type: Object, required: false } },
@@ -108,7 +108,7 @@ vi.mock('naive-ui', () => ({
   useMessage: mockUseMessage,
 }))
 
-import KanbanTaskDrawer from '@/components/hermes/kanban/KanbanTaskDrawer.vue'
+import KanbanTaskDrawer from '@/components/DiTing/kanban/KanbanTaskDrawer.vue'
 
 describe('KanbanTaskDrawer', () => {
   beforeEach(() => {
@@ -144,7 +144,7 @@ describe('KanbanTaskDrawer', () => {
       runs: [{ id: 1, profile: 'alice', status: 'done', started_at: 110, ended_at: 120 }],
       session: {
         id: 'session-1',
-        title: 'Hermes session',
+        title: 'DiTing session',
         source: 'codex',
         model: 'gpt-5.5',
         started_at: 110,
@@ -217,9 +217,9 @@ describe('KanbanTaskDrawer', () => {
     await sessionsTitle?.trigger('click')
     await flushPromises()
 
-    expect(mockRequest).toHaveBeenCalledWith('/api/hermes/kanban/search-sessions?task_id=task-2&profile=fresh&board=project-a')
+    expect(mockRequest).toHaveBeenCalledWith('/api/DiTing/kanban/search-sessions?task_id=task-2&profile=fresh&board=project-a')
     await wrapper.find('.session-item').trigger('click')
-    expect(mockRouterPush).toHaveBeenCalledWith({ name: 'hermes.chat', query: { session: 'session-2' } })
+    expect(mockRouterPush).toHaveBeenCalledWith({ name: 'DiTing.chat', query: { session: 'session-2' } })
   })
 
   it('renders task run history through a paged window', async () => {

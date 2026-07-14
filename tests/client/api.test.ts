@@ -7,16 +7,16 @@ vi.stubGlobal('fetch', mockFetch)
 // vi.mock is hoisted, so mockReplace must be inside the factory
 vi.mock('@/router', () => ({
   default: {
-    currentRoute: { value: { name: 'hermes.chat' } },
+    currentRoute: { value: { name: 'DiTing.chat' } },
     replace: vi.fn(),
   },
 }))
 
 import { getApiKey, setApiKey, clearApiKey, hasApiKey, getStoredUserRole, isStoredSuperAdmin, request } from '../../packages/client/src/api/client'
-import { getDownloadUrl } from '../../packages/client/src/api/hermes/download'
-import { uploadFiles } from '../../packages/client/src/api/hermes/files'
-import { importSkill } from '../../packages/client/src/api/hermes/skills'
-import { batchDeleteSessions, importHermesSession } from '../../packages/client/src/api/hermes/sessions'
+import { getDownloadUrl } from '../../packages/client/src/api/DiTing/download'
+import { uploadFiles } from '../../packages/client/src/api/DiTing/files'
+import { importSkill } from '../../packages/client/src/api/DiTing/skills'
+import { batchDeleteSessions, importDiTingSession } from '../../packages/client/src/api/DiTing/sessions'
 import router from '@/router'
 
 function fakeJwt(payload: Record<string, unknown>) {
@@ -70,7 +70,7 @@ describe('API Client', () => {
       setApiKey('secret-key')
       mockFetch.mockResolvedValue({ ok: true, status: 200, json: () => ({ data: 1 }) })
 
-      await request('/api/hermes/sessions')
+      await request('/api/DiTing/sessions')
 
       expect(mockFetch).toHaveBeenCalledOnce()
       const [, options] = mockFetch.mock.calls[0]
@@ -78,29 +78,29 @@ describe('API Client', () => {
     })
 
     it('adds the active profile header, including default', async () => {
-      localStorage.setItem('hermes_active_profile_name', 'default')
+      localStorage.setItem('DiTing_active_profile_name', 'default')
       mockFetch.mockResolvedValue({ ok: true, status: 200, json: () => ({ data: 1 }) })
 
-      await request('/api/hermes/sessions/session-1')
+      await request('/api/DiTing/sessions/session-1')
 
       const [, options] = mockFetch.mock.calls[0]
-      expect(options.headers['X-Hermes-Profile']).toBe('default')
+      expect(options.headers['X-DiTing-Profile']).toBe('default')
     })
 
     it('does not add the active profile header to profile-wide session collection requests', async () => {
-      localStorage.setItem('hermes_active_profile_name', 'research')
+      localStorage.setItem('DiTing_active_profile_name', 'research')
       mockFetch.mockResolvedValue({ ok: true, status: 200, json: () => ({ data: 1 }) })
 
-      await request('/api/hermes/sessions')
+      await request('/api/DiTing/sessions')
 
       const [, options] = mockFetch.mock.calls[0]
-      expect(options.headers['X-Hermes-Profile']).toBeUndefined()
+      expect(options.headers['X-DiTing-Profile']).toBeUndefined()
     })
 
     it('does not add Authorization header when no token', async () => {
       mockFetch.mockResolvedValue({ ok: true, status: 200, json: () => ({ data: 1 }) })
 
-      await request('/api/hermes/sessions')
+      await request('/api/DiTing/sessions')
 
       const [, options] = mockFetch.mock.calls[0]
       expect(options.headers.Authorization).toBeUndefined()
@@ -108,53 +108,53 @@ describe('API Client', () => {
 
     it('clears token and redirects on 401 for local BFF endpoints', async () => {
       setApiKey('secret-key')
-      localStorage.setItem('hermes_active_profile_name', 'research')
+      localStorage.setItem('DiTing_active_profile_name', 'research')
       mockFetch.mockResolvedValue({ ok: false, status: 401 })
 
-      await expect(request('/api/hermes/sessions')).rejects.toThrow('Unauthorized')
+      await expect(request('/api/DiTing/sessions')).rejects.toThrow('Unauthorized')
       expect(hasApiKey()).toBe(false)
-      expect(localStorage.getItem('hermes_active_profile_name')).toBeNull()
+      expect(localStorage.getItem('DiTing_active_profile_name')).toBeNull()
       expect(router.replace).toHaveBeenCalledWith({ name: 'login' })
     })
 
     it('emits a global auth notice on local 403 responses', async () => {
       const listener = vi.fn()
-      window.addEventListener('hermes-auth-notice', listener)
-      localStorage.setItem('hermes_active_profile_name', 'research')
+      window.addEventListener('DiTing-auth-notice', listener)
+      localStorage.setItem('DiTing_active_profile_name', 'research')
       mockFetch.mockResolvedValue({ ok: false, status: 403, text: () => Promise.resolve('Forbidden') })
 
-      await expect(request('/api/hermes/profiles')).rejects.toThrow('API Error 403')
+      await expect(request('/api/DiTing/profiles')).rejects.toThrow('API Error 403')
 
       expect(listener).toHaveBeenCalledOnce()
       expect(listener.mock.calls[0][0].detail).toEqual({ kind: 'forbidden' })
-      expect(localStorage.getItem('hermes_active_profile_name')).toBe('research')
-      window.removeEventListener('hermes-auth-notice', listener)
+      expect(localStorage.getItem('DiTing_active_profile_name')).toBe('research')
+      window.removeEventListener('DiTing-auth-notice', listener)
     })
 
     it('clears token and redirects when the JWT user no longer exists', async () => {
       setApiKey('stale-jwt')
-      localStorage.setItem('hermes_active_profile_name', 'research')
+      localStorage.setItem('DiTing_active_profile_name', 'research')
       mockFetch.mockResolvedValue({
         ok: false,
         status: 403,
         text: () => Promise.resolve('{"error":"User is disabled or does not exist"}'),
       })
 
-      await expect(request('/api/hermes/profiles')).rejects.toThrow('API Error 403')
+      await expect(request('/api/DiTing/profiles')).rejects.toThrow('API Error 403')
 
       expect(hasApiKey()).toBe(false)
-      expect(localStorage.getItem('hermes_active_profile_name')).toBeNull()
+      expect(localStorage.getItem('DiTing_active_profile_name')).toBeNull()
       expect(router.replace).toHaveBeenCalledWith({ name: 'login' })
     })
 
     it('does NOT clear token on 401 for proxied v1 endpoints', async () => {
       setApiKey('secret-key')
-      localStorage.setItem('hermes_active_profile_name', 'research')
+      localStorage.setItem('DiTing_active_profile_name', 'research')
       mockFetch.mockResolvedValue({ ok: false, status: 401, text: () => Promise.resolve('') })
 
-      await expect(request('/api/hermes/v1/runs')).rejects.toThrow('API Error 401')
+      await expect(request('/api/DiTing/v1/runs')).rejects.toThrow('API Error 401')
       expect(hasApiKey()).toBe(true)
-      expect(localStorage.getItem('hermes_active_profile_name')).toBe('research')
+      expect(localStorage.getItem('DiTing_active_profile_name')).toBe('research')
     })
 
     it('throws error on non-401 failure', async () => {
@@ -164,7 +164,7 @@ describe('API Client', () => {
         text: () => Promise.resolve('Internal Server Error'),
       })
 
-      await expect(request('/api/hermes/sessions')).rejects.toThrow('API Error 500: Internal Server Error')
+      await expect(request('/api/DiTing/sessions')).rejects.toThrow('API Error 500: Internal Server Error')
     })
 
     it('extracts nested JSON error messages instead of stringifying objects', async () => {
@@ -186,7 +186,7 @@ describe('API Client', () => {
       const data = { sessions: [{ id: '1' }] }
       mockFetch.mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve(data) })
 
-      const result = await request('/api/hermes/sessions')
+      const result = await request('/api/DiTing/sessions')
       expect(result).toEqual(data)
     })
   })
@@ -194,11 +194,11 @@ describe('API Client', () => {
   describe('download URLs', () => {
     it('adds the active profile selector to direct download URLs', () => {
       setApiKey('secret-key')
-      localStorage.setItem('hermes_active_profile_name', 'research')
+      localStorage.setItem('DiTing_active_profile_name', 'research')
 
       const url = new URL(getDownloadUrl('/tmp/report.txt', 'report.txt'), 'http://localhost')
 
-      expect(url.pathname).toBe('/api/hermes/download')
+      expect(url.pathname).toBe('/api/DiTing/download')
       expect(url.searchParams.get('path')).toBe('/tmp/report.txt')
       expect(url.searchParams.get('name')).toBe('report.txt')
       expect(url.searchParams.get('profile')).toBe('research')
@@ -208,7 +208,7 @@ describe('API Client', () => {
     it('handles raw percent signs in download paths and filenames', () => {
       const url = new URL(getDownloadUrl('/tmp/100% ready.txt', '100% ready.txt'), 'http://localhost')
 
-      expect(url.pathname).toBe('/api/hermes/download')
+      expect(url.pathname).toBe('/api/DiTing/download')
       expect(url.searchParams.get('path')).toBe('/tmp/100% ready.txt')
       expect(url.searchParams.get('name')).toBe('100% ready.txt')
     })
@@ -217,7 +217,7 @@ describe('API Client', () => {
   describe('file upload', () => {
     it('adds auth and active profile headers to multipart uploads', async () => {
       setApiKey('secret-key')
-      localStorage.setItem('hermes_active_profile_name', 'research')
+      localStorage.setItem('DiTing_active_profile_name', 'research')
       mockFetch.mockResolvedValue({
         ok: true,
         status: 200,
@@ -228,16 +228,16 @@ describe('API Client', () => {
 
       expect(mockFetch).toHaveBeenCalledOnce()
       const [url, options] = mockFetch.mock.calls[0]
-      expect(url).toBe('/api/hermes/files/upload?path=notes')
+      expect(url).toBe('/api/DiTing/files/upload?path=notes')
       expect(options.method).toBe('POST')
       expect(options.headers.Authorization).toBe('Bearer secret-key')
-      expect(options.headers['X-Hermes-Profile']).toBe('research')
+      expect(options.headers['X-DiTing-Profile']).toBe('research')
       expect(options.body).toBeInstanceOf(FormData)
     })
 
     it('adds auth and active profile headers when importing skills', async () => {
       setApiKey('secret-key')
-      localStorage.setItem('hermes_active_profile_name', 'research')
+      localStorage.setItem('DiTing_active_profile_name', 'research')
       mockFetch.mockResolvedValue({
         ok: true,
         status: 200,
@@ -248,17 +248,17 @@ describe('API Client', () => {
 
       expect(mockFetch).toHaveBeenCalledOnce()
       const [url, options] = mockFetch.mock.calls[0]
-      expect(url).toBe('/api/hermes/skills/import')
+      expect(url).toBe('/api/DiTing/skills/import')
       expect(options.method).toBe('POST')
       expect(options.headers.Authorization).toBe('Bearer secret-key')
-      expect(options.headers['X-Hermes-Profile']).toBe('research')
+      expect(options.headers['X-DiTing-Profile']).toBe('research')
       expect(options.body).toBeInstanceOf(FormData)
     })
   })
 
   describe('sessions API', () => {
     it('sends profile-qualified targets for batch deletes', async () => {
-      localStorage.setItem('hermes_active_profile_name', 'research')
+      localStorage.setItem('DiTing_active_profile_name', 'research')
       mockFetch.mockResolvedValue({
         ok: true,
         status: 200,
@@ -271,9 +271,9 @@ describe('API Client', () => {
       ])
 
       const [url, options] = mockFetch.mock.calls[0]
-      expect(url).toBe('/api/hermes/sessions/batch-delete')
+      expect(url).toBe('/api/DiTing/sessions/batch-delete')
       expect(options.method).toBe('POST')
-      expect(options.headers['X-Hermes-Profile']).toBeUndefined()
+      expect(options.headers['X-DiTing-Profile']).toBeUndefined()
       expect(JSON.parse(options.body)).toEqual({
         ids: ['session-default', 'session-travel'],
         sessions: [
@@ -283,17 +283,17 @@ describe('API Client', () => {
       })
     })
 
-    it('sends the profile selector when importing a Hermes session', async () => {
+    it('sends the profile selector when importing a DiTing session', async () => {
       mockFetch.mockResolvedValue({
         ok: true,
         status: 200,
         json: () => Promise.resolve({ ok: true, imported: true }),
       })
 
-      await importHermesSession('cli-1', 'travel')
+      await importDiTingSession('cli-1', 'travel')
 
       const [url, options] = mockFetch.mock.calls[0]
-      expect(url).toBe('/api/hermes/sessions/hermes/cli-1/import?profile=travel')
+      expect(url).toBe('/api/DiTing/sessions/DiTing/cli-1/import?profile=travel')
       expect(options.method).toBe('POST')
     })
   })

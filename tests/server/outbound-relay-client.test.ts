@@ -89,7 +89,7 @@ describe('outbound relay client', () => {
     const { startOutboundRelayClient } = await import('../../packages/server/src/services/global-agent/outbound-relay-client')
 
     const client = startOutboundRelayClient({
-      relayUrl: 'https://user:pass@relay.example.com/hermes',
+      relayUrl: 'https://user:pass@relay.example.com/DiTing',
       relayToken: 'relay-token',
       instanceId: 'studio-1',
       localBaseUrl: 'http://127.0.0.1:9999',
@@ -97,11 +97,11 @@ describe('outbound relay client', () => {
     })
 
     expect(client).not.toBeNull()
-    expect(mockIo).toHaveBeenCalledWith('https://user:pass@relay.example.com/hermes', expect.objectContaining({
+    expect(mockIo).toHaveBeenCalledWith('https://user:pass@relay.example.com/DiTing', expect.objectContaining({
       auth: {
         token: 'relay-token',
         instanceId: 'studio-1',
-        role: 'hermes-studio',
+        role: 'DiTing-studio',
       },
       transports: ['websocket', 'polling'],
       reconnection: true,
@@ -181,7 +181,7 @@ describe('outbound relay client', () => {
 
   it('queues the hosted TTS-failed prompt when websocket MCU speech synthesis fails', async () => {
     const fetchImpl = vi.fn(async (url: string) => {
-      if (url.includes('/api/hermes/mcu/voice-turn')) {
+      if (url.includes('/api/DiTing/mcu/voice-turn')) {
         return new Response(JSON.stringify({ ok: true, transcript: '你好' }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -223,13 +223,13 @@ describe('outbound relay client', () => {
     await vi.waitFor(() => {
       expect(ws.send).toHaveBeenCalledWith(expect.stringContaining('tts-synthesize-failed-xiaohe.s16le.pcm'))
     })
-    const ttsCalls = fetchImpl.mock.calls.filter(([url]: [string]) => url.includes('/api/hermes/tts/synthesize'))
+    const ttsCalls = fetchImpl.mock.calls.filter(([url]: [string]) => url.includes('/api/DiTing/tts/synthesize'))
     expect(ttsCalls).toHaveLength(2)
     expect(ttsCalls[0][1].headers).toMatchObject({
-      'X-Hermes-Profile': 'research',
+      'X-DiTing-Profile': 'research',
     })
     expect(ttsCalls[1][1].headers).toMatchObject({
-      'X-Hermes-Profile': 'research',
+      'X-DiTing-Profile': 'research',
     })
     const enqueuePayload = JSON.parse(
       ws.send.mock.calls
@@ -241,7 +241,7 @@ describe('outbound relay client', () => {
       interactionId: 'voice-tts-fail',
       segmentId: 'voice-tts-fail-tts-1-failed-prompt',
       text: '当前文字转语音失败了，请配置下文字转语音再使用哦',
-      url: 'https://ekko-hermes-studio.oss-cn-beijing.aliyuncs.com/tts-synthesize-failed-xiaohe.s16le.pcm',
+      url: 'https://ekko-DiTing-studio.oss-cn-beijing.aliyuncs.com/tts-synthesize-failed-xiaohe.s16le.pcm',
       mimeType: 'audio/x-pcm',
       format: 's16le',
       channels: 1,
@@ -271,18 +271,18 @@ describe('outbound relay client', () => {
     const response = await client.handleHttpRequest({
       id: 'req-1',
       method: 'POST',
-      path: '/api/hermes/sessions?profile=default',
+      path: '/api/DiTing/sessions?profile=default',
       headers: {
         authorization: 'Bearer user-jwt',
         'content-type': 'application/json',
         connection: 'keep-alive',
         host: 'relay.example.com',
-        'x-hermes-profile': 'default',
+        'x-DiTing-profile': 'default',
       },
       body: { message: 'hello' },
     })
 
-    expect(fetchImpl).toHaveBeenCalledWith('http://127.0.0.1:8648/api/hermes/sessions?profile=default', expect.objectContaining({
+    expect(fetchImpl).toHaveBeenCalledWith('http://127.0.0.1:8648/api/DiTing/sessions?profile=default', expect.objectContaining({
       method: 'POST',
       body: JSON.stringify({ message: 'hello' }),
     }))
@@ -290,7 +290,7 @@ describe('outbound relay client', () => {
     expect(Array.from((init.headers as Headers).entries())).toEqual([
       ['authorization', 'Bearer user-jwt'],
       ['content-type', 'application/json'],
-      ['x-hermes-profile', 'default'],
+      ['x-DiTing-profile', 'default'],
     ])
     expect(response).toEqual({
       id: 'req-1',

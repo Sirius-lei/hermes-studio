@@ -1,6 +1,6 @@
 # Voice Dialogue
 
-Hermes Web UI now supports turn-based voice input inside the existing chat UI. The current design is intentionally simple: record one voice turn, transcribe it, place the transcript into the chat input for review/editing, and let the user send it with the normal Send button.
+DiTing Web UI now supports turn-based voice input inside the existing chat UI. The current design is intentionally simple: record one voice turn, transcribe it, place the transcript into the chat input for review/editing, and let the user send it with the normal Send button.
 
 ## What works today
 

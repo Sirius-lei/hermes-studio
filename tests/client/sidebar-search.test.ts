@@ -25,7 +25,7 @@ vi.mock('@/composables/useSessionSearch', () => ({
   }),
 }))
 
-vi.mock('@/stores/hermes/app', () => ({
+vi.mock('@/stores/DiTing/app', () => ({
   useAppStore: () => mockAppStore,
 }))
 
@@ -33,7 +33,7 @@ vi.mock('vue-router', async (importOriginal) => {
   const actual = await importOriginal<any>()
   return {
     ...actual,
-    useRoute: () => ({ name: 'hermes.chat' }),
+    useRoute: () => ({ name: 'DiTing.chat' }),
     useRouter: () => ({ push: vi.fn(), hasRoute: () => true }),
   }
 })

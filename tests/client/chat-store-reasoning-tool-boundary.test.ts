@@ -13,7 +13,7 @@ const sessionsApi = vi.hoisted(() => ({
   setSessionModel: vi.fn(),
 }))
 
-vi.mock('@/api/hermes/chat', () => ({
+vi.mock('@/api/DiTing/chat', () => ({
   startRunViaSocket: chatApi.startRunViaSocket,
   resumeSession: vi.fn(),
   registerSessionHandlers: vi.fn(),
@@ -31,18 +31,18 @@ vi.mock('@/api/client', () => ({
   hasApiKey: () => false,
 }))
 
-vi.mock('@/api/hermes/sessions', () => ({
+vi.mock('@/api/DiTing/sessions', () => ({
   deleteSession: sessionsApi.deleteSession,
   fetchSessionMessagesPage: sessionsApi.fetchSessionMessagesPage,
   fetchSessions: sessionsApi.fetchSessions,
   setSessionModel: sessionsApi.setSessionModel,
 }))
 
-vi.mock('@/api/hermes/download', () => ({
+vi.mock('@/api/DiTing/download', () => ({
   getDownloadUrl: (_path: string, name: string) => `/download/${name}`,
 }))
 
-vi.mock('@/api/hermes/system', () => ({
+vi.mock('@/api/DiTing/system', () => ({
   checkHealth: vi.fn(),
   fetchAvailableModels: vi.fn(),
   addCustomModel: vi.fn(),
@@ -58,8 +58,8 @@ vi.mock('@/utils/completion-sound', () => ({
   playCompletionSound: vi.fn(),
 }))
 
-import { useChatStore, type Session } from '@/stores/hermes/chat'
-import type { RunEvent } from '@/api/hermes/chat'
+import { useChatStore, type Session } from '@/stores/DiTing/chat'
+import type { RunEvent } from '@/api/DiTing/chat'
 
 function makeSession(): Session {
   return {
@@ -213,13 +213,13 @@ describe('chat store reasoning/tool boundaries', () => {
 
     onEvent({ event: 'run.started', session_id: 'session-1' })
 
-    await store.sendMessage('/not-a-hermes-command')
+    await store.sendMessage('/not-a-DiTing-command')
 
     expect(chatApi.startRunViaSocket).toHaveBeenCalledTimes(2)
     expect(store.queuedUserMessages.get('session-1')).toEqual([
       expect.objectContaining({
         role: 'user',
-        content: '/not-a-hermes-command',
+        content: '/not-a-DiTing-command',
         queued: true,
         systemType: undefined,
       }),

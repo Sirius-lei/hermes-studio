@@ -4,26 +4,26 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 
 let homeDir = ''
-const originalHermesHome = process.env.HERMES_HOME
+const originalDiTingHome = process.env.DiTing_HOME
 const originalLocalAppData = process.env.LOCALAPPDATA
 const originalAppData = process.env.APPDATA
 
-function hermesPath(...parts: string[]) {
-  return join(homeDir, '.hermes', ...parts)
+function DiTingPath(...parts: string[]) {
+  return join(homeDir, '.DiTing', ...parts)
 }
 
 function writeConfig(content: string) {
-  mkdirSync(hermesPath(), { recursive: true })
-  writeFileSync(hermesPath('config.yaml'), content)
+  mkdirSync(DiTingPath(), { recursive: true })
+  writeFileSync(DiTingPath('config.yaml'), content)
 }
 
 function writeModelsCache(data: Record<string, unknown>) {
-  mkdirSync(hermesPath(), { recursive: true })
-  writeFileSync(hermesPath('models_dev_cache.json'), JSON.stringify(data))
+  mkdirSync(DiTingPath(), { recursive: true })
+  writeFileSync(DiTingPath('models_dev_cache.json'), JSON.stringify(data))
 }
 
 async function loadModelContext() {
-  process.env.HERMES_HOME = hermesPath()
+  process.env.DiTing_HOME = DiTingPath()
   delete process.env.LOCALAPPDATA
   delete process.env.APPDATA
   vi.resetModules()
@@ -39,7 +39,7 @@ async function loadModelContext() {
       getDb: () => null,
     }
   })
-  return import('../../packages/server/src/services/hermes/model-context')
+  return import('../../packages/server/src/services/DiTing/model-context')
 }
 
 describe('getModelContextLength', () => {
@@ -49,8 +49,8 @@ describe('getModelContextLength', () => {
 
   afterEach(() => {
     vi.doUnmock('os')
-    if (originalHermesHome === undefined) delete process.env.HERMES_HOME
-    else process.env.HERMES_HOME = originalHermesHome
+    if (originalDiTingHome === undefined) delete process.env.DiTing_HOME
+    else process.env.DiTing_HOME = originalDiTingHome
     if (originalLocalAppData === undefined) delete process.env.LOCALAPPDATA
     else process.env.LOCALAPPDATA = originalLocalAppData
     if (originalAppData === undefined) delete process.env.APPDATA

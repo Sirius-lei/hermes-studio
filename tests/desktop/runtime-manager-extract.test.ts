@@ -13,12 +13,12 @@ describe('desktop runtime archive extraction', () => {
   })
 
   it('extracts gzip tar archives through the Node tar library', async () => {
-    tempRoot = mkdtempSync(join(tmpdir(), 'hermes-runtime-extract-'))
+    tempRoot = mkdtempSync(join(tmpdir(), 'DiTing-runtime-extract-'))
     const source = join(tempRoot, 'source')
     const target = join(tempRoot, 'target')
     const archive = join(tempRoot, 'runtime.tar.gz.download')
     mkdirSync(join(source, 'python', 'Scripts'), { recursive: true })
-    writeFileSync(join(source, 'python', 'Scripts', 'hermes.exe'), 'launcher', 'utf-8')
+    writeFileSync(join(source, 'python', 'Scripts', 'DiTing.exe'), 'launcher', 'utf-8')
 
     await tar.c({
       file: archive,
@@ -30,6 +30,6 @@ describe('desktop runtime archive extraction', () => {
     const { extractTarGzipArchive } = await import('../../packages/desktop/src/main/runtime-archive')
     await extractTarGzipArchive(archive, target)
 
-    expect(readFileSync(join(target, 'python', 'Scripts', 'hermes.exe'), 'utf-8')).toBe('launcher')
+    expect(readFileSync(join(target, 'python', 'Scripts', 'DiTing.exe'), 'utf-8')).toBe('launcher')
   })
 })

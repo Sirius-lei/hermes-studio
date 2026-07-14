@@ -13,10 +13,10 @@ const mockFilesApi = vi.hoisted(() => ({
   uploadFiles: vi.fn(),
 }))
 
-vi.mock('@/api/hermes/files', () => mockFilesApi)
+vi.mock('@/api/DiTing/files', () => mockFilesApi)
 
-import { getLanguageFromPath, isPreviewableFile, isTextFile, useFilesStore } from '@/stores/hermes/files'
-import type { FileEntry } from '@/api/hermes/files'
+import { getLanguageFromPath, isPreviewableFile, isTextFile, useFilesStore } from '@/stores/DiTing/files'
+import type { FileEntry } from '@/api/DiTing/files'
 
 describe('files store', () => {
   beforeEach(() => {

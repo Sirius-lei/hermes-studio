@@ -40,7 +40,7 @@ vi.mock('vue-virtual-scroller', () => ({
   }),
 }))
 
-import VirtualMessageList from '@/components/hermes/chat/VirtualMessageList.vue'
+import VirtualMessageList from '@/components/DiTing/chat/VirtualMessageList.vue'
 
 function setScrollerMetrics(el: HTMLElement, metrics: { scrollHeight: number; clientHeight: number; scrollTop: number }) {
   Object.defineProperty(el, 'scrollHeight', { configurable: true, value: metrics.scrollHeight })

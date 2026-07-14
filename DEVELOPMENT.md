@@ -1,6 +1,6 @@
 # Development Guidelines
 
-This document defines project-level development rules for Hermes Web UI. It is tool-agnostic and applies to all contributors and coding agents.
+This document defines project-level development rules for DiTing Web UI. It is tool-agnostic and applies to all contributors and coding agents.
 
 ## Commands
 
@@ -23,10 +23,10 @@ npm run build
 
 - Frontend code lives under `packages/client/src`.
 - Server code lives under `packages/server/src`.
-- Hermes-specific client code stays under `hermes` namespaces: API modules, views, stores, and components.
+- DiTing-specific client code stays under `DiTing` namespaces: API modules, views, stores, and components.
 - Server routes should stay thin. Put request handling in controllers and reusable behavior in services.
-- The chat runtime is Socket.IO based and lives under `packages/server/src/services/hermes/run-chat`.
-- Web UI state lives under `HERMES_WEB_UI_HOME` or `HERMES_WEBUI_STATE_DIR`, defaulting to `~/.hermes-web-ui`.
+- The chat runtime is Socket.IO based and lives under `packages/server/src/services/DiTing/run-chat`.
+- Web UI state lives under `DiTing_WEB_UI_HOME` or `DiTing_WEBUI_STATE_DIR`, defaulting to `~/.DiTing-web-ui`.
 
 ## Coding Rules
 
@@ -51,8 +51,8 @@ npm run build
 - Register local API routes before proxy catch-all routes.
 - Keep auth behavior centralized in `packages/server/src/services/auth.ts`.
 - Use `config.appHome` for Web UI state paths.
-- Keep Hermes home paths separate from Web UI home paths.
-- Use `getActiveProfileDir()` or related profile helpers for Hermes profile files.
+- Keep DiTing home paths separate from Web UI home paths.
+- Use `getActiveProfileDir()` or related profile helpers for DiTing profile files.
 - Avoid shell string construction for CLI calls; prefer `execFile`/`spawn` with argument arrays.
 
 ## Testing Rules

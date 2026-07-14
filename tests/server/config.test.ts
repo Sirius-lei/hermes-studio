@@ -16,16 +16,16 @@ describe('server config', () => {
     expect(getListenHost({ BIND_HOST: ' ' })).toBe('0.0.0.0')
   })
 
-  it('defaults web-ui home to ~/.hermes-web-ui', () => {
-    expect(getWebUiHome({})).toBe(join(homedir(), '.hermes-web-ui'))
+  it('defaults web-ui home to ~/.DiTing-web-ui', () => {
+    expect(getWebUiHome({})).toBe(join(homedir(), '.DiTing-web-ui'))
   })
 
-  it('uses HERMES_WEB_UI_HOME when provided', () => {
-    expect(getWebUiHome({ HERMES_WEB_UI_HOME: ' ./tmp/hermes-ui ' })).toBe(resolve('./tmp/hermes-ui'))
+  it('uses DiTing_WEB_UI_HOME when provided', () => {
+    expect(getWebUiHome({ DiTing_WEB_UI_HOME: ' ./tmp/DiTing-ui ' })).toBe(resolve('./tmp/DiTing-ui'))
   })
 
-  it('uses HERMES_WEBUI_STATE_DIR as a compatibility alias', () => {
-    expect(getWebUiHome({ HERMES_WEBUI_STATE_DIR: ' ./tmp/hermes-state ' })).toBe(resolve('./tmp/hermes-state'))
+  it('uses DiTing_WEBUI_STATE_DIR as a compatibility alias', () => {
+    expect(getWebUiHome({ DiTing_WEBUI_STATE_DIR: ' ./tmp/DiTing-state ' })).toBe(resolve('./tmp/DiTing-state'))
   })
 
   it('only creates the development data directory outside production', () => {

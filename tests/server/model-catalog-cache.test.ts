@@ -104,11 +104,11 @@ vi.mock('../../packages/server/src/services/app-config', () => ({
   readAppConfig: mockReadAppConfig,
 }))
 
-vi.mock('../../packages/server/src/services/hermes/copilot-models', () => ({
+vi.mock('../../packages/server/src/services/DiTing/copilot-models', () => ({
   resolveCopilotOAuthToken: mockResolveCopilotOAuthToken,
 }))
 
-vi.mock('../../packages/server/src/services/hermes/hermes-profile', () => ({
+vi.mock('../../packages/server/src/services/DiTing/DiTing-profile', () => ({
   getProfileDir: mockGetProfileDir,
   listProfileNamesFromDisk: mockListProfileNamesFromDisk,
 }))
@@ -134,7 +134,7 @@ describe('model catalog cache', () => {
     vi.clearAllMocks()
     cacheText = ''
     mockListProfileNamesFromDisk.mockReturnValue(['default', 'team'])
-    mockGetProfileDir.mockImplementation((profile: string) => `/hermes/${profile}`)
+    mockGetProfileDir.mockImplementation((profile: string) => `/DiTing/${profile}`)
     mockReadText.mockRejectedValue(Object.assign(new Error('missing'), { code: 'ENOENT' }))
     mockUpdateText.mockImplementation(async (_path: string, updater: (current: string) => string) => {
       cacheText = updater(cacheText)
@@ -145,8 +145,8 @@ describe('model catalog cache', () => {
     mockGlobalFetch.mockResolvedValue({ ok: false, status: 404, json: async () => ({}) })
     vi.stubGlobal('fetch', mockGlobalFetch)
     mockReadFile.mockImplementation(async (path: string) => {
-      if (path === '/hermes/default/.env') return 'OPENROUTER_API_KEY=default-openrouter\n'
-      if (path === '/hermes/team/.env') {
+      if (path === '/DiTing/default/.env') return 'OPENROUTER_API_KEY=default-openrouter\n'
+      if (path === '/DiTing/team/.env') {
         return [
           'OPENROUTER_API_KEY=team-openrouter',
           'DEEPSEEK_API_KEY=team-deepseek',
@@ -172,7 +172,7 @@ describe('model catalog cache', () => {
 
   it('refreshes providers from all profiles and deduplicates identical catalogs', async () => {
     const { refreshConfiguredProviderModelCatalogs, providerModelCatalogKey } = await import(
-      '../../packages/server/src/services/hermes/model-catalog-cache'
+      '../../packages/server/src/services/DiTing/model-catalog-cache'
     )
 
     await refreshConfiguredProviderModelCatalogs({ force: true })
@@ -240,8 +240,8 @@ describe('model catalog cache', () => {
       return []
     })
     mockReadFile.mockImplementation(async (path: string) => {
-      if (path === '/hermes/default/.env') return ''
-      if (path === '/hermes/default/auth.json') {
+      if (path === '/DiTing/default/.env') return ''
+      if (path === '/DiTing/default/auth.json') {
         return JSON.stringify({
           providers: {
             'openai-codex': { tokens: { access_token: 'codex-token' } },
@@ -272,7 +272,7 @@ describe('model catalog cache', () => {
     mockReadConfigYamlForProfile.mockResolvedValue({})
 
     const { refreshConfiguredProviderModelCatalogs, providerModelCatalogKey } = await import(
-      '../../packages/server/src/services/hermes/model-catalog-cache'
+      '../../packages/server/src/services/DiTing/model-catalog-cache'
     )
 
     await refreshConfiguredProviderModelCatalogs({ force: true })

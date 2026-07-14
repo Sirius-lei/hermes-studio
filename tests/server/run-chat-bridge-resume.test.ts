@@ -8,7 +8,7 @@ const buildDbHistoryMock = vi.fn()
 const buildSnapshotAwareHistoryMock = vi.fn()
 const estimateUsageTokensFromMessagesMock = vi.fn()
 
-vi.mock('../../packages/server/src/db/hermes/session-store', () => ({
+vi.mock('../../packages/server/src/db/DiTing/session-store', () => ({
   addMessage: addMessageMock,
   createSession: vi.fn(),
   getSession: vi.fn(() => ({ id: 'session-resume', profile: 'default', model: 'gpt-test', provider: 'openai' })),
@@ -16,7 +16,7 @@ vi.mock('../../packages/server/src/db/hermes/session-store', () => ({
   updateSessionStats: updateSessionStatsMock,
 }))
 
-vi.mock('../../packages/server/src/db/hermes/usage-store', () => ({
+vi.mock('../../packages/server/src/db/DiTing/usage-store', () => ({
   updateUsage: updateUsageMock,
 }))
 
@@ -34,12 +34,12 @@ vi.mock('../../packages/server/src/lib/context-compressor', () => ({
   SUMMARY_PREFIX: '[Summary] ',
 }))
 
-vi.mock('../../packages/server/src/db/hermes/compression-snapshot', () => ({
+vi.mock('../../packages/server/src/db/DiTing/compression-snapshot', () => ({
   getCompressionSnapshot: vi.fn(),
 }))
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/compression', async () => {
-  const actual = await vi.importActual<any>('../../packages/server/src/services/hermes/run-chat/compression')
+vi.mock('../../packages/server/src/services/DiTing/run-chat/compression', async () => {
+  const actual = await vi.importActual<any>('../../packages/server/src/services/DiTing/run-chat/compression')
   return {
     ...actual,
     buildDbHistory: buildDbHistoryMock,
@@ -49,7 +49,7 @@ vi.mock('../../packages/server/src/services/hermes/run-chat/compression', async 
   }
 })
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/usage', () => ({
+vi.mock('../../packages/server/src/services/DiTing/run-chat/usage', () => ({
   calcAndUpdateUsage: calcAndUpdateUsageMock,
   contextTokensWithCachedOverhead: vi.fn((_state, tokens) => tokens),
   estimateUsageTokensFromMessages: estimateUsageTokensFromMessagesMock,
@@ -90,7 +90,7 @@ describe('resumeBridgeRun', () => {
   })
 
   it('continues polling an existing bridge run after web server state is recreated', async () => {
-    const { resumeBridgeRun } = await import('../../packages/server/src/services/hermes/run-chat/handle-bridge-run')
+    const { resumeBridgeRun } = await import('../../packages/server/src/services/DiTing/run-chat/handle-bridge-run')
     const { nsp, emitted } = createNamespace()
     const socket = { id: 'socket-1', connected: true, emit: vi.fn() }
     const sessionMap = new Map<string, any>()
@@ -178,7 +178,7 @@ describe('resumeBridgeRun', () => {
   })
 
   it('completes a timed-out abort when the resumed bridge run reaches a terminal state', async () => {
-    const { resumeBridgeRun } = await import('../../packages/server/src/services/hermes/run-chat/handle-bridge-run')
+    const { resumeBridgeRun } = await import('../../packages/server/src/services/DiTing/run-chat/handle-bridge-run')
     const { nsp, emitted } = createNamespace()
     const socket = { id: 'socket-1', connected: true, emit: vi.fn() }
     const sessionMap = new Map<string, any>()

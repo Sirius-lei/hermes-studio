@@ -28,15 +28,15 @@ vi.mock('fs', () => ({
   readFileSync: mockReadFileSync,
 }))
 
-vi.mock('../../packages/server/src/services/hermes/hermes-profile', () => ({
-  getActiveEnvPath: () => '/fake/home/.hermes/.env',
-  getActiveAuthPath: () => '/fake/home/.hermes/auth.json',
+vi.mock('../../packages/server/src/services/DiTing/DiTing-profile', () => ({
+  getActiveEnvPath: () => '/fake/home/.DiTing/.env',
+  getActiveAuthPath: () => '/fake/home/.DiTing/auth.json',
   getActiveProfileName: () => 'default',
-  getProfileDir: () => '/fake/home/.hermes',
+  getProfileDir: () => '/fake/home/.DiTing',
   listProfileNamesFromDisk: mockListProfileNamesFromDisk,
 }))
 
-vi.mock('../../packages/server/src/db/hermes/users-store', () => ({
+vi.mock('../../packages/server/src/db/DiTing/users-store', () => ({
   listUserProfiles: mockListUserProfiles,
 }))
 
@@ -108,7 +108,7 @@ vi.mock('../../packages/server/src/shared/providers', () => ({
   ],
 }))
 
-vi.mock('../../packages/server/src/services/hermes/copilot-models', () => ({
+vi.mock('../../packages/server/src/services/DiTing/copilot-models', () => ({
   getCopilotModelsDetailed: mockGetCopilotModelsDetailed,
   resolveCopilotOAuthToken: vi.fn(async () => ''),
 }))
@@ -118,7 +118,7 @@ vi.mock('../../packages/server/src/services/app-config', () => ({
   writeAppConfig: mockWriteAppConfig,
 }))
 
-vi.mock('../../packages/server/src/services/hermes/model-catalog-cache', () => ({
+vi.mock('../../packages/server/src/services/DiTing/model-catalog-cache', () => ({
   readProviderModelCatalogCache: mockReadProviderModelCatalogCache,
   getCachedProviderModels: mockGetCachedProviderModels,
   refreshConfiguredProviderModelCatalogs: mockRefreshConfiguredProviderModelCatalogs,
@@ -129,11 +129,11 @@ vi.mock('../../packages/server/src/db', () => ({
   getDb: vi.fn(),
 }))
 
-vi.mock('../../packages/server/src/db/hermes/schemas', () => ({
+vi.mock('../../packages/server/src/db/DiTing/schemas', () => ({
   MODEL_CONTEXT_TABLE: 'model_context',
 }))
 
-import * as ctrl from '../../packages/server/src/controllers/hermes/models'
+import * as ctrl from '../../packages/server/src/controllers/DiTing/models'
 
 function makeCtx(body: Record<string, unknown> = {}): any {
   return { params: {}, query: {}, request: { body }, body: undefined, status: 200 }
@@ -239,7 +239,7 @@ describe('models controller — model visibility', () => {
 
     const ctx = makeCtx()
     ctx.state = { user: { id: 7, username: 'ops', role: 'admin' } }
-    ctx.get = vi.fn((name: string) => name.toLowerCase() === 'x-hermes-profile' ? 'private' : '')
+    ctx.get = vi.fn((name: string) => name.toLowerCase() === 'x-DiTing-profile' ? 'private' : '')
     await ctrl.getAvailable(ctx)
 
     expect(mockReadConfigYamlForProfile).toHaveBeenCalledTimes(1)
@@ -261,7 +261,7 @@ describe('models controller — model visibility', () => {
 
     const ctx = makeCtx()
     ctx.state = { user: { id: 1, username: 'admin', role: 'super_admin' } }
-    ctx.get = vi.fn((name: string) => name.toLowerCase() === 'x-hermes-profile' ? 'tester' : '')
+    ctx.get = vi.fn((name: string) => name.toLowerCase() === 'x-DiTing-profile' ? 'tester' : '')
     await ctrl.getAvailable(ctx)
 
     expect(ctx.body.default).toBe('deepseek-reasoner')

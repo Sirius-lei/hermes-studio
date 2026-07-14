@@ -4,15 +4,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/router', () => ({
   default: {
-    currentRoute: { value: { name: 'hermes.chat' } },
+    currentRoute: { value: { name: 'DiTing.chat' } },
     replace: vi.fn(),
   },
 }))
 
 import router from '@/router'
 import { hasApiKey } from '../../packages/client/src/api/client'
-import { clearSttSecret, deleteSttBaseUrlPreset, deleteSttProvider, fetchSttSettings, saveActiveSttProvider, saveSttSettings } from '../../packages/client/src/api/hermes/stt-settings'
-import { transcribeSpeech } from '../../packages/client/src/api/hermes/stt'
+import { clearSttSecret, deleteSttBaseUrlPreset, deleteSttProvider, fetchSttSettings, saveActiveSttProvider, saveSttSettings } from '../../packages/client/src/api/DiTing/stt-settings'
+import { transcribeSpeech } from '../../packages/client/src/api/DiTing/stt'
 
 const mockFetch = vi.fn()
 vi.stubGlobal('fetch', mockFetch)
@@ -34,12 +34,12 @@ describe('stt api wrappers', () => {
     mockFetch.mockReset()
     vi.clearAllMocks()
     localStorage.clear()
-    localStorage.setItem('hermes_server_url', 'https://hermes.example')
-    localStorage.setItem('hermes_api_key', 'jwt-token')
+    localStorage.setItem('DiTing_server_url', 'https://DiTing.example')
+    localStorage.setItem('DiTing_api_key', 'jwt-token')
   })
 
   it('fetches provider settings through the shared client request flow and normalizes settings arrays to providers', async () => {
-    localStorage.setItem('hermes_active_profile_name', 'research')
+    localStorage.setItem('DiTing_active_profile_name', 'research')
     mockFetch.mockResolvedValueOnce({
       ok: true,
       status: 200,
@@ -59,12 +59,12 @@ describe('stt api wrappers', () => {
     const result = await fetchSttSettings()
 
     expect(mockFetch).toHaveBeenCalledWith(
-      'https://hermes.example/api/hermes/stt/settings',
+      'https://DiTing.example/api/DiTing/stt/settings',
       expect.objectContaining({
         headers: expect.objectContaining({
           Authorization: 'Bearer jwt-token',
           'Content-Type': 'application/json',
-          'X-Hermes-Profile': 'research',
+          'X-DiTing-Profile': 'research',
         }),
       }),
     )
@@ -82,7 +82,7 @@ describe('stt api wrappers', () => {
   })
 
   it('uses shared 401 handling for settings requests', async () => {
-    localStorage.setItem('hermes_active_profile_name', 'research')
+    localStorage.setItem('DiTing_active_profile_name', 'research')
     mockFetch.mockResolvedValueOnce({
       ok: false,
       status: 401,
@@ -94,11 +94,11 @@ describe('stt api wrappers', () => {
     expect(hasApiKey()).toBe(false)
     expect(router.replace).toHaveBeenCalledWith({ name: 'login' })
     expect(mockFetch).toHaveBeenCalledWith(
-      'https://hermes.example/api/hermes/stt/settings',
+      'https://DiTing.example/api/DiTing/stt/settings',
       expect.objectContaining({
         headers: expect.objectContaining({
           Authorization: 'Bearer jwt-token',
-          'X-Hermes-Profile': 'research',
+          'X-DiTing-Profile': 'research',
         }),
       }),
     )
@@ -113,7 +113,7 @@ describe('stt api wrappers', () => {
     const result = await saveActiveSttProvider('browser')
 
     expect(mockFetch).toHaveBeenCalledWith(
-      'https://hermes.example/api/hermes/stt/settings/active',
+      'https://DiTing.example/api/DiTing/stt/settings/active',
       expect.objectContaining({
         method: 'PUT',
         headers: expect.objectContaining({
@@ -145,7 +145,7 @@ describe('stt api wrappers', () => {
     })
 
     expect(mockFetch).toHaveBeenCalledWith(
-      'https://hermes.example/api/hermes/stt/settings/openai',
+      'https://DiTing.example/api/DiTing/stt/settings/openai',
       expect.objectContaining({
         method: 'PUT',
         headers: expect.objectContaining({
@@ -183,7 +183,7 @@ describe('stt api wrappers', () => {
     const result = await clearSttSecret('openai', 'apiKey')
 
     expect(mockFetch).toHaveBeenCalledWith(
-      'https://hermes.example/api/hermes/stt/settings/openai/secret/apiKey',
+      'https://DiTing.example/api/DiTing/stt/settings/openai/secret/apiKey',
       expect.objectContaining({
         method: 'DELETE',
         headers: expect.objectContaining({
@@ -212,7 +212,7 @@ describe('stt api wrappers', () => {
     const result = await deleteSttProvider('openai')
 
     expect(mockFetch).toHaveBeenCalledWith(
-      'https://hermes.example/api/hermes/stt/settings/openai',
+      'https://DiTing.example/api/DiTing/stt/settings/openai',
       expect.objectContaining({
         method: 'DELETE',
         headers: expect.objectContaining({
@@ -248,7 +248,7 @@ describe('stt api wrappers', () => {
     const result = await deleteSttBaseUrlPreset('custom', 'https://api.groq.com/openai/v1')
 
     expect(mockFetch).toHaveBeenCalledWith(
-      'https://hermes.example/api/hermes/stt/settings/custom/base-url-preset?url=https%3A%2F%2Fapi.groq.com%2Fopenai%2Fv1',
+      'https://DiTing.example/api/DiTing/stt/settings/custom/base-url-preset?url=https%3A%2F%2Fapi.groq.com%2Fopenai%2Fv1',
       expect.objectContaining({
         method: 'DELETE',
         headers: expect.objectContaining({
@@ -312,7 +312,7 @@ describe('stt api wrappers', () => {
 
     expect(mockFetch).toHaveBeenCalledOnce()
     const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit]
-    expect(url).toBe('https://hermes.example/api/hermes/stt/transcribe')
+    expect(url).toBe('https://DiTing.example/api/DiTing/stt/transcribe')
     expect(init.method).toBe('POST')
     expect(getHeader(init.headers, 'Authorization')).toBe('Bearer jwt-token')
     expect(getHeader(init.headers, 'Content-Type')).toBeUndefined()
@@ -362,7 +362,7 @@ describe('stt api wrappers', () => {
     settings.setCustomBaseUrl('https://transcribe.example.com/v1')
     await nextTick()
 
-    const raw = localStorage.getItem('hermes-stt-settings-v1') || '{}'
+    const raw = localStorage.getItem('DiTing-stt-settings-v1') || '{}'
     expect(raw).toContain('transcribe carefully')
     expect(raw).toContain('https://transcribe.example.com/v1')
     expect(raw).not.toContain('openai-secret-sentinel')
@@ -370,9 +370,9 @@ describe('stt api wrappers', () => {
   })
 
   it('uses shared 401 handling for transcription requests', async () => {
-    localStorage.setItem('hermes_active_profile_name', 'research')
+    localStorage.setItem('DiTing_active_profile_name', 'research')
     const listener = vi.fn()
-    window.addEventListener('hermes-auth-notice', listener)
+    window.addEventListener('DiTing-auth-notice', listener)
     mockFetch.mockResolvedValueOnce({
       ok: false,
       status: 401,
@@ -389,12 +389,12 @@ describe('stt api wrappers', () => {
     expect(listener).toHaveBeenCalledOnce()
     expect(listener.mock.calls[0][0].detail).toEqual({ kind: 'expired' })
     expect(mockFetch).toHaveBeenCalledWith(
-      'https://hermes.example/api/hermes/stt/transcribe',
+      'https://DiTing.example/api/DiTing/stt/transcribe',
       expect.objectContaining({
         method: 'POST',
         headers: expect.objectContaining({
           Authorization: 'Bearer jwt-token',
-          'X-Hermes-Profile': 'research',
+          'X-DiTing-Profile': 'research',
         }),
       }),
     )
@@ -402,6 +402,6 @@ describe('stt api wrappers', () => {
     const [, init] = mockFetch.mock.calls[0] as [string, RequestInit]
     expect(getHeader(init.headers, 'Content-Type')).toBeUndefined()
     expect(init.body).toBeInstanceOf(FormData)
-    window.removeEventListener('hermes-auth-notice', listener)
+    window.removeEventListener('DiTing-auth-notice', listener)
   })
 })

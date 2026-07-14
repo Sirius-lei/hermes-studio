@@ -11,7 +11,7 @@ async function loadAuth(overrides: Partial<FsMocks> & { home?: string } = {}) {
   const readFile = overrides.readFile ?? vi.fn()
   const writeFile = overrides.writeFile ?? vi.fn()
   const mkdir = overrides.mkdir ?? vi.fn()
-  const home = overrides.home ?? '/tmp/hermes-home'
+  const home = overrides.home ?? '/tmp/DiTing-home'
 
   vi.resetModules()
   vi.doMock('fs/promises', () => ({ readFile, writeFile, mkdir }))
@@ -21,8 +21,8 @@ async function loadAuth(overrides: Partial<FsMocks> & { home?: string } = {}) {
   return {
     ...mod,
     mocks: { readFile, writeFile, mkdir },
-    appHome: join(home, '.hermes-web-ui'),
-    tokenFile: join(home, '.hermes-web-ui', '.token'),
+    appHome: join(home, '.DiTing-web-ui'),
+    tokenFile: join(home, '.DiTing-web-ui', '.token'),
   }
 }
 
@@ -156,7 +156,7 @@ describe('Auth Service', () => {
     it('rejects request without auth header for protected API routes', async () => {
       const { requireAuth } = await loadAuth()
       const middleware = requireAuth('secret')
-      const ctx = createMockCtx('/api/hermes/sessions')
+      const ctx = createMockCtx('/api/DiTing/sessions')
       const next = vi.fn(async () => {})
 
       await middleware(ctx, next)
@@ -168,7 +168,7 @@ describe('Auth Service', () => {
     it('rejects request with the wrong bearer token', async () => {
       const { requireAuth } = await loadAuth()
       const middleware = requireAuth('secret')
-      const ctx = createMockCtx('/api/hermes/sessions', { authorization: 'Bearer wrong' })
+      const ctx = createMockCtx('/api/DiTing/sessions', { authorization: 'Bearer wrong' })
       const next = vi.fn(async () => {})
 
       await middleware(ctx, next)
@@ -180,7 +180,7 @@ describe('Auth Service', () => {
     it('allows request with the correct bearer token', async () => {
       const { requireAuth } = await loadAuth()
       const middleware = requireAuth('secret')
-      const ctx = createMockCtx('/api/hermes/sessions', { authorization: 'Bearer secret' })
+      const ctx = createMockCtx('/api/DiTing/sessions', { authorization: 'Bearer secret' })
       const next = vi.fn(async () => {})
 
       await middleware(ctx, next)
@@ -191,7 +191,7 @@ describe('Auth Service', () => {
     it('allows request with the correct query token', async () => {
       const { requireAuth } = await loadAuth()
       const middleware = requireAuth('secret')
-      const ctx = createMockCtx('/api/hermes/sessions', {}, { token: 'secret' })
+      const ctx = createMockCtx('/api/DiTing/sessions', {}, { token: 'secret' })
       const next = vi.fn(async () => {})
 
       await middleware(ctx, next)
@@ -202,7 +202,7 @@ describe('Auth Service', () => {
     it('returns 401 JSON on auth failure', async () => {
       const { requireAuth } = await loadAuth()
       const middleware = requireAuth('secret')
-      const ctx = createMockCtx('/api/hermes/sessions', { authorization: 'Bearer wrong' })
+      const ctx = createMockCtx('/api/DiTing/sessions', { authorization: 'Bearer wrong' })
       const next = vi.fn(async () => {})
 
       await middleware(ctx, next)

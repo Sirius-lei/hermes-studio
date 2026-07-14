@@ -15,11 +15,11 @@ vi.mock('../../packages/server/src/services/workflow-manager', () => ({
   getWorkflowManager: () => managerMock,
 }))
 
-vi.mock('../../packages/server/src/db/hermes/users-store', () => ({
+vi.mock('../../packages/server/src/db/DiTing/users-store', () => ({
   listUserProfiles: listUserProfilesMock,
 }))
 
-vi.mock('../../packages/server/src/db/hermes/workflow-run-store', () => ({
+vi.mock('../../packages/server/src/db/DiTing/workflow-run-store', () => ({
   listWorkflowRunNodeSessions: listWorkflowRunNodeSessionsMock,
   listWorkflowRuns: listWorkflowRunsMock,
 }))
@@ -54,7 +54,7 @@ describe('workflow controller', () => {
     listWorkflowRunsMock.mockReturnValue([{ id: 'run-1', workflow_id: 'workflow-1', status: 'completed' }])
     listWorkflowRunNodeSessionsMock.mockReturnValue([{ id: 'node-session-1', node_id: 'node-1', status: 'completed' }])
 
-    const mod = await import('../../packages/server/src/controllers/hermes/workflows')
+    const mod = await import('../../packages/server/src/controllers/DiTing/workflows')
     const c = ctx({ params: { id: 'workflow-1' }, query: { limit: '25' } })
 
     await mod.listRuns(c)
@@ -76,7 +76,7 @@ describe('workflow controller', () => {
     managerMock.get.mockReturnValue({ id: 'workflow-1', profile: 'default' })
     managerMock.runNow.mockResolvedValue({ run: { id: 'run-1', status: 'completed' }, nodeSessions: [] })
 
-    const mod = await import('../../packages/server/src/controllers/hermes/workflows')
+    const mod = await import('../../packages/server/src/controllers/DiTing/workflows')
     const c = ctx({
       params: { id: 'workflow-1' },
       request: { body: { start_node_ids: ['node-1', 12, 'node-2'], input: 'go', timeout_ms: '1000' } },
@@ -100,7 +100,7 @@ describe('workflow controller', () => {
     managerMock.get.mockReturnValue({ id: 'workflow-1', profile: 'default' })
     managerMock.stopRun.mockResolvedValue({ id: 'run-1', workflow_id: 'workflow-1', status: 'canceled' })
 
-    const mod = await import('../../packages/server/src/controllers/hermes/workflows')
+    const mod = await import('../../packages/server/src/controllers/DiTing/workflows')
     const c = ctx({ params: { id: 'workflow-1', runId: 'run-1' } })
 
     await mod.stopRun(c)
@@ -117,7 +117,7 @@ describe('workflow controller', () => {
     managerMock.get.mockReturnValue({ id: 'workflow-1', profile: 'default' })
     managerMock.rerunFromNode.mockResolvedValue({ run: { id: 'run-1', status: 'completed' }, nodeSessions: [] })
 
-    const mod = await import('../../packages/server/src/controllers/hermes/workflows')
+    const mod = await import('../../packages/server/src/controllers/DiTing/workflows')
     const c = ctx({
       params: { id: 'workflow-1', runId: 'run-1' },
       request: { body: { node_id: 'node-2', preserve_start_node: true, timeout_ms: '1000' } },
@@ -140,7 +140,7 @@ describe('workflow controller', () => {
     managerMock.get.mockReturnValue({ id: 'workflow-1', profile: 'default' })
     managerMock.deleteRun.mockResolvedValue(true)
 
-    const mod = await import('../../packages/server/src/controllers/hermes/workflows')
+    const mod = await import('../../packages/server/src/controllers/DiTing/workflows')
     const c = ctx({ params: { id: 'workflow-1', runId: 'run-1' } })
 
     await mod.deleteRun(c)
@@ -153,7 +153,7 @@ describe('workflow controller', () => {
     managerMock.get.mockReturnValue({ id: 'workflow-1', profile: 'secret' })
     listUserProfilesMock.mockReturnValue([{ profile_name: 'default' }])
 
-    const mod = await import('../../packages/server/src/controllers/hermes/workflows')
+    const mod = await import('../../packages/server/src/controllers/DiTing/workflows')
     const c = ctx({
       params: { id: 'workflow-1' },
       state: { user: { id: 'user-1', role: 'user' } },

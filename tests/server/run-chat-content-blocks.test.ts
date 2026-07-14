@@ -2,13 +2,13 @@ import { mkdtemp, rm, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { convertContentBlocks, convertContentBlocksForAgent } from '../../packages/server/src/services/hermes/run-chat/content-blocks'
+import { convertContentBlocks, convertContentBlocksForAgent } from '../../packages/server/src/services/DiTing/run-chat/content-blocks'
 
 let tempDir = ''
 
 describe('run chat content blocks', () => {
   beforeEach(async () => {
-    tempDir = await mkdtemp(join(tmpdir(), 'hermes-content-blocks-'))
+    tempDir = await mkdtemp(join(tmpdir(), 'DiTing-content-blocks-'))
   })
 
   afterEach(async () => {

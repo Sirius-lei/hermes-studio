@@ -3,7 +3,7 @@ import en from './en'
 import zh from './zh'
 
 const detected = navigator.language.startsWith('zh') ? 'zh' : 'en'
-const saved = localStorage.getItem('hermes_website_locale')
+const saved = localStorage.getItem('DiTing_website_locale')
 
 export const i18n = createI18n({
   legacy: false,

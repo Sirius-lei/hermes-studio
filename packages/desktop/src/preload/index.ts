@@ -1,16 +1,16 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
-contextBridge.exposeInMainWorld('hermesDesktop', {
-  getToken: (): Promise<string> => ipcRenderer.invoke('hermes-desktop:get-token'),
-  retryBootstrap: (source?: 'cf' | 'github'): Promise<void> => ipcRenderer.invoke('hermes-desktop:retry-bootstrap', source),
-  notifyCompletion: (payload: { title: string; body?: string; icon?: string; tag?: string }): Promise<boolean> => ipcRenderer.invoke('hermes-desktop:notify-completion', payload),
-  getWindowState: (): Promise<{ isMaximized: boolean }> => ipcRenderer.invoke('hermes-desktop:get-window-state'),
-  windowControl: (action: 'minimize' | 'toggle-maximize' | 'close'): Promise<{ isMaximized: boolean }> => ipcRenderer.invoke('hermes-desktop:window-control', action),
+contextBridge.exposeInMainWorld('DiTingDesktop', {
+  getToken: (): Promise<string> => ipcRenderer.invoke('DiTing-desktop:get-token'),
+  retryBootstrap: (source?: 'cf' | 'github'): Promise<void> => ipcRenderer.invoke('DiTing-desktop:retry-bootstrap', source),
+  notifyCompletion: (payload: { title: string; body?: string; icon?: string; tag?: string }): Promise<boolean> => ipcRenderer.invoke('DiTing-desktop:notify-completion', payload),
+  getWindowState: (): Promise<{ isMaximized: boolean }> => ipcRenderer.invoke('DiTing-desktop:get-window-state'),
+  windowControl: (action: 'minimize' | 'toggle-maximize' | 'close'): Promise<{ isMaximized: boolean }> => ipcRenderer.invoke('DiTing-desktop:window-control', action),
   platform: process.platform,
   isDesktop: true,
 })
 
-const API_KEY_LS = 'hermes_api_key'
+const API_KEY_LS = 'DiTing_api_key'
 const DEFAULT_USERNAME = 'admin'
 const DEFAULT_PASSWORD = '123456'
 
@@ -81,7 +81,7 @@ function installFetchPatch(): void {
   window.fetch = patchedFetch
 
   const OrigXHR = window.XMLHttpRequest
-  type XHRWithDesktop = XMLHttpRequest & { __hermesDesktopUrl?: string }
+  type XHRWithDesktop = XMLHttpRequest & { __DiTingDesktopUrl?: string }
   const origOpen = OrigXHR.prototype.open
   OrigXHR.prototype.open = function (
     this: XHRWithDesktop,
@@ -89,7 +89,7 @@ function installFetchPatch(): void {
     url: string | URL,
     ...rest: unknown[]
   ) {
-    this.__hermesDesktopUrl = String(url)
+    this.__DiTingDesktopUrl = String(url)
     // @ts-expect-error — forwarding variadic
     return origOpen.call(this, method, url, ...rest)
   }
@@ -100,7 +100,7 @@ function installFetchPatch(): void {
       configurable: true,
       get(this: XHRWithDesktop) {
         const raw = origGetResponseText.get!.call(this) as string
-        if (this.__hermesDesktopUrl && isAuthMeUrl(this.__hermesDesktopUrl) && typeof raw === 'string') {
+        if (this.__DiTingDesktopUrl && isAuthMeUrl(this.__DiTingDesktopUrl) && typeof raw === 'string') {
           return stripCredentialFlag(raw)
         }
         return raw
@@ -110,7 +110,7 @@ function installFetchPatch(): void {
       configurable: true,
       get(this: XHRWithDesktop) {
         const raw = origGetResponse.get!.call(this)
-        if (this.__hermesDesktopUrl && isAuthMeUrl(this.__hermesDesktopUrl)) {
+        if (this.__DiTingDesktopUrl && isAuthMeUrl(this.__DiTingDesktopUrl)) {
           if (typeof raw === 'string') return stripCredentialFlag(raw)
           if (raw && typeof raw === 'object' && (raw as { user?: { requiresCredentialChange?: boolean } }).user?.requiresCredentialChange) {
             return { ...(raw as object), user: { ...(raw as { user: object }).user, requiresCredentialChange: false } }
@@ -126,7 +126,7 @@ installFetchPatch()
 
 window.addEventListener('DOMContentLoaded', async () => {
   try {
-    const token = await ipcRenderer.invoke('hermes-desktop:get-token')
+    const token = await ipcRenderer.invoke('DiTing-desktop:get-token')
     if (token) {
       try { localStorage.setItem('AUTH_TOKEN', token) } catch { /* */ }
       await autoLogin(token)

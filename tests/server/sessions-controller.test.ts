@@ -10,7 +10,7 @@ const getSessionDetailFromDbWithProfileMock = vi.fn()
 const getExactSessionDetailFromDbWithProfileMock = vi.fn()
 const getUsageStatsFromDbMock = vi.fn()
 const getSessionMock = vi.fn()
-const deleteHermesSessionForProfileMock = vi.fn()
+const deleteDiTingSessionForProfileMock = vi.fn()
 const localListSessionsMock = vi.fn()
 const localGetSessionDetailMock = vi.fn()
 const localSearchSessionsMock = vi.fn()
@@ -33,12 +33,12 @@ const codingAgentRunManagerMock = vi.hoisted(() => ({
   stop: vi.fn(),
 }))
 
-vi.mock('../../packages/server/src/db/hermes/conversations-db', () => ({
+vi.mock('../../packages/server/src/db/DiTing/conversations-db', () => ({
   listConversationSummariesFromDb: listConversationSummariesFromDbMock,
   getConversationDetailFromDb: getConversationDetailFromDbMock,
 }))
 
-vi.mock('../../packages/server/src/services/hermes/conversations', () => ({
+vi.mock('../../packages/server/src/services/DiTing/conversations', () => ({
   listConversationSummaries: listConversationSummariesMock,
   getConversationDetail: getConversationDetailMock,
 }))
@@ -50,15 +50,15 @@ vi.mock('../../packages/server/src/services/logger', () => ({
   },
 }))
 
-vi.mock('../../packages/server/src/services/hermes/hermes-cli', () => ({
+vi.mock('../../packages/server/src/services/DiTing/DiTing-cli', () => ({
   listSessions: vi.fn(),
   getSession: getSessionMock,
   deleteSession: vi.fn(),
-  deleteSessionForProfile: deleteHermesSessionForProfileMock,
+  deleteSessionForProfile: deleteDiTingSessionForProfileMock,
   renameSession: vi.fn(),
 }))
 
-vi.mock('../../packages/server/src/db/hermes/sessions-db', () => ({
+vi.mock('../../packages/server/src/db/DiTing/sessions-db', () => ({
   listSessionSummaries: listSessionSummariesMock,
   searchSessionSummaries: vi.fn(),
   getSessionDetailFromDb: getSessionDetailFromDbMock,
@@ -67,7 +67,7 @@ vi.mock('../../packages/server/src/db/hermes/sessions-db', () => ({
   getUsageStatsFromDb: getUsageStatsFromDbMock,
 }))
 
-vi.mock('../../packages/server/src/db/hermes/session-store', () => ({
+vi.mock('../../packages/server/src/db/DiTing/session-store', () => ({
   listSessions: localListSessionsMock,
   searchSessions: localSearchSessionsMock,
   getSessionDetail: localGetSessionDetailMock,
@@ -80,32 +80,32 @@ vi.mock('../../packages/server/src/db/hermes/session-store', () => ({
   updateSessionStats: localUpdateSessionStatsMock,
 }))
 
-vi.mock('../../packages/server/src/db/hermes/users-store', () => ({
+vi.mock('../../packages/server/src/db/DiTing/users-store', () => ({
   listUserProfiles: listUserProfilesMock,
 }))
 
-vi.mock('../../packages/server/src/db/hermes/usage-store', () => ({
+vi.mock('../../packages/server/src/db/DiTing/usage-store', () => ({
   deleteUsage: vi.fn(),
   getUsage: vi.fn(),
   getUsageBatch: vi.fn(),
   getLocalUsageStats: getLocalUsageStatsMock,
 }))
 
-vi.mock('../../packages/server/src/routes/hermes/group-chat', () => ({
+vi.mock('../../packages/server/src/routes/DiTing/group-chat', () => ({
   getGroupChatServer: getGroupChatServerMock,
 }))
 
-vi.mock('../../packages/server/src/services/hermes/model-context', () => ({
+vi.mock('../../packages/server/src/services/DiTing/model-context', () => ({
   getModelContextLength: vi.fn(),
 }))
 
-vi.mock('../../packages/server/src/services/hermes/hermes-profile', () => ({
+vi.mock('../../packages/server/src/services/DiTing/DiTing-profile', () => ({
   getActiveProfileName: getActiveProfileNameMock,
-  getProfileDir: (name: string) => `/tmp/hermes-test/${name || 'default'}`,
+  getProfileDir: (name: string) => `/tmp/DiTing-test/${name || 'default'}`,
   listProfileNamesFromDisk: () => ['default', 'travel'],
 }))
 
-vi.mock('../../packages/server/src/services/hermes/agent-bridge', () => ({
+vi.mock('../../packages/server/src/services/DiTing/agent-bridge', () => ({
   AgentBridgeClient: vi.fn().mockImplementation(() => ({
     switchSessionModel: bridgeSwitchSessionModelMock,
   })),
@@ -122,7 +122,7 @@ vi.mock('../../packages/server/src/services/agent-runner/coding-agent-run-manage
   codingAgentRunManager: codingAgentRunManagerMock,
 }))
 
-vi.mock('../../packages/server/src/db/hermes/compression-snapshot', () => ({
+vi.mock('../../packages/server/src/db/DiTing/compression-snapshot', () => ({
   getCompressionSnapshot: getCompressionSnapshotMock,
 }))
 
@@ -150,7 +150,7 @@ describe('session conversations controller', () => {
     getExactSessionDetailFromDbWithProfileMock.mockReset()
     getUsageStatsFromDbMock.mockReset()
     getSessionMock.mockReset()
-    deleteHermesSessionForProfileMock.mockReset()
+    deleteDiTingSessionForProfileMock.mockReset()
     localListSessionsMock.mockReset()
     localGetSessionDetailMock.mockReset()
     localSearchSessionsMock.mockReset()
@@ -173,7 +173,7 @@ describe('session conversations controller', () => {
     readConfigYamlForProfileMock.mockResolvedValue({ model: { default: 'gpt-default', provider: 'openai' } })
     bridgeSwitchSessionModelMock.mockReset()
     bridgeGetRuntimeStateMock.mockReset()
-    bridgeGetRuntimeStateMock.mockReturnValue({ ready: false, running: false, endpoint: 'ipc:///tmp/hermes-agent-bridge.sock' })
+    bridgeGetRuntimeStateMock.mockReturnValue({ ready: false, running: false, endpoint: 'ipc:///tmp/DiTing-agent-bridge.sock' })
     codingAgentRunManagerMock.stop.mockReset()
   })
 
@@ -201,7 +201,7 @@ describe('session conversations controller', () => {
       workspace: null,
     }])
 
-    const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+    const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
     const ctx: any = { query: { humanOnly: 'true', limit: '5' }, body: null }
     await mod.listConversations(ctx)
 
@@ -238,7 +238,7 @@ describe('session conversations controller', () => {
       ],
     })
 
-    const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+    const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
     const ctx: any = { params: { id: 'session-context-1' }, query: {}, body: null }
 
     await mod.getContext(ctx)
@@ -263,7 +263,7 @@ describe('session conversations controller', () => {
   it('returns 404 for missing session context', async () => {
     localGetSessionDetailMock.mockReturnValue(null)
 
-    const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+    const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
     const ctx: any = { params: { id: 'missing-session' }, query: {}, body: null }
 
     await mod.getContext(ctx)
@@ -343,7 +343,7 @@ describe('session conversations controller', () => {
       },
     ])
 
-    const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+    const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
     const ctx: any = {
       query: {},
       state: {
@@ -361,7 +361,7 @@ describe('session conversations controller', () => {
   it('filters the single-chat session list when profile is explicitly provided', async () => {
     localListSessionsMock.mockReturnValue([])
 
-    const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+    const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
     const ctx: any = {
       query: { profile: 'travel' },
       state: { profile: { name: 'default' } },
@@ -378,7 +378,7 @@ describe('session conversations controller', () => {
       { id: 'chat-1', profile: 'default', source: 'cli' },
     ])
 
-    const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+    const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
     const ctx: any = {
       query: { source: 'global_agent' },
       state: {},
@@ -396,7 +396,7 @@ describe('session conversations controller', () => {
       { id: 'chat-1', profile: 'default', source: 'cli' },
     ])
 
-    const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+    const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
     const defaultCtx: any = {
       query: {},
       state: {},
@@ -427,7 +427,7 @@ describe('session conversations controller', () => {
       { id: 'workflow-session', profile: 'default', source: 'workflow' },
     ])
 
-    const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+    const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
     const ctx: any = {
       query: {},
       state: {
@@ -446,7 +446,7 @@ describe('session conversations controller', () => {
       { id: 'travel-global', profile: 'travel', source: 'global_agent' },
     ])
 
-    const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+    const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
     const ctx: any = {
       query: { profile: 'travel', source: 'global_agent' },
       state: {},
@@ -458,7 +458,7 @@ describe('session conversations controller', () => {
     expect(ctx.body).toEqual({ count: 1 })
   })
 
-  it('marks Hermes history sessions that already exist in the Web UI store', async () => {
+  it('marks DiTing history sessions that already exist in the Web UI store', async () => {
     localListSessionsMock.mockReturnValue([{ id: 'cli-1', profile: 'travel' }])
     listSessionSummariesMock.mockResolvedValue([
       {
@@ -505,10 +505,10 @@ describe('session conversations controller', () => {
       },
     ])
 
-    const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+    const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
     const ctx: any = { query: { profile: 'travel' }, state: {}, body: null }
 
-    await mod.listHermesSessions(ctx)
+    await mod.listDiTingSessions(ctx)
 
     expect(localListSessionsMock).toHaveBeenCalledWith('travel', undefined, 2000)
     expect(listSessionSummariesMock).toHaveBeenCalledWith(undefined, 2000, 'travel')
@@ -524,7 +524,7 @@ describe('session conversations controller', () => {
       { id: 'chat-1', profile: 'default', source: 'cli' },
     ])
 
-    const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+    const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
     const ctx: any = {
       query: { q: 'docker', limit: '10' },
       state: { profile: { name: 'travel' } },
@@ -545,7 +545,7 @@ describe('session conversations controller', () => {
       { id: 'chat-1', profile: 'default', source: 'cli' },
     ])
 
-    const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+    const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
     const ctx: any = {
       query: { q: 'docker', source: 'global_agent', limit: '10' },
       state: {},
@@ -562,7 +562,7 @@ describe('session conversations controller', () => {
       throw new Error('db unavailable')
     })
 
-    const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+    const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
     const ctx: any = { query: { humanOnly: 'false' }, body: null }
     await expect(mod.listConversations(ctx)).rejects.toThrow('db unavailable')
   })
@@ -576,7 +576,7 @@ describe('session conversations controller', () => {
       ],
     })
 
-    const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+    const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
     const ctx: any = { params: { id: 'root' }, query: { humanOnly: 'true' }, body: null }
     await mod.getConversationMessages(ctx)
 
@@ -595,7 +595,7 @@ describe('session conversations controller', () => {
       id: 'root',
     })
 
-    const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+    const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
     const ctx: any = { params: { id: 'root' }, query: { humanOnly: 'false' }, body: null }
     await mod.getConversationMessages(ctx)
 
@@ -611,7 +611,7 @@ describe('session conversations controller', () => {
   it('returns 404 when local conversation detail is missing', async () => {
     localGetSessionDetailMock.mockReturnValue(null)
 
-    const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+    const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
     const ctx: any = { params: { id: 'root' }, query: { humanOnly: 'false' }, body: null }
     await mod.getConversationMessages(ctx)
 
@@ -619,7 +619,7 @@ describe('session conversations controller', () => {
     expect(ctx.body).toEqual({ error: 'Conversation not found' })
   })
 
-  it('prefers local session detail for Hermes history detail when available', async () => {
+  it('prefers local session detail for DiTing history detail when available', async () => {
     localGetSessionDetailMock.mockReturnValue({
       id: 'cli-1',
       source: 'cli',
@@ -631,13 +631,13 @@ describe('session conversations controller', () => {
     getSessionDetailFromDbMock.mockResolvedValue({
       id: 'cli-1',
       source: 'cli',
-      title: 'Hermes incomplete',
+      title: 'DiTing incomplete',
       messages: [],
     })
 
-    const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+    const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
     const ctx: any = { params: { id: 'cli-1' }, body: null }
-    await mod.getHermesSession(ctx)
+    await mod.getDiTingSession(ctx)
 
     expect(localGetSessionDetailMock).toHaveBeenCalledWith('cli-1')
     expect(getSessionDetailFromDbMock).not.toHaveBeenCalled()
@@ -649,32 +649,32 @@ describe('session conversations controller', () => {
     })
   })
 
-  it('falls back to Hermes state.db when local history detail is missing', async () => {
+  it('falls back to DiTing state.db when local history detail is missing', async () => {
     localGetSessionDetailMock.mockReturnValue(null)
     getSessionDetailFromDbMock.mockResolvedValue({
-      id: 'hermes-1',
+      id: 'DiTing-1',
       source: 'cli',
-      title: 'Hermes detail',
+      title: 'DiTing detail',
       messages: [
-        { id: 1, session_id: 'hermes-1', role: 'user', content: 'from hermes', timestamp: 1 },
+        { id: 1, session_id: 'DiTing-1', role: 'user', content: 'from DiTing', timestamp: 1 },
       ],
     })
 
-    const mod = await import('../../packages/server/src/controllers/hermes/sessions')
-    const ctx: any = { params: { id: 'hermes-1' }, body: null }
-    await mod.getHermesSession(ctx)
+    const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
+    const ctx: any = { params: { id: 'DiTing-1' }, body: null }
+    await mod.getDiTingSession(ctx)
 
-    expect(localGetSessionDetailMock).toHaveBeenCalledWith('hermes-1')
-    expect(getSessionDetailFromDbMock).toHaveBeenCalledWith('hermes-1')
+    expect(localGetSessionDetailMock).toHaveBeenCalledWith('DiTing-1')
+    expect(getSessionDetailFromDbMock).toHaveBeenCalledWith('DiTing-1')
     expect(getSessionMock).not.toHaveBeenCalled()
     expect(ctx.body.session).toMatchObject({
-      id: 'hermes-1',
-      title: 'Hermes detail',
-      messages: [{ content: 'from hermes' }],
+      id: 'DiTing-1',
+      title: 'DiTing detail',
+      messages: [{ content: 'from DiTing' }],
     })
   })
 
-  it('reads Hermes history detail from the requested profile database', async () => {
+  it('reads DiTing history detail from the requested profile database', async () => {
     localGetSessionDetailMock.mockReturnValue(null)
     getSessionDetailFromDbWithProfileMock.mockResolvedValue({
       id: 'travel-session',
@@ -685,9 +685,9 @@ describe('session conversations controller', () => {
       ],
     })
 
-    const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+    const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
     const ctx: any = { params: { id: 'travel-session' }, query: { profile: 'travel' }, body: null }
-    await mod.getHermesSession(ctx)
+    await mod.getDiTingSession(ctx)
 
     expect(localGetSessionDetailMock).toHaveBeenCalledWith('travel-session')
     expect(getSessionDetailFromDbWithProfileMock).toHaveBeenCalledWith('travel-session', 'travel')
@@ -701,7 +701,7 @@ describe('session conversations controller', () => {
     })
   })
 
-  it('does not return api_server sessions from the Hermes history detail endpoint', async () => {
+  it('does not return api_server sessions from the DiTing history detail endpoint', async () => {
     localGetSessionDetailMock.mockReturnValue({
       id: 'api-1',
       source: 'api_server',
@@ -711,9 +711,9 @@ describe('session conversations controller', () => {
     getSessionDetailFromDbMock.mockResolvedValue(null)
     getSessionMock.mockResolvedValue(null)
 
-    const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+    const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
     const ctx: any = { params: { id: 'api-1' }, body: null }
-    await mod.getHermesSession(ctx)
+    await mod.getDiTingSession(ctx)
 
     expect(localGetSessionDetailMock).toHaveBeenCalledWith('api-1')
     expect(getSessionDetailFromDbMock).toHaveBeenCalledWith('api-1')
@@ -747,14 +747,14 @@ describe('session conversations controller', () => {
       cost: 0.02,
       total_api_calls: 7,
       by_model: [
-        { model: 'hermes-model', input_tokens: 20, output_tokens: 10, cache_read_tokens: 4, cache_write_tokens: 2, reasoning_tokens: 6, sessions: 2 },
+        { model: 'DiTing-model', input_tokens: 20, output_tokens: 10, cache_read_tokens: 4, cache_write_tokens: 2, reasoning_tokens: 6, sessions: 2 },
       ],
       by_day: [
         { date: today, input_tokens: 20, output_tokens: 10, cache_read_tokens: 4, cache_write_tokens: 2, sessions: 2, errors: 0, cost: 0.02 },
       ],
     })
 
-    const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+    const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
     const ctx: any = { query: { days: '2' }, body: null }
     await mod.usageStats(ctx)
 
@@ -772,7 +772,7 @@ describe('session conversations controller', () => {
       period_days: 2,
     })
     expect(ctx.body.model_usage).toEqual([
-      { model: 'hermes-model', input_tokens: 20, output_tokens: 10, cache_read_tokens: 4, cache_write_tokens: 2, reasoning_tokens: 6, sessions: 2 },
+      { model: 'DiTing-model', input_tokens: 20, output_tokens: 10, cache_read_tokens: 4, cache_write_tokens: 2, reasoning_tokens: 6, sessions: 2 },
     ])
     expect(ctx.body.daily_usage.find((row: any) => row.date === today)).toMatchObject({
       input_tokens: 20,
@@ -800,7 +800,7 @@ describe('session conversations controller', () => {
       by_day: [],
     })
 
-    const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+    const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
     const ctx: any = { query: { days: '2' }, state: { profile: { name: 'research' } }, body: null }
     await mod.usageStats(ctx)
 
@@ -845,7 +845,7 @@ describe('session conversations controller', () => {
       by_day: [],
     })
 
-    const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+    const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
     const ctx: any = { query: { days: '2' }, body: null }
     await mod.usageStats(ctx)
 
@@ -857,7 +857,7 @@ describe('session conversations controller', () => {
   it('sets a session model and provider in the local session store', async () => {
     getSessionMock.mockReturnValue({ id: 'session-1' })
 
-    const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+    const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
     const ctx: any = {
       params: { id: 'session-1' },
       request: { body: { model: 'grok-4', provider: 'xai' } },
@@ -869,14 +869,14 @@ describe('session conversations controller', () => {
     expect(localUpdateSessionMock).toHaveBeenCalledWith('session-1', {
       model: 'grok-4',
       provider: 'xai',
-      workspace: '/tmp/hermes-test/default/workspace',
+      workspace: '/tmp/DiTing-test/default/workspace',
     })
     expect(bridgeSwitchSessionModelMock).not.toHaveBeenCalled()
     expect(ctx.body).toEqual({ ok: true })
   })
 
   it('notifies a loaded agent bridge session after storing the session model', async () => {
-    bridgeGetRuntimeStateMock.mockReturnValue({ ready: true, running: true, endpoint: 'ipc:///tmp/hermes-agent-bridge.sock' })
+    bridgeGetRuntimeStateMock.mockReturnValue({ ready: true, running: true, endpoint: 'ipc:///tmp/DiTing-agent-bridge.sock' })
     bridgeSwitchSessionModelMock.mockResolvedValue({
       ok: true,
       session_id: 'session-1',
@@ -887,7 +887,7 @@ describe('session conversations controller', () => {
     })
     getSessionMock.mockReturnValue({ id: 'session-1', profile: 'travel' })
 
-    const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+    const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
     const ctx: any = {
       params: { id: 'session-1' },
       request: { body: { model: 'claude-sonnet-4-6', provider: 'claude-oauth' } },
@@ -898,7 +898,7 @@ describe('session conversations controller', () => {
     expect(localUpdateSessionMock).toHaveBeenCalledWith('session-1', {
       model: 'claude-sonnet-4-6',
       provider: 'claude-oauth',
-      workspace: '/tmp/hermes-test/travel/workspace',
+      workspace: '/tmp/DiTing-test/travel/workspace',
     })
     expect(bridgeSwitchSessionModelMock).toHaveBeenCalledWith(
       'session-1',
@@ -909,8 +909,8 @@ describe('session conversations controller', () => {
     expect(ctx.body).toEqual({ ok: true })
   })
 
-  it('stores a coding agent session model without stopping the runner or notifying the Hermes bridge', async () => {
-    bridgeGetRuntimeStateMock.mockReturnValue({ ready: true, running: true, endpoint: 'ipc:///tmp/hermes-agent-bridge.sock' })
+  it('stores a coding agent session model without stopping the runner or notifying the DiTing bridge', async () => {
+    bridgeGetRuntimeStateMock.mockReturnValue({ ready: true, running: true, endpoint: 'ipc:///tmp/DiTing-agent-bridge.sock' })
     getSessionMock.mockReturnValue({
       id: 'codex-session',
       profile: 'default',
@@ -922,7 +922,7 @@ describe('session conversations controller', () => {
       workspace: '/tmp/original-workspace',
     })
 
-    const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+    const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
     const ctx: any = {
       params: { id: 'codex-session' },
       request: { body: { model: 'gpt-5.5', provider: 'openai-codex' } },
@@ -940,27 +940,27 @@ describe('session conversations controller', () => {
     expect(ctx.body).toEqual({ ok: true })
   })
 
-  it('deletes a current-profile Hermes history session even when no local Web UI session exists', async () => {
+  it('deletes a current-profile DiTing history session even when no local Web UI session exists', async () => {
     getActiveProfileNameMock.mockReturnValue('travel')
     getSessionMock.mockReturnValue(null)
     getExactSessionDetailFromDbWithProfileMock.mockResolvedValue({ id: 'history-only', messages: [] })
-    deleteHermesSessionForProfileMock.mockResolvedValue(true)
+    deleteDiTingSessionForProfileMock.mockResolvedValue(true)
 
-    const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+    const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
     const ctx: any = { params: { id: 'history-only' }, body: null }
     await mod.remove(ctx)
 
     expect(getExactSessionDetailFromDbWithProfileMock).toHaveBeenCalledWith('history-only', 'travel')
-    expect(deleteHermesSessionForProfileMock).toHaveBeenCalledWith('history-only', 'travel')
+    expect(deleteDiTingSessionForProfileMock).toHaveBeenCalledWith('history-only', 'travel')
     expect(localDeleteSessionMock).not.toHaveBeenCalled()
     expect(ctx.body).toEqual({
       ok: true,
       deleted: false,
-      hermes: { attempted: true, deleted: true, profile: 'travel', error: undefined },
+      DiTing: { attempted: true, deleted: true, profile: 'travel', error: undefined },
     })
   })
 
-  it('deletes a local coding-agent session without invoking Hermes CLI deletion', async () => {
+  it('deletes a local coding-agent session without invoking DiTing CLI deletion', async () => {
     getSessionMock.mockReturnValue({
       id: 'codex-session',
       profile: 'default',
@@ -968,18 +968,18 @@ describe('session conversations controller', () => {
     })
     localDeleteSessionMock.mockReturnValue(true)
 
-    const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+    const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
     const ctx: any = { params: { id: 'codex-session' }, body: null }
     await mod.remove(ctx)
 
     expect(codingAgentRunManagerMock.stop).toHaveBeenCalledWith('codex-session', { reportClosed: false })
     expect(getExactSessionDetailFromDbWithProfileMock).not.toHaveBeenCalled()
-    expect(deleteHermesSessionForProfileMock).not.toHaveBeenCalled()
+    expect(deleteDiTingSessionForProfileMock).not.toHaveBeenCalled()
     expect(localDeleteSessionMock).toHaveBeenCalledWith('codex-session')
     expect(ctx.body).toEqual({
       ok: true,
       deleted: true,
-      hermes: { attempted: false, deleted: false, profile: 'default' },
+      DiTing: { attempted: false, deleted: false, profile: 'default' },
     })
   })
 
@@ -990,10 +990,10 @@ describe('session conversations controller', () => {
       profile: id === 'travel-session' ? 'travel' : 'default',
     }))
     getExactSessionDetailFromDbWithProfileMock.mockResolvedValue({ id: 'matched', messages: [] })
-    deleteHermesSessionForProfileMock.mockResolvedValue(true)
+    deleteDiTingSessionForProfileMock.mockResolvedValue(true)
     localDeleteSessionMock.mockReturnValue(true)
 
-    const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+    const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
     const ctx: any = {
       request: {
         body: {
@@ -1012,14 +1012,14 @@ describe('session conversations controller', () => {
 
     expect(getExactSessionDetailFromDbWithProfileMock).toHaveBeenCalledWith('default-session', 'default')
     expect(getExactSessionDetailFromDbWithProfileMock).toHaveBeenCalledWith('travel-session', 'travel')
-    expect(deleteHermesSessionForProfileMock).toHaveBeenCalledWith('default-session', 'default')
-    expect(deleteHermesSessionForProfileMock).toHaveBeenCalledWith('travel-session', 'travel')
+    expect(deleteDiTingSessionForProfileMock).toHaveBeenCalledWith('default-session', 'default')
+    expect(deleteDiTingSessionForProfileMock).toHaveBeenCalledWith('travel-session', 'travel')
     expect(localDeleteSessionMock).toHaveBeenCalledWith('default-session')
     expect(localDeleteSessionMock).toHaveBeenCalledWith('travel-session')
-    expect(ctx.body).toMatchObject({ ok: true, deleted: 2, failed: 0, hermesDeleted: 2 })
+    expect(ctx.body).toMatchObject({ ok: true, deleted: 2, failed: 0, DiTingDeleted: 2 })
   })
 
-  it('batch deletes local coding-agent sessions without invoking Hermes CLI deletion', async () => {
+  it('batch deletes local coding-agent sessions without invoking DiTing CLI deletion', async () => {
     getSessionMock.mockReturnValue({
       id: 'codex-session',
       profile: 'default',
@@ -1027,7 +1027,7 @@ describe('session conversations controller', () => {
     })
     localDeleteSessionMock.mockReturnValue(true)
 
-    const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+    const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
     const ctx: any = {
       request: {
         body: {
@@ -1040,13 +1040,13 @@ describe('session conversations controller', () => {
 
     expect(codingAgentRunManagerMock.stop).toHaveBeenCalledWith('codex-session', { reportClosed: false })
     expect(getExactSessionDetailFromDbWithProfileMock).not.toHaveBeenCalled()
-    expect(deleteHermesSessionForProfileMock).not.toHaveBeenCalled()
+    expect(deleteDiTingSessionForProfileMock).not.toHaveBeenCalled()
     expect(localDeleteSessionMock).toHaveBeenCalledWith('codex-session')
-    expect(ctx.body).toMatchObject({ ok: true, deleted: 1, failed: 0, hermesDeleted: 0 })
+    expect(ctx.body).toMatchObject({ ok: true, deleted: 1, failed: 0, DiTingDeleted: 0 })
   })
 
-  it('imports a Hermes session into the local Web UI store', async () => {
-    const hermesDetail = {
+  it('imports a DiTing session into the local Web UI store', async () => {
+    const DiTingDetail = {
       id: 'cli-1',
       source: 'cli',
       user_id: null,
@@ -1078,13 +1078,13 @@ describe('session conversations controller', () => {
         { id: 6, session_id: 'cli-1', role: 'system', content: 'drop me', tool_call_id: null, tool_calls: null, tool_name: null, timestamp: 105, token_count: null, finish_reason: null, reasoning: null },
       ],
     }
-    localGetSessionDetailMock.mockReturnValueOnce(null).mockReturnValueOnce({ ...hermesDetail, profile: 'travel' })
-    getSessionDetailFromDbWithProfileMock.mockResolvedValue(hermesDetail)
+    localGetSessionDetailMock.mockReturnValueOnce(null).mockReturnValueOnce({ ...DiTingDetail, profile: 'travel' })
+    getSessionDetailFromDbWithProfileMock.mockResolvedValue(DiTingDetail)
 
-    const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+    const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
     const ctx: any = { params: { id: 'cli-1' }, query: { profile: 'travel' }, state: {}, body: null }
 
-    await mod.importHermesSession(ctx)
+    await mod.importDiTingSession(ctx)
 
     expect(getSessionDetailFromDbWithProfileMock).toHaveBeenCalledWith('cli-1', 'travel')
     expect(localCreateSessionMock).toHaveBeenCalledWith(expect.objectContaining({
@@ -1124,7 +1124,7 @@ describe('session conversations controller', () => {
       const sessionData = { id: 'abc-123', title: 'Test Session', messages: [{ id: 1, role: 'user', content: 'hello' }] }
       localGetSessionDetailMock.mockReturnValue(sessionData)
 
-      const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+      const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
       const setMock = vi.fn()
       const ctx: any = { params: { id: 'abc-123' }, query: {}, set: setMock, body: null }
 
@@ -1148,7 +1148,7 @@ describe('session conversations controller', () => {
       }
       localGetSessionDetailMock.mockReturnValue(sessionData)
 
-      const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+      const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
       const setMock = vi.fn()
       const ctx: any = { params: { id: 'txt-123' }, query: { mode: 'full', ext: 'txt' }, set: setMock, body: null }
 
@@ -1166,7 +1166,7 @@ describe('session conversations controller', () => {
       localGetSessionDetailMock.mockReturnValue(null)
       getSessionMock.mockResolvedValue(null)
 
-      const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+      const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
       const ctx: any = { params: { id: 'not-found' }, query: {}, set: vi.fn(), body: null }
 
       await mod.exportSession(ctx)
@@ -1179,7 +1179,7 @@ describe('session conversations controller', () => {
       const sessionData = { id: 'cli-123', title: 'CLI Session', messages: [] }
       localGetSessionDetailMock.mockReturnValue(sessionData)
 
-      const mod = await import('../../packages/server/src/controllers/hermes/sessions')
+      const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
       const setMock = vi.fn()
       const ctx: any = { params: { id: 'cli-123' }, query: {}, set: setMock, body: null }
 

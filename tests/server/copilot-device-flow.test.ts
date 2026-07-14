@@ -4,7 +4,7 @@ import {
   pollDeviceFlow,
   COPILOT_OAUTH_CLIENT_ID,
   COPILOT_OAUTH_SCOPE,
-} from '../../packages/server/src/services/hermes/copilot-device-flow'
+} from '../../packages/server/src/services/DiTing/copilot-device-flow'
 
 function mockJsonResponse(data: any, ok = true, status = 200): any {
   return {

@@ -1,16 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { clampTtsText, cleanTtsText } from '../../packages/server/src/services/hermes/tts-providers/text'
+import { clampTtsText, cleanTtsText } from '../../packages/server/src/services/DiTing/tts-providers/text'
 
 const { textToSpeech } = vi.hoisted(() => ({
   textToSpeech: vi.fn(),
 }))
 
-vi.mock('../../packages/server/src/services/hermes/tts', () => ({
+vi.mock('../../packages/server/src/services/DiTing/tts', () => ({
   textToSpeech,
 }))
 
-import { edgeTtsProvider } from '../../packages/server/src/services/hermes/tts-providers/edge'
+import { edgeTtsProvider } from '../../packages/server/src/services/DiTing/tts-providers/edge'
 
 describe('edgeTtsProvider', () => {
   beforeEach(() => {

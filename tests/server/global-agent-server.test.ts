@@ -49,7 +49,7 @@ vi.mock('../../packages/server/src/middleware/user-auth', () => ({
   authenticateUserToken: authMocks.authenticateUserToken,
 }))
 
-vi.mock('../../packages/server/src/db/hermes/users-store', () => ({
+vi.mock('../../packages/server/src/db/DiTing/users-store', () => ({
   userCanAccessProfile: authMocks.userCanAccessProfile,
 }))
 
@@ -57,7 +57,7 @@ vi.mock('socket.io-client', () => ({
   io: clientSocketMocks.clientIo,
 }))
 
-vi.mock('../../packages/server/src/routes/hermes/chat-run', () => ({
+vi.mock('../../packages/server/src/routes/DiTing/chat-run', () => ({
   getChatRunServer: chatRunMocks.getChatRunServer,
 }))
 
@@ -138,7 +138,7 @@ describe('GlobalAgentServer', () => {
     await nsp.__middleware[0](denied, deniedNext)
     expect(deniedNext.mock.calls[0][0]).toBeInstanceOf(Error)
 
-    const deniedAgent = createMockSocket('socket-denied-agent', { token: 'wrong', role: 'hermes-studio' })
+    const deniedAgent = createMockSocket('socket-denied-agent', { token: 'wrong', role: 'DiTing-studio' })
     const deniedAgentNext = vi.fn()
     await nsp.__middleware[0](deniedAgent, deniedAgentNext)
     expect(deniedAgentNext.mock.calls[0][0]).toBeInstanceOf(Error)
@@ -215,7 +215,7 @@ describe('GlobalAgentServer', () => {
         clientId: 'local-global-agent',
         headers: {
           authorization: 'Bearer frontend-jwt',
-          'x-hermes-profile': 'research',
+          'x-DiTing-profile': 'research',
         },
       },
       expect.any(Function),
@@ -262,7 +262,7 @@ describe('GlobalAgentServer', () => {
 
     const agentSocket = createMockSocket('jwt-agent-socket', {
       token: 'user-jwt',
-      role: 'hermes-studio',
+      role: 'DiTing-studio',
       instanceId: 'device-1',
       profile: 'research',
     })
@@ -277,7 +277,7 @@ describe('GlobalAgentServer', () => {
     agentSocket.__handlers.get('http.request')?.({
       id: 'req-1',
       method: 'POST',
-      path: '/api/hermes/sessions',
+      path: '/api/DiTing/sessions',
       headers: {
         authorization: 'Bearer attacker',
         'content-type': 'application/json',
@@ -286,14 +286,14 @@ describe('GlobalAgentServer', () => {
     }, httpAck)
     await new Promise(resolve => setTimeout(resolve, 0))
 
-    expect(fetchImpl).toHaveBeenCalledWith('http://127.0.0.1:8648/api/hermes/sessions', expect.objectContaining({
+    expect(fetchImpl).toHaveBeenCalledWith('http://127.0.0.1:8648/api/DiTing/sessions', expect.objectContaining({
       method: 'POST',
       body: JSON.stringify({ title: 'hello' }),
     }))
     expect(Array.from((fetchImpl.mock.calls[0][1].headers as Headers).entries())).toEqual([
       ['authorization', 'Bearer user-jwt'],
       ['content-type', 'application/json'],
-      ['x-hermes-profile', 'research'],
+      ['x-DiTing-profile', 'research'],
     ])
     expect(httpAck).toHaveBeenCalledWith(expect.objectContaining({
       id: 'req-1',
@@ -350,7 +350,7 @@ describe('GlobalAgentServer', () => {
 
     const first = createMockSocket('agent-old', {
       token: 'user-jwt',
-      role: 'hermes-studio',
+      role: 'DiTing-studio',
       instanceId: 'device-1',
       profile: 'research',
     })
@@ -364,7 +364,7 @@ describe('GlobalAgentServer', () => {
 
     const second = createMockSocket('agent-new', {
       token: 'user-jwt',
-      role: 'hermes-studio',
+      role: 'DiTing-studio',
       instanceId: 'device-1',
       profile: 'research',
     })
@@ -390,7 +390,7 @@ describe('GlobalAgentServer', () => {
 
     const agentSocket = createMockSocket('jwt-agent-socket', {
       token: 'user-jwt',
-      role: 'hermes-studio',
+      role: 'DiTing-studio',
       instanceId: 'device-1',
       profile: 'research',
     })
@@ -401,7 +401,7 @@ describe('GlobalAgentServer', () => {
 
     const otherAgentSocket = createMockSocket('jwt-agent-socket-2', {
       token: 'user-jwt',
-      role: 'hermes-studio',
+      role: 'DiTing-studio',
       instanceId: 'device-2',
       profile: 'research',
     })
@@ -445,7 +445,7 @@ describe('GlobalAgentServer', () => {
 
     const agentSocket = createMockSocket('jwt-agent-socket', {
       token: 'user-jwt',
-      role: 'hermes-studio',
+      role: 'DiTing-studio',
       instanceId: 'device-1',
       profile: 'research',
     })
@@ -490,9 +490,9 @@ describe('GlobalAgentServer', () => {
     server.init()
 
     const audio = await (server as any).synthesizeMcuSpeech('hello', 'user-jwt', 'research')
-    expect(audio.url).toMatch(/^\/api\/hermes\/mcu\/audio\/[a-f0-9-]+\.pcm$/)
+    expect(audio.url).toMatch(/^\/api\/DiTing\/mcu\/audio\/[a-f0-9-]+\.pcm$/)
     expect(fetchImpl.mock.calls[0][1]?.headers).toMatchObject({
-      'X-Hermes-Profile': 'research',
+      'X-DiTing-Profile': 'research',
     })
   })
 
@@ -516,7 +516,7 @@ describe('GlobalAgentServer', () => {
     await (server as any).synthesizeMcuSpeech('hello', 'user-jwt', 'research')
 
     expect(fetchImpl.mock.calls[0][1]?.headers).toMatchObject({
-      'X-Hermes-Profile': 'research',
+      'X-DiTing-Profile': 'research',
     })
     expect(JSON.parse(String(fetchImpl.mock.calls[0][1]?.body))).toMatchObject({
       text: 'hello',
@@ -555,10 +555,10 @@ describe('GlobalAgentServer', () => {
 
     const audio = await (server as any).synthesizeMcuSpeech('hello', 'user-jwt', 'research')
 
-    expect(audio.url).toMatch(/^\/api\/hermes\/mcu\/audio\/[a-f0-9-]+\.pcm$/)
+    expect(audio.url).toMatch(/^\/api\/DiTing\/mcu\/audio\/[a-f0-9-]+\.pcm$/)
     expect(fetchImpl).toHaveBeenCalledTimes(2)
     expect(fetchImpl.mock.calls[1][1]?.headers).toMatchObject({
-      'X-Hermes-Profile': 'research',
+      'X-DiTing-Profile': 'research',
     })
     expect(JSON.parse(String(fetchImpl.mock.calls[1][1]?.body))).toMatchObject({
       provider: 'edge',
@@ -598,10 +598,10 @@ describe('GlobalAgentServer', () => {
 
     const audio = await (server as any).synthesizeMcuSpeech('hello', 'user-jwt', 'research')
 
-    expect(audio.url).toMatch(/^\/api\/hermes\/mcu\/audio\/[a-f0-9-]+\.pcm$/)
+    expect(audio.url).toMatch(/^\/api\/DiTing\/mcu\/audio\/[a-f0-9-]+\.pcm$/)
     expect(fetchImpl).toHaveBeenCalledTimes(2)
     expect(fetchImpl.mock.calls[1][1]?.headers).toMatchObject({
-      'X-Hermes-Profile': 'research',
+      'X-DiTing-Profile': 'research',
     })
     expect(JSON.parse(String(fetchImpl.mock.calls[1][1]?.body))).toMatchObject({
       provider: 'edge',
@@ -632,7 +632,7 @@ describe('GlobalAgentServer', () => {
 
     const agentSocket = createMockSocket('jwt-agent-socket', {
       token: 'user-jwt',
-      role: 'hermes-studio',
+      role: 'DiTing-studio',
       instanceId: 'device-1',
       profile: 'research',
     })
@@ -662,7 +662,7 @@ describe('GlobalAgentServer', () => {
     expect(agentSocket.emit).toHaveBeenCalledWith('audio.enqueue', expect.objectContaining({
       interactionId: 'voice-1',
       segmentId: 'voice-1-tts-1',
-      url: expect.stringMatching(/^\/api\/hermes\/mcu\/audio\/[a-f0-9-]+\.pcm$/),
+      url: expect.stringMatching(/^\/api\/DiTing\/mcu\/audio\/[a-f0-9-]+\.pcm$/),
       completionManagedByServer: true,
     }))
     agentSocket.__handlers.get('audio.done')?.({
@@ -682,7 +682,7 @@ describe('GlobalAgentServer', () => {
     expect(agentSocket.emit).toHaveBeenCalledWith('audio.enqueue', expect.objectContaining({
       interactionId: 'voice-1',
       segmentId: 'voice-1-tts-2',
-      url: expect.stringMatching(/^\/api\/hermes\/mcu\/audio\/[a-f0-9-]+\.pcm$/),
+      url: expect.stringMatching(/^\/api\/DiTing\/mcu\/audio\/[a-f0-9-]+\.pcm$/),
       completionManagedByServer: true,
     }))
   })
@@ -699,7 +699,7 @@ describe('GlobalAgentServer', () => {
 
     const agentSocket = createMockSocket('jwt-agent-socket', {
       token: 'user-jwt',
-      role: 'hermes-studio',
+      role: 'DiTing-studio',
       instanceId: 'device-1',
       profile: 'research',
     })

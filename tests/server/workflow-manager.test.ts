@@ -43,10 +43,10 @@ describe('workflow manager', () => {
   it('maps workflow node agents to the existing run backends', async () => {
     const { resolveWorkflowNodeRunTarget } = await import('../../packages/server/src/services/workflow-manager')
 
-    expect(resolveWorkflowNodeRunTarget('hermes')).toEqual({
+    expect(resolveWorkflowNodeRunTarget('DiTing')).toEqual({
       type: 'workflow',
       source: 'workflow',
-      agent: 'hermes',
+      agent: 'DiTing',
     })
     expect(resolveWorkflowNodeRunTarget('claude-code')).toEqual({
       type: 'workflow',
@@ -63,7 +63,7 @@ describe('workflow manager', () => {
     expect(resolveWorkflowNodeRunTarget('unknown')).toEqual({
       type: 'workflow',
       source: 'workflow',
-      agent: 'hermes',
+      agent: 'DiTing',
     })
   })
 })

@@ -23,7 +23,7 @@ vi.mock('../../packages/server/src/shared/providers', () => ({
   PROVIDER_PRESETS: [],
 }))
 
-vi.mock('../../packages/server/src/services/hermes/copilot-models', () => ({
+vi.mock('../../packages/server/src/services/DiTing/copilot-models', () => ({
   getCopilotModelsDetailed: vi.fn(),
   resolveCopilotOAuthToken: vi.fn(),
 }))
@@ -32,11 +32,11 @@ vi.mock('../../packages/server/src/db', () => ({
   getDb: vi.fn(),
 }))
 
-vi.mock('../../packages/server/src/db/hermes/schemas', () => ({
+vi.mock('../../packages/server/src/db/DiTing/schemas', () => ({
   MODEL_CONTEXT_TABLE: 'model_context',
 }))
 
-import { setModelAlias } from '../../packages/server/src/controllers/hermes/models'
+import { setModelAlias } from '../../packages/server/src/controllers/DiTing/models'
 
 describe('model alias controller', () => {
   beforeEach(() => {

@@ -21,7 +21,7 @@ describe('STT provider settings schema', () => {
   })
 
   async function initStores(): Promise<void> {
-    const { initAllStores } = await import('../../packages/server/src/db/hermes/init')
+    const { initAllStores } = await import('../../packages/server/src/db/DiTing/init')
     initAllStores()
   }
 
@@ -131,11 +131,11 @@ describe('stt settings store', () => {
   })
 
   async function initStore() {
-    const schemas = await import('../../packages/server/src/db/hermes/schemas')
-    schemas.initAllHermesTables()
+    const schemas = await import('../../packages/server/src/db/DiTing/schemas')
+    schemas.initAllDiTingTables()
     return {
       schemas,
-      store: await import('../../packages/server/src/db/hermes/stt-settings-store'),
+      store: await import('../../packages/server/src/db/DiTing/stt-settings-store'),
     }
   }
 

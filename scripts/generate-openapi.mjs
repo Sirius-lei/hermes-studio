@@ -20,8 +20,8 @@ const packageJson = JSON.parse(readFileSync(join(rootDir, 'package.json'), 'utf-
 const openapi = {
   openapi: '3.0.3',
   info: {
-    title: 'Hermes Studio API',
-    description: 'Hermes Studio API — chat sessions, scheduled jobs, platform channels, model management, skills, memory, logs, file browser, group chat, and terminal.',
+    title: 'DiTing Studio API',
+    description: 'DiTing Studio API — chat sessions, scheduled jobs, platform channels, model management, skills, memory, logs, file browser, group chat, and terminal.',
     version: packageJson.version,
   },
   servers: [
@@ -44,38 +44,38 @@ const openapi = {
 
 // Tag mappings based on route directories
 const tagMappings = {
-  'routes/hermes/sessions.ts': { name: 'Sessions', description: 'Chat session management' },
-  'routes/hermes/profiles.ts': { name: 'Profiles', description: 'Hermes profile management' },
-  'routes/hermes/gateways.ts': { name: 'Gateways', description: 'Gateway process management' },
-  'routes/hermes/models.ts': { name: 'Models', description: 'Model configuration' },
-  'routes/hermes/providers.ts': { name: 'Providers', description: 'Model provider management' },
-  'routes/hermes/skills.ts': { name: 'Skills', description: 'Skill browsing and management' },
-  'routes/hermes/plugins.ts': { name: 'Plugins', description: 'Plugin browsing and management' },
-  'routes/hermes/memory.ts': { name: 'Memory', description: 'Agent memory files' },
-  'routes/hermes/logs.ts': { name: 'Logs', description: 'Log file access' },
-  'routes/hermes/jobs.ts': { name: 'Jobs', description: 'Scheduled job management' },
-  'routes/hermes/cron-history.ts': { name: 'Jobs', description: 'Cron job history' },
-  'routes/hermes/kanban.ts': { name: 'Kanban', description: 'Kanban board and task management' },
-  'routes/hermes/weixin.ts': { name: 'Weixin', description: 'WeChat QR code login' },
-  'routes/hermes/codex-auth.ts': { name: 'Codex Auth', description: 'OpenAI Codex OAuth' },
-  'routes/hermes/nous-auth.ts': { name: 'Nous Auth', description: 'Nous Research OAuth' },
-  'routes/hermes/copilot-auth.ts': { name: 'Copilot Auth', description: 'GitHub Copilot OAuth' },
-  'routes/hermes/xai-auth.ts': { name: 'xAI Auth', description: 'xAI OAuth' },
-  'routes/hermes/anthropic-auth.ts': { name: 'Anthropic Auth', description: 'Anthropic OAuth' },
-  'routes/hermes/gemini-auth.ts': { name: 'Gemini Auth', description: 'Google Gemini OAuth' },
-  'routes/hermes/group-chat.ts': { name: 'Group Chat', description: 'Group chat management' },
-  'routes/hermes/chat-run.ts': { name: 'Chat Run', description: 'Chat run HTTP and Socket.IO bridge operations' },
-  'routes/hermes/config.ts': { name: 'Config', description: 'Configuration management' },
-  'routes/hermes/files.ts': { name: 'Files', description: 'Hermes file browser' },
-  'routes/hermes/download.ts': { name: 'Download', description: 'File download' },
-  'routes/hermes/tts.ts': { name: 'TTS', description: 'Text-to-speech generation and settings' },
-  'routes/hermes/stt.ts': { name: 'STT', description: 'Speech-to-text transcription and settings' },
-  'routes/hermes/media.ts': { name: 'Media', description: 'Media generation endpoints' },
-  'routes/hermes/mcp.ts': { name: 'MCP', description: 'MCP server and tool management' },
-  'routes/hermes/runtime-versions.ts': { name: 'Runtime Versions', description: 'Runtime and Web UI version management' },
-  'routes/hermes/write-gate.ts': { name: 'Write Gate', description: 'Hermes Agent write approval review' },
-  'routes/hermes/performance-monitor.ts': { name: 'Performance', description: 'Runtime performance monitoring' },
-  'routes/hermes/terminal.ts': { name: 'Terminal', description: 'WebSocket terminal' },
+  'routes/DiTing/sessions.ts': { name: 'Sessions', description: 'Chat session management' },
+  'routes/DiTing/profiles.ts': { name: 'Profiles', description: 'DiTing profile management' },
+  'routes/DiTing/gateways.ts': { name: 'Gateways', description: 'Gateway process management' },
+  'routes/DiTing/models.ts': { name: 'Models', description: 'Model configuration' },
+  'routes/DiTing/providers.ts': { name: 'Providers', description: 'Model provider management' },
+  'routes/DiTing/skills.ts': { name: 'Skills', description: 'Skill browsing and management' },
+  'routes/DiTing/plugins.ts': { name: 'Plugins', description: 'Plugin browsing and management' },
+  'routes/DiTing/memory.ts': { name: 'Memory', description: 'Agent memory files' },
+  'routes/DiTing/logs.ts': { name: 'Logs', description: 'Log file access' },
+  'routes/DiTing/jobs.ts': { name: 'Jobs', description: 'Scheduled job management' },
+  'routes/DiTing/cron-history.ts': { name: 'Jobs', description: 'Cron job history' },
+  'routes/DiTing/kanban.ts': { name: 'Kanban', description: 'Kanban board and task management' },
+  'routes/DiTing/weixin.ts': { name: 'Weixin', description: 'WeChat QR code login' },
+  'routes/DiTing/codex-auth.ts': { name: 'Codex Auth', description: 'OpenAI Codex OAuth' },
+  'routes/DiTing/nous-auth.ts': { name: 'Nous Auth', description: 'Nous Research OAuth' },
+  'routes/DiTing/copilot-auth.ts': { name: 'Copilot Auth', description: 'GitHub Copilot OAuth' },
+  'routes/DiTing/xai-auth.ts': { name: 'xAI Auth', description: 'xAI OAuth' },
+  'routes/DiTing/anthropic-auth.ts': { name: 'Anthropic Auth', description: 'Anthropic OAuth' },
+  'routes/DiTing/gemini-auth.ts': { name: 'Gemini Auth', description: 'Google Gemini OAuth' },
+  'routes/DiTing/group-chat.ts': { name: 'Group Chat', description: 'Group chat management' },
+  'routes/DiTing/chat-run.ts': { name: 'Chat Run', description: 'Chat run HTTP and Socket.IO bridge operations' },
+  'routes/DiTing/config.ts': { name: 'Config', description: 'Configuration management' },
+  'routes/DiTing/files.ts': { name: 'Files', description: 'DiTing file browser' },
+  'routes/DiTing/download.ts': { name: 'Download', description: 'File download' },
+  'routes/DiTing/tts.ts': { name: 'TTS', description: 'Text-to-speech generation and settings' },
+  'routes/DiTing/stt.ts': { name: 'STT', description: 'Speech-to-text transcription and settings' },
+  'routes/DiTing/media.ts': { name: 'Media', description: 'Media generation endpoints' },
+  'routes/DiTing/mcp.ts': { name: 'MCP', description: 'MCP server and tool management' },
+  'routes/DiTing/runtime-versions.ts': { name: 'Runtime Versions', description: 'Runtime and Web UI version management' },
+  'routes/DiTing/write-gate.ts': { name: 'Write Gate', description: 'DiTing Agent write approval review' },
+  'routes/DiTing/performance-monitor.ts': { name: 'Performance', description: 'Runtime performance monitoring' },
+  'routes/DiTing/terminal.ts': { name: 'Terminal', description: 'WebSocket terminal' },
   'routes/health.ts': { name: 'Health', description: 'Health check' },
   'routes/update.ts': { name: 'Update', description: 'Self-update management' },
   'routes/upload.ts': { name: 'Upload', description: 'File upload' },
@@ -90,21 +90,21 @@ const tagMappings = {
 function scanRoutes() {
   const paths = {}
 
-  // Scan hermes routes
-  const hermesRoutesDir = join(routesDir, 'hermes')
-  const hermesRouteFiles = readdirSync(hermesRoutesDir).filter(f => f.endsWith('.ts'))
+  // Scan DiTing routes
+  const DiTingRoutesDir = join(routesDir, 'DiTing')
+  const DiTingRouteFiles = readdirSync(DiTingRoutesDir).filter(f => f.endsWith('.ts'))
 
-  for (const file of hermesRouteFiles) {
-    const routePath = join('hermes', file)
+  for (const file of DiTingRouteFiles) {
+    const routePath = join('DiTing', file)
     const tagInfo = tagMappings[`routes/${routePath}`]
     if (tagInfo) {
-      scanRouteFile(join(hermesRoutesDir, file), tagInfo, paths)
+      scanRouteFile(join(DiTingRoutesDir, file), tagInfo, paths)
     }
   }
 
   // Scan top-level routes
   for (const [routeFile, tagInfo] of Object.entries(tagMappings)) {
-    if (!routeFile.startsWith('routes/hermes/')) {
+    if (!routeFile.startsWith('routes/DiTing/')) {
       const filePath = join(routesDir, routeFile.replace('routes/', ''))
       try {
         scanRouteFile(filePath, tagInfo, paths)
@@ -763,7 +763,7 @@ openapi.components.responses = {
 }
 
 // Add WebSocket terminal endpoint
-openapi.paths['/api/hermes/terminal'] = {
+openapi.paths['/api/DiTing/terminal'] = {
   'get': {
     tags: ['Terminal'],
     summary: 'WebSocket terminal connection',
@@ -814,7 +814,7 @@ openapi.paths['/api/chat-run/runs'] = {
   post: {
     tags: ['Chat Run'],
     summary: 'Run chat and wait for completion',
-    description: 'Starts a Hermes Studio chat run through the chat-run transport and waits for a terminal result. Use this from HTTP/MCP callers that cannot consume Socket.IO streams.',
+    description: 'Starts a DiTing Studio chat run through the chat-run transport and waits for a terminal result. Use this from HTTP/MCP callers that cannot consume Socket.IO streams.',
     operationId: 'runChatOnce',
     security: [{ BearerAuth: [] }],
     requestBody: {
@@ -844,7 +844,7 @@ openapi.paths['/api/chat-run/runs'] = {
               },
               profile: {
                 type: 'string',
-                description: 'Hermes Studio profile name. Defaults to the authenticated request profile or default.',
+                description: 'DiTing Studio profile name. Defaults to the authenticated request profile or default.',
               },
               provider: {
                 type: 'string',
@@ -869,7 +869,7 @@ openapi.paths['/api/chat-run/runs'] = {
               source: {
                 type: 'string',
                 enum: ['cli', 'coding_agent', 'global_agent'],
-                description: 'Run backend source. Use cli for Hermes bridge runs, coding_agent for Claude Code/Codex, or global_agent for global-agent sessions. Omit source for normal Hermes chat runs; do not use the legacy api_server source.',
+                description: 'Run backend source. Use cli for DiTing bridge runs, coding_agent for Claude Code/Codex, or global_agent for global-agent sessions. Omit source for normal DiTing chat runs; do not use the legacy api_server source.',
               },
               session_source: {
                 type: 'string',
@@ -965,7 +965,7 @@ openapi.paths['/api/chat-run/runs'] = {
 }
 
 // Add WebSocket terminal endpoint
-openapi.paths['/api/hermes/terminal'] = {
+openapi.paths['/api/DiTing/terminal'] = {
   'get': {
     tags: ['Terminal'],
     summary: 'WebSocket terminal connection',

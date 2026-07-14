@@ -18,17 +18,17 @@ describe('user auth tables and middleware', () => {
     db?.close()
     db = null
     vi.doUnmock('../../packages/server/src/db/index')
-    vi.doUnmock('../../packages/server/src/services/hermes/hermes-profile')
+    vi.doUnmock('../../packages/server/src/services/DiTing/DiTing-profile')
     vi.unstubAllEnvs()
     vi.resetModules()
   })
 
   async function initUsers() {
-    const schemas = await import('../../packages/server/src/db/hermes/schemas')
-    schemas.initAllHermesTables()
+    const schemas = await import('../../packages/server/src/db/DiTing/schemas')
+    schemas.initAllDiTingTables()
     return {
       schemas,
-      users: await import('../../packages/server/src/db/hermes/users-store'),
+      users: await import('../../packages/server/src/db/DiTing/users-store'),
       auth: await import('../../packages/server/src/middleware/user-auth'),
     }
   }
@@ -38,7 +38,7 @@ describe('user auth tables and middleware', () => {
       state: { user },
       query: { profile },
       request: { body: {} },
-      get: vi.fn((name: string) => name.toLowerCase() === 'x-hermes-profile' ? '' : ''),
+      get: vi.fn((name: string) => name.toLowerCase() === 'x-DiTing-profile' ? '' : ''),
       status: 200,
       body: null,
     } as any
@@ -146,8 +146,8 @@ describe('user auth tables and middleware', () => {
   })
 
   it.each([
-    '/api/hermes/media/apikey-image-generate',
-    '/api/hermes/media/grok-image-to-video',
+    '/api/DiTing/media/apikey-image-generate',
+    '/api/DiTing/media/grok-image-to-video',
   ])('still allows server token for local media agent endpoint %s', async (path) => {
     vi.stubEnv('AUTH_TOKEN', 'server-token')
     const { auth } = await initUsers()
@@ -171,8 +171,8 @@ describe('user auth tables and middleware', () => {
   })
 
   it.each([
-    '/api/hermes/media/apikey-image-generate',
-    '/api/hermes/media/grok-image-to-video',
+    '/api/DiTing/media/apikey-image-generate',
+    '/api/DiTing/media/grok-image-to-video',
     '/api/devices',
     '/api/devices/scan',
     '/api/devices/device-1/connect',
@@ -235,11 +235,11 @@ describe('user auth tables and middleware', () => {
   it('ignores stale profile headers for the aggregate available-models endpoint', async () => {
     const { auth } = await initUsers()
     const ctx = {
-      path: '/api/hermes/available-models',
+      path: '/api/DiTing/available-models',
       state: { user: { id: 1, username: 'ops', role: 'admin' } },
       query: {},
       request: { body: {} },
-      get: vi.fn((name: string) => name.toLowerCase() === 'x-hermes-profile' ? 'private' : ''),
+      get: vi.fn((name: string) => name.toLowerCase() === 'x-DiTing-profile' ? 'private' : ''),
       status: 200,
       body: null,
     } as any
@@ -293,7 +293,7 @@ describe('user auth tables and middleware', () => {
       username: 'admin',
       role: 'super_admin',
       type: 'access',
-      aud: 'hermes-web-ui',
+      aud: 'DiTing-web-ui',
       iat: 1,
       exp: 3601,
     })
@@ -305,7 +305,7 @@ describe('user auth tables and middleware', () => {
     const user = users.bootstrapDefaultSuperAdmin('admin', '123456')!
     const token = auth.signUserJwt(user, 'test-secret')
     const ctx = {
-      path: '/api/hermes/download',
+      path: '/api/DiTing/download',
       headers: {},
       query: { token },
       state: {},
@@ -344,7 +344,7 @@ describe('user auth tables and middleware', () => {
   it('still requires a JWT for protected API paths', async () => {
     const { auth } = await initUsers()
     const ctx = {
-      path: '/api/hermes/sessions',
+      path: '/api/DiTing/sessions',
       headers: {},
       query: {},
       state: {},
@@ -413,7 +413,7 @@ describe('user auth tables and middleware', () => {
 
   it('lets super admins create regular admins with profile bindings', async () => {
     const { users } = await initUsers()
-    vi.doMock('../../packages/server/src/services/hermes/hermes-profile', () => ({
+    vi.doMock('../../packages/server/src/services/DiTing/DiTing-profile', () => ({
       listProfileNamesFromDisk: () => ['default', 'research'],
     }))
     const ctrl = await import('../../packages/server/src/controllers/auth')
@@ -443,7 +443,7 @@ describe('user auth tables and middleware', () => {
   it('does not allow disabling the last active super admin', async () => {
     const { users } = await initUsers()
     const admin = users.bootstrapDefaultSuperAdmin('admin', '123456')!
-    vi.doMock('../../packages/server/src/services/hermes/hermes-profile', () => ({
+    vi.doMock('../../packages/server/src/services/DiTing/DiTing-profile', () => ({
       listProfileNamesFromDisk: () => ['default'],
     }))
     const ctrl = await import('../../packages/server/src/controllers/auth')

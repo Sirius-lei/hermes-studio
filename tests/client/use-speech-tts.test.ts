@@ -57,8 +57,8 @@ describe('client TTS unified synthesize flow', () => {
     vi.resetModules()
     vi.clearAllMocks()
     localStorage.clear()
-    localStorage.setItem('hermes_server_url', 'https://hermes.example')
-    localStorage.setItem('hermes_api_key', 'secret-key')
+    localStorage.setItem('DiTing_server_url', 'https://DiTing.example')
+    localStorage.setItem('DiTing_api_key', 'secret-key')
     objectUrlCounter = 0
     createObjectURL.mockImplementation(() => `blob:mock-${++objectUrlCounter}`)
     audioInstances.length = 0
@@ -66,7 +66,7 @@ describe('client TTS unified synthesize flow', () => {
   })
 
   it('synthesizeSpeech posts to the unified endpoint with auth, body, and signal', async () => {
-    localStorage.setItem('hermes_active_profile_name', 'research')
+    localStorage.setItem('DiTing_active_profile_name', 'research')
     mockFetch.mockResolvedValue(new Response('audio-bytes', {
       status: 200,
       headers: {
@@ -76,7 +76,7 @@ describe('client TTS unified synthesize flow', () => {
       },
     }))
 
-    const { synthesizeSpeech } = await import('../../packages/client/src/api/hermes/tts')
+    const { synthesizeSpeech } = await import('../../packages/client/src/api/DiTing/tts')
     const controller = new AbortController()
 
     const result = await synthesizeSpeech({
@@ -88,13 +88,13 @@ describe('client TTS unified synthesize flow', () => {
 
     expect(mockFetch).toHaveBeenCalledOnce()
     expect(mockFetch).toHaveBeenCalledWith(
-      'https://hermes.example/api/hermes/tts/synthesize',
+      'https://DiTing.example/api/DiTing/tts/synthesize',
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: 'Bearer secret-key',
-          'X-Hermes-Profile': 'research',
+          'X-DiTing-Profile': 'research',
         },
         body: JSON.stringify({
           provider: 'openai',
@@ -131,7 +131,7 @@ describe('client TTS unified synthesize flow', () => {
 
     expect(mockFetch).toHaveBeenCalledOnce()
     const [url, options] = mockFetch.mock.calls[0]
-    expect(url).toBe('https://hermes.example/api/hermes/tts/synthesize')
+    expect(url).toBe('https://DiTing.example/api/DiTing/tts/synthesize')
     expect(url).not.toContain('/audio/speech')
     expect(JSON.parse(options.body)).toEqual({
       provider: 'openai',
@@ -170,7 +170,7 @@ describe('client TTS unified synthesize flow', () => {
 
     expect(mockFetch).toHaveBeenCalledOnce()
     const [url, options] = mockFetch.mock.calls[0]
-    expect(url).toBe('https://hermes.example/api/hermes/tts/synthesize')
+    expect(url).toBe('https://DiTing.example/api/DiTing/tts/synthesize')
     expect(url).not.toContain('/chat/completions')
     expect(JSON.parse(options.body)).toEqual({
       provider: 'mimo',
@@ -483,8 +483,8 @@ describe('client TTS unified synthesize flow', () => {
 
 describe('client TTS autoplay call sites', () => {
   it('catches fire-and-forget custom TTS autoplay promises', () => {
-    const messageItem = readFileSync('packages/client/src/components/hermes/chat/MessageItem.vue', 'utf8')
-    const groupMessageItem = readFileSync('packages/client/src/components/hermes/group-chat/GroupMessageItem.vue', 'utf8')
+    const messageItem = readFileSync('packages/client/src/components/DiTing/chat/MessageItem.vue', 'utf8')
+    const groupMessageItem = readFileSync('packages/client/src/components/DiTing/group-chat/GroupMessageItem.vue', 'utf8')
 
     expect(messageItem).toContain('function handleAutoplayTtsError')
     expect(messageItem).toContain('void speech.openaiPlay')
@@ -498,8 +498,8 @@ describe('client TTS autoplay call sites', () => {
   })
 
   it('does not require a local MiMo API key before using server-stored TTS credentials', () => {
-    const messageItem = readFileSync('packages/client/src/components/hermes/chat/MessageItem.vue', 'utf8')
-    const groupMessageItem = readFileSync('packages/client/src/components/hermes/group-chat/GroupMessageItem.vue', 'utf8')
+    const messageItem = readFileSync('packages/client/src/components/DiTing/chat/MessageItem.vue', 'utf8')
+    const groupMessageItem = readFileSync('packages/client/src/components/DiTing/group-chat/GroupMessageItem.vue', 'utf8')
 
     expect(messageItem).not.toContain('MiMo TTS API Key 为空')
     expect(groupMessageItem).not.toContain('if (!voiceSettings.mimoApiKey.value) return')

@@ -2,8 +2,8 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
-import { useProfilesStore } from '@/stores/hermes/profiles'
-import { useSessionBrowserPrefsStore } from '@/stores/hermes/session-browser-prefs'
+import { useProfilesStore } from '@/stores/DiTing/profiles'
+import { useSessionBrowserPrefsStore } from '@/stores/DiTing/session-browser-prefs'
 
 describe('session browser prefs store', () => {
   beforeEach(() => {
@@ -21,11 +21,11 @@ describe('session browser prefs store', () => {
     store.togglePinned('session-1')
     store.togglePinned('session-2')
     expect(store.pinnedIds).toEqual(['session-1', 'session-2'])
-    expect(JSON.parse(window.localStorage.getItem('hermes_session_pins_v1_default') || '[]')).toEqual(['session-1', 'session-2'])
+    expect(JSON.parse(window.localStorage.getItem('DiTing_session_pins_v1_default') || '[]')).toEqual(['session-1', 'session-2'])
 
     expect(store.pruneMissingSessions(['session-2'])).toBe(true)
     expect(store.pinnedIds).toEqual(['session-2'])
-    expect(JSON.parse(window.localStorage.getItem('hermes_session_pins_v1_default') || '[]')).toEqual(['session-2'])
+    expect(JSON.parse(window.localStorage.getItem('DiTing_session_pins_v1_default') || '[]')).toEqual(['session-2'])
   })
 
   it('does not erase saved pins when the current session list is transiently empty', () => {
@@ -36,7 +36,7 @@ describe('session browser prefs store', () => {
     store.togglePinned('session-1')
     expect(store.pruneMissingSessions([])).toBe(false)
     expect(store.pinnedIds).toEqual(['session-1'])
-    expect(JSON.parse(window.localStorage.getItem('hermes_session_pins_v1_default') || '[]')).toEqual(['session-1'])
+    expect(JSON.parse(window.localStorage.getItem('DiTing_session_pins_v1_default') || '[]')).toEqual(['session-1'])
   })
 
   it('reloads pin and human-only preferences automatically when the active profile changes', async () => {
@@ -48,8 +48,8 @@ describe('session browser prefs store', () => {
     store.togglePinned('default-session')
     store.setHumanOnly(false)
 
-    window.localStorage.setItem('hermes_session_pins_v1_work', JSON.stringify(['work-session']))
-    window.localStorage.setItem('hermes_human_only_v1_work', JSON.stringify(true))
+    window.localStorage.setItem('DiTing_session_pins_v1_work', JSON.stringify(['work-session']))
+    window.localStorage.setItem('DiTing_human_only_v1_work', JSON.stringify(true))
 
     profilesStore.activeProfileName = 'work'
     await nextTick()

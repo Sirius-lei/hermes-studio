@@ -28,7 +28,7 @@ const handlers = {
   dispatch: vi.fn(async (ctx: any) => { ctx.body = { result: {} } }),
 }
 
-vi.mock('../../packages/server/src/controllers/hermes/kanban', () => handlers)
+vi.mock('../../packages/server/src/controllers/DiTing/kanban', () => handlers)
 
 describe('kanban routes', () => {
   beforeEach(() => {
@@ -37,38 +37,38 @@ describe('kanban routes', () => {
   })
 
   it('registers all kanban routes', async () => {
-    const { kanbanRoutes } = await import('../../packages/server/src/routes/hermes/kanban')
+    const { kanbanRoutes } = await import('../../packages/server/src/routes/DiTing/kanban')
     const paths = kanbanRoutes.stack.map((entry: any) => entry.path)
 
     expect(paths).toEqual(expect.arrayContaining([
-      '/api/hermes/kanban/boards',
-      '/api/hermes/kanban/boards/:slug',
-      '/api/hermes/kanban/capabilities',
-      '/api/hermes/kanban/stats',
-      '/api/hermes/kanban/assignees',
-      '/api/hermes/kanban/diagnostics',
-      '/api/hermes/kanban/dispatch',
-      '/api/hermes/kanban/artifact',
-      '/api/hermes/kanban/search-sessions',
-      '/api/hermes/kanban/links',
-      '/api/hermes/kanban/tasks/bulk',
-      '/api/hermes/kanban',
-      '/api/hermes/kanban/:id',
-      '/api/hermes/kanban/complete',
-      '/api/hermes/kanban/unblock',
-      '/api/hermes/kanban/:id/block',
-      '/api/hermes/kanban/:id/assign',
-      '/api/hermes/kanban/:id/comments',
-      '/api/hermes/kanban/:id/log',
-      '/api/hermes/kanban/:id/reclaim',
-      '/api/hermes/kanban/:id/reassign',
-      '/api/hermes/kanban/:id/specify',
+      '/api/DiTing/kanban/boards',
+      '/api/DiTing/kanban/boards/:slug',
+      '/api/DiTing/kanban/capabilities',
+      '/api/DiTing/kanban/stats',
+      '/api/DiTing/kanban/assignees',
+      '/api/DiTing/kanban/diagnostics',
+      '/api/DiTing/kanban/dispatch',
+      '/api/DiTing/kanban/artifact',
+      '/api/DiTing/kanban/search-sessions',
+      '/api/DiTing/kanban/links',
+      '/api/DiTing/kanban/tasks/bulk',
+      '/api/DiTing/kanban',
+      '/api/DiTing/kanban/:id',
+      '/api/DiTing/kanban/complete',
+      '/api/DiTing/kanban/unblock',
+      '/api/DiTing/kanban/:id/block',
+      '/api/DiTing/kanban/:id/assign',
+      '/api/DiTing/kanban/:id/comments',
+      '/api/DiTing/kanban/:id/log',
+      '/api/DiTing/kanban/:id/reclaim',
+      '/api/DiTing/kanban/:id/reassign',
+      '/api/DiTing/kanban/:id/specify',
     ]))
   })
 
   it('delegates search-sessions to the controller', async () => {
-    const { kanbanRoutes } = await import('../../packages/server/src/routes/hermes/kanban')
-    const layer = kanbanRoutes.stack.find((entry: any) => entry.path === '/api/hermes/kanban/search-sessions')
+    const { kanbanRoutes } = await import('../../packages/server/src/routes/DiTing/kanban')
+    const layer = kanbanRoutes.stack.find((entry: any) => entry.path === '/api/DiTing/kanban/search-sessions')
     const ctx: any = { query: { task_id: 'task-1', profile: 'alice' }, body: null, params: {} }
 
     await layer.stack[0](ctx)

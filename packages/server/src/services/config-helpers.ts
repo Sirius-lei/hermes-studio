@@ -2,12 +2,12 @@ import { readFile, chmod } from 'fs/promises'
 import { readdir, stat } from 'fs/promises'
 import { existsSync, readFileSync } from 'fs'
 import { join } from 'path'
-import { getActiveProfileDir, getActiveConfigPath, getActiveEnvPath, getProfileDir } from './hermes/hermes-profile'
-import { getCompatibleCustomProviders } from './hermes/custom-providers-compat'
+import { getActiveProfileDir, getActiveConfigPath, getActiveEnvPath, getProfileDir } from './DiTing/DiTing-profile'
+import { getCompatibleCustomProviders } from './DiTing/custom-providers-compat'
 import { logger } from './logger'
 import { safeFileStore } from './safe-file-store'
 
-// --- Provider env var mapping (from hermes providers.py HERMES_OVERLAYS + config.py) ---
+// --- Provider env var mapping (from DiTing providers.py DiTing_OVERLAYS + config.py) ---
 export const PROVIDER_ENV_MAP: Record<string, { api_key_env: string; base_url_env: string }> = {
   'fun-codex': { api_key_env: '', base_url_env: '' },
   'fun-claude': { api_key_env: '', base_url_env: '' },
@@ -239,7 +239,7 @@ export async function fetchProviderModels(baseUrl: string, apiKey: string, freeO
     }
     let models = data.data.map(m => m.id)
     // Gemini returns model IDs with "models/" prefix. Strip to avoid double
-    // prefix when Hermes native adapter constructs .../models/{model}:generateContent
+    // prefix when DiTing native adapter constructs .../models/{model}:generateContent
     if (base.includes('generativelanguage.googleapis.com')) {
       models = models.map(m => m.startsWith('models/') ? m.slice('models/'.length) : m)
     }
@@ -290,4 +290,4 @@ export function buildModelGroups(config: Record<string, any>): { default: string
 
 // --- Profile directory helper ---
 
-export const getHermesDir = () => getActiveProfileDir()
+export const getDiTingDir = () => getActiveProfileDir()

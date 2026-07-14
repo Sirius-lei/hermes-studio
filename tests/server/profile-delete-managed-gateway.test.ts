@@ -25,9 +25,9 @@ class FakeChild extends EventEmitter {
 
 let fakeChildren: FakeChild[] = []
 
-vi.mock('../../packages/server/src/services/hermes/hermes-process', () => ({
-  execHermesWithBin: vi.fn().mockResolvedValue({ stdout: '', stderr: '' }),
-  spawnHermesWithBin: vi.fn(() => {
+vi.mock('../../packages/server/src/services/DiTing/DiTing-process', () => ({
+  execDiTingWithBin: vi.fn().mockResolvedValue({ stdout: '', stderr: '' }),
+  spawnDiTingWithBin: vi.fn(() => {
     const child = new FakeChild(20000 + fakeChildren.length)
     fakeChildren.push(child)
     return child
@@ -47,17 +47,17 @@ describe('profile delete managed gateway lifecycle', () => {
     vi.useFakeTimers()
     vi.resetModules()
     const home = await mkdtemp(join(tmpdir(), 'wui-1633-'))
-    process.env.HERMES_HOME = home
-    process.env.HERMES_BIN = '/usr/bin/hermes'
+    process.env.DiTing_HOME = home
+    process.env.DiTing_BIN = '/usr/bin/DiTing'
     const profileDir = join(home, 'profiles', 'work')
     await mkdir(profileDir, { recursive: true })
     await writeFile(join(profileDir, 'config.yaml'), 'model:\n  default: test\n', 'utf-8')
 
     try {
-      const { startGatewayRunManaged } = await import('../../packages/server/src/services/hermes/gateway-runner')
-      const { prepareGatewayForProfileDelete } = await import('../../packages/server/src/services/hermes/gateway-autostart')
+      const { startGatewayRunManaged } = await import('../../packages/server/src/services/DiTing/gateway-runner')
+      const { prepareGatewayForProfileDelete } = await import('../../packages/server/src/services/DiTing/gateway-autostart')
 
-      startGatewayRunManaged('/usr/bin/hermes', { profileDir })
+      startGatewayRunManaged('/usr/bin/DiTing', { profileDir })
       expect(fakeChildren).toHaveLength(1)
 
       const prep = prepareGatewayForProfileDelete('work')

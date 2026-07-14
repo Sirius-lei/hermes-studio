@@ -14,8 +14,8 @@ function normalizeUserContextQuery(value: unknown): string | null {
   return null
 }
 
-function isHermesRouteName(name: unknown): name is string {
-  return typeof name === 'string' && name.startsWith('hermes.')
+function isDiTingRouteName(name: unknown): name is string {
+  return typeof name === 'string' && name.startsWith('DiTing.')
 }
 
 const router = createRouter({
@@ -28,158 +28,158 @@ const router = createRouter({
       meta: { public: true },
     },
     {
-      path: '/hermes/chat',
-      name: 'hermes.chat',
-      component: () => import('@/views/hermes/ChatView.vue'),
+      path: '/DiTing/chat',
+      name: 'DiTing.chat',
+      component: () => import('@/views/DiTing/ChatView.vue'),
     },
     {
-      path: '/hermes/session/:sessionId',
-      name: 'hermes.session',
-      component: () => import('@/views/hermes/ChatView.vue'),
+      path: '/DiTing/session/:sessionId',
+      name: 'DiTing.session',
+      component: () => import('@/views/DiTing/ChatView.vue'),
     },
     {
-      path: '/hermes/history',
-      name: 'hermes.history',
-      component: () => import('@/views/hermes/HistoryView.vue'),
+      path: '/DiTing/history',
+      name: 'DiTing.history',
+      component: () => import('@/views/DiTing/HistoryView.vue'),
     },
     {
-      path: '/hermes/history/session/:sessionId',
-      name: 'hermes.historySession',
-      component: () => import('@/views/hermes/HistoryView.vue'),
+      path: '/DiTing/history/session/:sessionId',
+      name: 'DiTing.historySession',
+      component: () => import('@/views/DiTing/HistoryView.vue'),
     },
     {
-      path: '/hermes/global-agent',
-      name: 'hermes.globalAgent',
-      component: () => import('@/views/hermes/GlobalAgentView.vue'),
+      path: '/DiTing/global-agent',
+      name: 'DiTing.globalAgent',
+      component: () => import('@/views/DiTing/GlobalAgentView.vue'),
     },
     {
-      path: '/hermes/global-agent/session/:sessionId',
-      name: 'hermes.globalAgentSession',
-      component: () => import('@/views/hermes/GlobalAgentView.vue'),
+      path: '/DiTing/global-agent/session/:sessionId',
+      name: 'DiTing.globalAgentSession',
+      component: () => import('@/views/DiTing/GlobalAgentView.vue'),
     },
     {
-      path: '/hermes/jobs',
-      name: 'hermes.jobs',
-      component: () => import('@/views/hermes/JobsView.vue'),
+      path: '/DiTing/jobs',
+      name: 'DiTing.jobs',
+      component: () => import('@/views/DiTing/JobsView.vue'),
     },
     {
-      path: '/hermes/kanban',
-      name: 'hermes.kanban',
-      component: () => import('@/views/hermes/KanbanView.vue'),
+      path: '/DiTing/kanban',
+      name: 'DiTing.kanban',
+      component: () => import('@/views/DiTing/KanbanView.vue'),
     },
     {
-      path: '/hermes/workflow',
-      name: 'hermes.workflow',
-      component: () => import('@/views/hermes/WorkflowView.vue'),
+      path: '/DiTing/workflow',
+      name: 'DiTing.workflow',
+      component: () => import('@/views/DiTing/WorkflowView.vue'),
     },
     {
-      path: '/hermes/task-plans',
-      name: 'hermes.taskPlans',
-      redirect: { name: 'hermes.chat' },
+      path: '/DiTing/task-plans',
+      name: 'DiTing.taskPlans',
+      redirect: { name: 'DiTing.chat' },
     },
     {
-      path: '/hermes/sub-agents',
-      name: 'hermes.subAgents',
-      component: () => import('@/views/hermes/SubAgentsView.vue'),
+      path: '/DiTing/sub-agents',
+      name: 'DiTing.subAgents',
+      component: () => import('@/views/DiTing/SubAgentsView.vue'),
     },
     {
-      path: '/hermes/models',
-      name: 'hermes.models',
-      component: () => import('@/views/hermes/ModelsView.vue'),
+      path: '/DiTing/models',
+      name: 'DiTing.models',
+      component: () => import('@/views/DiTing/ModelsView.vue'),
     },
     {
-      path: '/hermes/profiles',
-      name: 'hermes.profiles',
-      component: () => import('@/views/hermes/ProfilesView.vue'),
+      path: '/DiTing/profiles',
+      name: 'DiTing.profiles',
+      component: () => import('@/views/DiTing/ProfilesView.vue'),
       meta: { requiresSuperAdmin: true },
     },
     {
-      path: '/hermes/logs',
-      name: 'hermes.logs',
-      component: () => import('@/views/hermes/LogsView.vue'),
+      path: '/DiTing/logs',
+      name: 'DiTing.logs',
+      component: () => import('@/views/DiTing/LogsView.vue'),
     },
     {
-      path: '/hermes/usage',
-      name: 'hermes.usage',
-      component: () => import('@/views/hermes/UsageView.vue'),
+      path: '/DiTing/usage',
+      name: 'DiTing.usage',
+      component: () => import('@/views/DiTing/UsageView.vue'),
     },
     {
-      path: '/hermes/performance',
-      name: 'hermes.performance',
-      component: () => import('@/views/hermes/PerformanceView.vue'),
+      path: '/DiTing/performance',
+      name: 'DiTing.performance',
+      component: () => import('@/views/DiTing/PerformanceView.vue'),
       meta: { requiresSuperAdmin: true },
     },
     {
-      path: '/hermes/skills-usage',
-      name: 'hermes.skillsUsage',
-      component: () => import('@/views/hermes/SkillsUsageView.vue'),
+      path: '/DiTing/skills-usage',
+      name: 'DiTing.skillsUsage',
+      component: () => import('@/views/DiTing/SkillsUsageView.vue'),
     },
     {
-      path: '/hermes/skills',
-      name: 'hermes.skills',
-      component: () => import('@/views/hermes/SkillsView.vue'),
+      path: '/DiTing/skills',
+      name: 'DiTing.skills',
+      component: () => import('@/views/DiTing/SkillsView.vue'),
     },
     {
-      path: '/hermes/plugins',
-      name: 'hermes.plugins',
-      component: () => import('@/views/hermes/PluginsView.vue'),
+      path: '/DiTing/plugins',
+      name: 'DiTing.plugins',
+      component: () => import('@/views/DiTing/PluginsView.vue'),
     },
     {
-      path: '/hermes/memory',
-      name: 'hermes.memory',
-      component: () => import('@/views/hermes/MemoryView.vue'),
+      path: '/DiTing/memory',
+      name: 'DiTing.memory',
+      component: () => import('@/views/DiTing/MemoryView.vue'),
     },
     {
-      path: '/hermes/settings',
-      name: 'hermes.settings',
-      component: () => import('@/views/hermes/SettingsView.vue'),
+      path: '/DiTing/settings',
+      name: 'DiTing.settings',
+      component: () => import('@/views/DiTing/SettingsView.vue'),
     },
     {
-      path: '/hermes/channels',
-      name: 'hermes.channels',
-      component: () => import('@/views/hermes/ChannelsView.vue'),
+      path: '/DiTing/channels',
+      name: 'DiTing.channels',
+      component: () => import('@/views/DiTing/ChannelsView.vue'),
     },
     {
-      path: '/hermes/terminal',
-      name: 'hermes.terminal',
-      component: () => import('@/views/hermes/TerminalView.vue'),
+      path: '/DiTing/terminal',
+      name: 'DiTing.terminal',
+      component: () => import('@/views/DiTing/TerminalView.vue'),
       meta: { requiresSuperAdmin: true },
     },
     {
-      path: '/hermes/devices',
-      name: 'hermes.devices',
-      component: () => import('@/views/hermes/DevicesView.vue'),
+      path: '/DiTing/devices',
+      name: 'DiTing.devices',
+      component: () => import('@/views/DiTing/DevicesView.vue'),
     },
     {
-      path: '/hermes/group-chat',
-      name: 'hermes.groupChat',
-      component: () => import('@/views/hermes/GroupChatView.vue'),
+      path: '/DiTing/group-chat',
+      name: 'DiTing.groupChat',
+      component: () => import('@/views/DiTing/GroupChatView.vue'),
     },
     {
-      path: '/hermes/group-chat/room/:roomId',
-      name: 'hermes.groupChatRoom',
-      component: () => import('@/views/hermes/GroupChatView.vue'),
+      path: '/DiTing/group-chat/room/:roomId',
+      name: 'DiTing.groupChatRoom',
+      component: () => import('@/views/DiTing/GroupChatView.vue'),
     },
     {
-      path: '/hermes/files',
-      name: 'hermes.files',
-      component: () => import('@/views/hermes/FilesView.vue'),
+      path: '/DiTing/files',
+      name: 'DiTing.files',
+      component: () => import('@/views/DiTing/FilesView.vue'),
     },
     {
-      path: '/hermes/coding-agents',
-      name: 'hermes.codingAgents',
-      component: () => import('@/views/hermes/CodingAgentsView.vue'),
+      path: '/DiTing/coding-agents',
+      name: 'DiTing.codingAgents',
+      component: () => import('@/views/DiTing/CodingAgentsView.vue'),
     },
     {
-      path: '/hermes/version-preview',
-      name: 'hermes.versionPreview',
-      component: () => import('@/views/hermes/VersionPreviewView.vue'),
+      path: '/DiTing/version-preview',
+      name: 'DiTing.versionPreview',
+      component: () => import('@/views/DiTing/VersionPreviewView.vue'),
       meta: { requiresSuperAdmin: true },
     },
     {
-      path: '/hermes/mcp',
-      name: 'hermes.mcp',
-      component: () => import('@/views/hermes/McpManagerView.vue'),
+      path: '/DiTing/mcp',
+      name: 'DiTing.mcp',
+      component: () => import('@/views/DiTing/McpManagerView.vue'),
       meta: { requiresSuperAdmin: true },
     },
   ],
@@ -189,7 +189,7 @@ router.beforeEach((to, from, next) => {
   const incomingUserContext = normalizeUserContextQuery(to.query.user_id)
   const previousUserContext = normalizeUserContextQuery(from.query.user_id)
 
-  if (isHermesRouteName(to.name) && !incomingUserContext && previousUserContext) {
+  if (isDiTingRouteName(to.name) && !incomingUserContext && previousUserContext) {
     setActiveUserContextId(previousUserContext)
     next({
       name: to.name,
@@ -201,13 +201,13 @@ router.beforeEach((to, from, next) => {
     return
   }
 
-  setActiveUserContextId(isHermesRouteName(to.name) ? incomingUserContext : null)
+  setActiveUserContextId(isDiTingRouteName(to.name) ? incomingUserContext : null)
 
   // Public pages don't need auth
   if (to.meta.public) {
     // Already has key, skip login
     if (to.name === 'login' && hasApiKey()) {
-      next({ path: '/hermes/chat' })
+      next({ path: '/DiTing/chat' })
       return
     }
     next()
@@ -221,7 +221,7 @@ router.beforeEach((to, from, next) => {
   }
 
   if (to.meta.requiresSuperAdmin && !isStoredSuperAdmin()) {
-    next({ name: 'hermes.chat' })
+    next({ name: 'DiTing.chat' })
     return
   }
 

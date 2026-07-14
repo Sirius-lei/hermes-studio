@@ -1,37 +1,37 @@
 import { join } from 'path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-const originalWebUiHome = process.env.HERMES_WEB_UI_HOME
-const originalWebuiStateDir = process.env.HERMES_WEBUI_STATE_DIR
+const originalWebUiHome = process.env.DiTing_WEB_UI_HOME
+const originalWebuiStateDir = process.env.DiTing_WEBUI_STATE_DIR
 
 afterEach(() => {
-  vi.doUnmock('../../packages/server/src/services/hermes/hermes-profile')
+  vi.doUnmock('../../packages/server/src/services/DiTing/DiTing-profile')
   vi.doUnmock('../../packages/server/src/services/config-helpers')
   vi.clearAllMocks()
   vi.unstubAllEnvs()
   vi.resetModules()
-  if (originalWebUiHome === undefined) delete process.env.HERMES_WEB_UI_HOME
-  else process.env.HERMES_WEB_UI_HOME = originalWebUiHome
-  if (originalWebuiStateDir === undefined) delete process.env.HERMES_WEBUI_STATE_DIR
-  else process.env.HERMES_WEBUI_STATE_DIR = originalWebuiStateDir
+  if (originalWebUiHome === undefined) delete process.env.DiTing_WEB_UI_HOME
+  else process.env.DiTing_WEB_UI_HOME = originalWebUiHome
+  if (originalWebuiStateDir === undefined) delete process.env.DiTing_WEBUI_STATE_DIR
+  else process.env.DiTing_WEBUI_STATE_DIR = originalWebuiStateDir
 })
 
 describe('media controller', () => {
-  it('uses Hermes Web UI media directory as the default generated video output path', async () => {
-    process.env.HERMES_WEB_UI_HOME = '/tmp/hermes-web-ui-test-home'
-    const { defaultImageOutputPath, defaultMediaOutputPath } = await import('../../packages/server/src/controllers/hermes/media')
+  it('uses DiTing Web UI media directory as the default generated video output path', async () => {
+    process.env.DiTing_WEB_UI_HOME = '/tmp/DiTing-web-ui-test-home'
+    const { defaultImageOutputPath, defaultMediaOutputPath } = await import('../../packages/server/src/controllers/DiTing/media')
 
-    expect(defaultMediaOutputPath('req_123')).toBe(join('/tmp/hermes-web-ui-test-home', 'media', 'req_123.mp4'))
-    expect(defaultMediaOutputPath('bad/request:id')).toBe(join('/tmp/hermes-web-ui-test-home', 'media', 'bad_request_id.mp4'))
-    expect(defaultImageOutputPath('img_123')).toBe(join('/tmp/hermes-web-ui-test-home', 'media', 'img_123.png'))
-    expect(defaultImageOutputPath('bad/request:id', 1)).toBe(join('/tmp/hermes-web-ui-test-home', 'media', 'bad_request_id-2.png'))
+    expect(defaultMediaOutputPath('req_123')).toBe(join('/tmp/DiTing-web-ui-test-home', 'media', 'req_123.mp4'))
+    expect(defaultMediaOutputPath('bad/request:id')).toBe(join('/tmp/DiTing-web-ui-test-home', 'media', 'bad_request_id.mp4'))
+    expect(defaultImageOutputPath('img_123')).toBe(join('/tmp/DiTing-web-ui-test-home', 'media', 'img_123.png'))
+    expect(defaultImageOutputPath('bad/request:id', 1)).toBe(join('/tmp/DiTing-web-ui-test-home', 'media', 'bad_request_id-2.png'))
   })
 
   it('generates images through the requested configured custom provider', async () => {
     vi.stubEnv('AGNES_API_KEY', 'agnes-secret')
-    vi.doMock('../../packages/server/src/services/hermes/hermes-profile', () => ({
+    vi.doMock('../../packages/server/src/services/DiTing/DiTing-profile', () => ({
       getActiveProfileName: () => 'default',
-      getProfileDir: () => '/tmp/hermes-web-ui-test-profile',
+      getProfileDir: () => '/tmp/DiTing-web-ui-test-profile',
       listProfileNamesFromDisk: () => ['default'],
     }))
     vi.doMock('../../packages/server/src/services/config-helpers', () => ({
@@ -51,7 +51,7 @@ describe('media controller', () => {
     const originalFetch = globalThis.fetch
     globalThis.fetch = fetchMock as any
     try {
-      const { apiKeyImageGenerate } = await import('../../packages/server/src/controllers/hermes/media')
+      const { apiKeyImageGenerate } = await import('../../packages/server/src/controllers/DiTing/media')
       const ctx: any = {
         state: { serverTokenAuth: true },
         query: {},
@@ -60,7 +60,7 @@ describe('media controller', () => {
             provider: 'agnes',
             mode: 'text',
             prompt: 'make an icon',
-            output_path: '/tmp/hermes-web-ui-agnes-image.png',
+            output_path: '/tmp/DiTing-web-ui-agnes-image.png',
           },
         },
         get: vi.fn(() => ''),

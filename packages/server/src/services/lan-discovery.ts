@@ -5,7 +5,7 @@ import { logger } from './logger'
 import { deviceIdFromPublicKey, getPublicSystemInfo, type PublicSystemInfo } from './system-info'
 
 const DISCOVERY_VERSION = 1
-export const HERMES_DISCOVERY_PORT = 48640
+export const DiTing_DISCOVERY_PORT = 48640
 const DISCOVERY_PORT_OFFSET = 40_000
 const DEFAULT_HTTP_PORTS = [8648, 8748]
 const DEFAULT_SCAN_TIMEOUT_MS = 1000
@@ -37,7 +37,7 @@ type DiscoveryRequest = {
 }
 
 type DiscoveryAnnouncement = PublicSystemInfo & {
-  type: 'hermes.announce'
+  type: 'DiTing.announce'
   version: number
   request_id?: string
   http_port: number
@@ -72,7 +72,7 @@ function envFlagDisabled(name: string): boolean {
 }
 
 export function isLanDiscoveryEnabled(): boolean {
-  return !envFlagDisabled('HERMES_LAN_DISCOVERY_ENABLED')
+  return !envFlagDisabled('DiTing_LAN_DISCOVERY_ENABLED')
 }
 
 function parsePortList(value: string | undefined): number[] {
@@ -89,7 +89,7 @@ export function discoveryPortForHttpPort(httpPort: number): number {
 }
 
 function discoveryPortsForHttpPorts(httpPorts: number[]): number[] {
-  const ports = new Set<number>([HERMES_DISCOVERY_PORT])
+  const ports = new Set<number>([DiTing_DISCOVERY_PORT])
   for (const httpPort of httpPorts) {
     try {
       ports.add(discoveryPortForHttpPort(httpPort))
@@ -107,7 +107,7 @@ export function getLanEndpointKind(httpPort: number): LanEndpointKind {
 }
 
 export function getDiscoveryHttpPorts(currentPort = config.port): number[] {
-  const configured = parsePortList(process.env.HERMES_LAN_DISCOVERY_HTTP_PORTS)
+  const configured = parsePortList(process.env.DiTing_LAN_DISCOVERY_HTTP_PORTS)
   return [...new Set([...(configured.length ? configured : DEFAULT_HTTP_PORTS), currentPort])]
 }
 
@@ -210,7 +210,7 @@ async function buildAnnouncement(
   const info = await getCachedLocalInfo(getSystemInfo)
   const localAddress = selectLocalAddress(remoteAddress)
   return {
-    type: 'hermes.announce',
+    type: 'DiTing.announce',
     version: DISCOVERY_VERSION,
     request_id: request.request_id,
     http_port: httpPort,
@@ -234,7 +234,7 @@ export function startLanDiscoveryResponder(options: StartResponderOptions = {}):
     socket.on('message', (message, rinfo) => {
       if (!isPrivateOrLoopbackIPv4(rinfo.address)) return
       const request = parseJson(message) as DiscoveryRequest | null
-      if (!request || request.type !== 'hermes.discover' || request.version !== DISCOVERY_VERSION) return
+      if (!request || request.type !== 'DiTing.discover' || request.version !== DISCOVERY_VERSION) return
 
       void buildAnnouncement(request, rinfo.address, httpPort, getSystemInfo)
         .then(announcement => {
@@ -272,7 +272,7 @@ export function stopLanDiscoveryResponder(): void {
 }
 
 function normalizeDevice(data: any, sourceAddress: string, responseMs: number, seenAt: string): LanDeviceInfo | null {
-  if (!data || data.type !== 'hermes.announce' || data.version !== DISCOVERY_VERSION) return null
+  if (!data || data.type !== 'DiTing.announce' || data.version !== DISCOVERY_VERSION) return null
   const httpPort = Number(data.http_port)
   if (!Number.isInteger(httpPort) || httpPort <= 0 || httpPort > 65535) return null
   const deviceId = typeof data.device_id === 'string' && data.device_id ? data.device_id : ''
@@ -297,8 +297,8 @@ function normalizeDevice(data: any, sourceAddress: string, responseMs: number, s
       release: String(data.os?.release || ''),
       arch: String(data.os?.arch || ''),
     },
-    hermes_agent_version: String(data.hermes_agent_version || ''),
-    hermes_web_ui_version: String(data.hermes_web_ui_version || ''),
+    DiTing_agent_version: String(data.DiTing_agent_version || ''),
+    DiTing_web_ui_version: String(data.DiTing_web_ui_version || ''),
     response_ms: responseMs,
     last_seen_at: seenAt,
   }
@@ -349,7 +349,7 @@ export async function scanLanDevices(options: ScanOptions = {}): Promise<LanDisc
     socket.bind(0, '0.0.0.0', () => {
       socket.setBroadcast(true)
       const packet = Buffer.from(JSON.stringify({
-        type: 'hermes.discover',
+        type: 'DiTing.discover',
         version: DISCOVERY_VERSION,
         request_id: requestId,
       }))

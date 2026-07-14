@@ -6,11 +6,11 @@ import { existsSync } from 'fs'
 import { homedir } from 'os'
 import { isAbsolute, resolve as resolvePath } from 'path'
 import { spawn } from 'child_process'
-import { getDeviceRelation } from '../db/hermes/devices-store'
+import { getDeviceRelation } from '../db/DiTing/devices-store'
 import type { LanDeviceInfo } from './lan-discovery'
 import { createDeviceSignature, getPublicSystemInfo, verifyDeviceSignature } from './system-info'
-import { getTerminalConfig, validatePath } from './hermes/file-provider'
-import { getActiveProfileDir } from './hermes/hermes-profile'
+import { getTerminalConfig, validatePath } from './DiTing/file-provider'
+import { getActiveProfileDir } from './DiTing/DiTing-profile'
 import { logger } from './logger'
 import { config } from '../config'
 import { shouldRejectUpgradeOrigin, writeForbiddenOrigin } from '../security'
@@ -23,9 +23,9 @@ const CLIENT_RECONNECT_BASE_MS = 1000
 const HEARTBEAT_INTERVAL_MS = 30000
 const EXEC_OUTPUT_LIMIT = 5 * 1024 * 1024
 const EXEC_TIMEOUT_MS = 30000
-const PEER_TERMINAL_MAX_PER_CONNECTION = boundedEnvInt('HERMES_LAN_PEER_MAX_TERMINALS', 4, 1, 32)
-const PEER_TERMINAL_IDLE_MS = boundedEnvInt('HERMES_LAN_PEER_TERMINAL_IDLE_MS', 10 * 60 * 1000, 30_000, 24 * 60 * 60 * 1000)
-const PEER_TERMINAL_BUFFER_BYTES = boundedEnvInt('HERMES_LAN_PEER_TERMINAL_BUFFER_BYTES', 1024 * 1024, 64 * 1024, 16 * 1024 * 1024)
+const PEER_TERMINAL_MAX_PER_CONNECTION = boundedEnvInt('DiTing_LAN_PEER_MAX_TERMINALS', 4, 1, 32)
+const PEER_TERMINAL_IDLE_MS = boundedEnvInt('DiTing_LAN_PEER_TERMINAL_IDLE_MS', 10 * 60 * 1000, 30_000, 24 * 60 * 60 * 1000)
+const PEER_TERMINAL_BUFFER_BYTES = boundedEnvInt('DiTing_LAN_PEER_TERMINAL_BUFFER_BYTES', 1024 * 1024, 64 * 1024, 16 * 1024 * 1024)
 
 let pty: any = null
 try {

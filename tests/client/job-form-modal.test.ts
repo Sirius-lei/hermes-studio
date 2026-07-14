@@ -47,23 +47,23 @@ const mockFetchSkills = vi.hoisted(() => vi.fn(async () => ({
   archived: [],
 })))
 
-vi.mock('@/stores/hermes/settings', () => ({
+vi.mock('@/stores/DiTing/settings', () => ({
   useSettingsStore: () => mockSettingsStore,
 }))
 
-vi.mock('@/stores/hermes/jobs', () => ({
+vi.mock('@/stores/DiTing/jobs', () => ({
   useJobsStore: () => mockJobsStore,
 }))
 
-vi.mock('@/api/hermes/jobs', async () => {
-  const actual = await vi.importActual<any>('@/api/hermes/jobs')
+vi.mock('@/api/DiTing/jobs', async () => {
+  const actual = await vi.importActual<any>('@/api/DiTing/jobs')
   return {
     ...actual,
     getJob: vi.fn(),
   }
 })
 
-vi.mock('@/api/hermes/skills', () => ({
+vi.mock('@/api/DiTing/skills', () => ({
   fetchSkills: mockFetchSkills,
 }))
 
@@ -101,7 +101,7 @@ vi.mock('naive-ui', () => ({
   useMessage: () => mockMessage,
 }))
 
-import JobFormModal from '@/components/hermes/jobs/JobFormModal.vue'
+import JobFormModal from '@/components/DiTing/jobs/JobFormModal.vue'
 
 describe('JobFormModal deliver targets', () => {
   beforeEach(() => {

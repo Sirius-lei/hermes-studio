@@ -21,12 +21,12 @@ const compressorCompressMock = vi.fn()
 const readConfigYamlForProfileMock = vi.fn()
 const compressorConstructorMock = vi.fn()
 
-vi.mock('../../packages/server/src/db/hermes/session-store', () => ({
+vi.mock('../../packages/server/src/db/DiTing/session-store', () => ({
   getSessionDetail: getSessionDetailMock,
   getSession: getSessionMock,
 }))
 
-vi.mock('../../packages/server/src/db/hermes/compression-snapshot', () => ({
+vi.mock('../../packages/server/src/db/DiTing/compression-snapshot', () => ({
   getCompressionSnapshot: getCompressionSnapshotMock,
 }))
 
@@ -40,7 +40,7 @@ vi.mock('../../packages/server/src/lib/context-compressor', () => ({
   },
 }))
 
-vi.mock('../../packages/server/src/services/hermes/model-context', () => ({
+vi.mock('../../packages/server/src/services/DiTing/model-context', () => ({
   getModelContextLength: getModelContextLengthMock,
 }))
 
@@ -63,13 +63,13 @@ vi.mock('../../packages/server/src/services/logger', () => ({
   },
 }))
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/usage', () => ({
+vi.mock('../../packages/server/src/services/DiTing/run-chat/usage', () => ({
   calcAndUpdateUsage: calcAndUpdateUsageMock,
   estimateUsageTokensFromMessages: estimateUsageTokensFromMessagesMock,
   updateMessageContextTokenUsage: updateMessageContextTokenUsageMock,
 }))
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/message-format', () => ({
+vi.mock('../../packages/server/src/services/DiTing/run-chat/message-format', () => ({
   isAssistantMessageSendable: vi.fn(() => true),
 }))
 
@@ -124,7 +124,7 @@ describe('run chat compression trigger', () => {
       ],
     })
 
-    const { buildCompressedHistory } = await import('../../packages/server/src/services/hermes/run-chat/compression')
+    const { buildCompressedHistory } = await import('../../packages/server/src/services/DiTing/run-chat/compression')
     const history = await buildCompressedHistory(
       'session-1',
       'default',
@@ -154,7 +154,7 @@ describe('run chat compression trigger', () => {
     }))
     getSessionDetailMock.mockReturnValue({ messages })
 
-    const { buildCompressedHistory } = await import('../../packages/server/src/services/hermes/run-chat/compression')
+    const { buildCompressedHistory } = await import('../../packages/server/src/services/DiTing/run-chat/compression')
     const history = await buildCompressedHistory(
       'session-1',
       'default',
@@ -200,7 +200,7 @@ describe('run chat compression trigger', () => {
       },
     })
 
-    const { buildCompressedHistory } = await import('../../packages/server/src/services/hermes/run-chat/compression')
+    const { buildCompressedHistory } = await import('../../packages/server/src/services/DiTing/run-chat/compression')
     const history = await buildCompressedHistory(
       'session-1',
       'default',
@@ -256,7 +256,7 @@ describe('run chat compression trigger', () => {
       },
     })
 
-    const { buildCompressedHistory } = await import('../../packages/server/src/services/hermes/run-chat/compression')
+    const { buildCompressedHistory } = await import('../../packages/server/src/services/DiTing/run-chat/compression')
     await buildCompressedHistory(
       'session-1',
       'default',
@@ -315,7 +315,7 @@ describe('run chat compression trigger', () => {
       },
     })
 
-    const { buildCompressedHistory } = await import('../../packages/server/src/services/hermes/run-chat/compression')
+    const { buildCompressedHistory } = await import('../../packages/server/src/services/DiTing/run-chat/compression')
     await buildCompressedHistory(
       'session-1',
       'default',
@@ -378,7 +378,7 @@ describe('run chat compression trigger', () => {
       },
     })
 
-    const { buildCompressedHistory } = await import('../../packages/server/src/services/hermes/run-chat/compression')
+    const { buildCompressedHistory } = await import('../../packages/server/src/services/DiTing/run-chat/compression')
     await buildCompressedHistory(
       'session-1',
       'default',
@@ -428,7 +428,7 @@ describe('run chat compression trigger', () => {
     })
 
     const emit = vi.fn()
-    const { buildCompressedHistory } = await import('../../packages/server/src/services/hermes/run-chat/compression')
+    const { buildCompressedHistory } = await import('../../packages/server/src/services/DiTing/run-chat/compression')
     const history = await buildCompressedHistory(
       'session-1',
       'default',
@@ -469,7 +469,7 @@ describe('run chat compression trigger', () => {
     const emit = vi.fn()
     const contextTokenEstimator = vi.fn(async () => 19_379)
 
-    const { buildCompressedHistory } = await import('../../packages/server/src/services/hermes/run-chat/compression')
+    const { buildCompressedHistory } = await import('../../packages/server/src/services/DiTing/run-chat/compression')
     const history = await buildCompressedHistory(
       'session-1',
       'default',
@@ -520,7 +520,7 @@ describe('run chat compression trigger', () => {
     const emit = vi.fn()
     const contextTokenEstimator = vi.fn(async (_messages, messageTokens: number) => 20_000 + messageTokens)
 
-    const { buildCompressedHistory } = await import('../../packages/server/src/services/hermes/run-chat/compression')
+    const { buildCompressedHistory } = await import('../../packages/server/src/services/DiTing/run-chat/compression')
     await buildCompressedHistory(
       'session-1',
       'default',
@@ -572,7 +572,7 @@ describe('run chat compression trigger', () => {
     })
     const emit = vi.fn()
 
-    const { buildCompressedHistory } = await import('../../packages/server/src/services/hermes/run-chat/compression')
+    const { buildCompressedHistory } = await import('../../packages/server/src/services/DiTing/run-chat/compression')
     await buildCompressedHistory(
       'session-1',
       'default',
@@ -602,7 +602,7 @@ describe('run chat compression trigger', () => {
     getSessionDetailMock.mockReturnValue({ messages: [] })
     const emit = vi.fn()
 
-    const { buildCompressedHistory, ContextWindowTooSmallError } = await import('../../packages/server/src/services/hermes/run-chat/compression')
+    const { buildCompressedHistory, ContextWindowTooSmallError } = await import('../../packages/server/src/services/DiTing/run-chat/compression')
 
     await expect(buildCompressedHistory(
       'session-1',
@@ -635,7 +635,7 @@ describe('run chat compression trigger', () => {
     getSessionDetailMock.mockReturnValue({ messages })
     calcAndUpdateUsageMock.mockResolvedValue({ inputTokens: 1_000, outputTokens: 0 })
 
-    const { buildCompressedHistory, ContextWindowTooSmallError } = await import('../../packages/server/src/services/hermes/run-chat/compression')
+    const { buildCompressedHistory, ContextWindowTooSmallError } = await import('../../packages/server/src/services/DiTing/run-chat/compression')
 
     await expect(buildCompressedHistory(
       'session-1',
@@ -681,7 +681,7 @@ describe('run chat compression trigger', () => {
       },
     })
 
-    const { buildCompressedHistory } = await import('../../packages/server/src/services/hermes/run-chat/compression')
+    const { buildCompressedHistory } = await import('../../packages/server/src/services/DiTing/run-chat/compression')
     await buildCompressedHistory(
       'session-1',
       'default',
@@ -726,7 +726,7 @@ describe('run chat compression trigger', () => {
     })
     estimateUsageTokensFromMessagesMock.mockReturnValue({ inputTokens: 1_000, outputTokens: 0 })
 
-    const { buildCompressedHistory } = await import('../../packages/server/src/services/hermes/run-chat/compression')
+    const { buildCompressedHistory } = await import('../../packages/server/src/services/DiTing/run-chat/compression')
     const history = await buildCompressedHistory(
       'session-1',
       'default',
@@ -782,7 +782,7 @@ describe('run chat compression trigger', () => {
       },
     })
 
-    const { buildCompressedHistory } = await import('../../packages/server/src/services/hermes/run-chat/compression')
+    const { buildCompressedHistory } = await import('../../packages/server/src/services/DiTing/run-chat/compression')
     const history = await buildCompressedHistory(
       'session-1',
       'default',
@@ -821,7 +821,7 @@ describe('run chat compression trigger', () => {
     })
     calcAndUpdateUsageMock.mockResolvedValue({ inputTokens: 180_000, outputTokens: 0 })
 
-    const { buildCompressedHistory } = await import('../../packages/server/src/services/hermes/run-chat/compression')
+    const { buildCompressedHistory } = await import('../../packages/server/src/services/DiTing/run-chat/compression')
     const history = await buildCompressedHistory(
       'session-1',
       'default',

@@ -13,7 +13,7 @@ const mockMessage = vi.hoisted(() => ({
   error: vi.fn(),
 }))
 
-vi.mock('@/api/hermes/copilot-auth', () => mockApi)
+vi.mock('@/api/DiTing/copilot-auth', () => mockApi)
 vi.mock('@/utils/clipboard', () => ({ copyToClipboard: vi.fn(async () => true) }))
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({ t: (k: string) => k }),
@@ -25,7 +25,7 @@ vi.mock('naive-ui', () => ({
   useMessage: () => mockMessage,
 }))
 
-import CopilotLoginModal from '@/components/hermes/models/CopilotLoginModal.vue'
+import CopilotLoginModal from '@/components/DiTing/models/CopilotLoginModal.vue'
 
 function mountModal() {
   return mount(CopilotLoginModal)

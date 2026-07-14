@@ -4,16 +4,16 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import YAML from 'js-yaml'
 
-vi.mock('../../packages/server/src/services/hermes/hermes-cli', () => ({
+vi.mock('../../packages/server/src/services/DiTing/DiTing-cli', () => ({
   restartGateway: vi.fn().mockResolvedValue(undefined),
 }))
 
-let hermesHome = ''
+let DiTingHome = ''
 
 async function loadProvidersController() {
   vi.resetModules()
-  process.env.HERMES_HOME = hermesHome
-  return import('../../packages/server/src/controllers/hermes/providers')
+  process.env.DiTing_HOME = DiTingHome
+  return import('../../packages/server/src/controllers/DiTing/providers')
 }
 
 function makeCtx(body: Record<string, any>, profile = 'default') {
@@ -31,18 +31,18 @@ function readYaml(filePath: string) {
 
 describe('providers controller create', () => {
   beforeEach(() => {
-    hermesHome = mkdtempSync(join(tmpdir(), 'hwui-provider-create-'))
-    mkdirSync(hermesHome, { recursive: true })
-    writeFileSync(join(hermesHome, 'config.yaml'), 'model: {}\n')
-    writeFileSync(join(hermesHome, '.env'), '')
+    DiTingHome = mkdtempSync(join(tmpdir(), 'hwui-provider-create-'))
+    mkdirSync(DiTingHome, { recursive: true })
+    writeFileSync(join(DiTingHome, 'config.yaml'), 'model: {}\n')
+    writeFileSync(join(DiTingHome, '.env'), '')
   })
 
   afterEach(() => {
-    delete process.env.HERMES_HOME
-    vi.doUnmock('../../packages/server/src/controllers/hermes/providers')
+    delete process.env.DiTing_HOME
+    vi.doUnmock('../../packages/server/src/controllers/DiTing/providers')
     vi.clearAllMocks()
-    if (hermesHome) rmSync(hermesHome, { recursive: true, force: true })
-    hermesHome = ''
+    if (DiTingHome) rmSync(DiTingHome, { recursive: true, force: true })
+    DiTingHome = ''
   })
 
   it('does not persist a built-in provider base URL when it matches the preset default', async () => {
@@ -58,7 +58,7 @@ describe('providers controller create', () => {
     await create(ctx)
 
     expect(ctx.body).toEqual({ success: true })
-    const envAfter = readFileSync(join(hermesHome, '.env'), 'utf-8')
+    const envAfter = readFileSync(join(DiTingHome, '.env'), 'utf-8')
     expect(envAfter).toContain('DEEPSEEK_API_KEY=deepseek-key')
     expect(envAfter).not.toContain('DEEPSEEK_BASE_URL')
   })
@@ -76,7 +76,7 @@ describe('providers controller create', () => {
     await create(ctx)
 
     expect(ctx.body).toEqual({ success: true })
-    const envAfter = readFileSync(join(hermesHome, '.env'), 'utf-8')
+    const envAfter = readFileSync(join(DiTingHome, '.env'), 'utf-8')
     expect(envAfter).toContain('DEEPSEEK_API_KEY=deepseek-key')
     expect(envAfter).toContain('DEEPSEEK_BASE_URL=https://deepseek-proxy.invalid/v1')
   })
@@ -94,10 +94,10 @@ describe('providers controller create', () => {
     await create(ctx)
 
     expect(ctx.body).toEqual({ success: true })
-    const configAfter = readYaml(join(hermesHome, 'config.yaml'))
+    const configAfter = readYaml(join(DiTingHome, 'config.yaml'))
     expect(configAfter.model).toEqual({ default: 'grok-4.3', provider: 'xai-oauth' })
     expect(configAfter.custom_providers).toBeUndefined()
-    expect(readFileSync(join(hermesHome, '.env'), 'utf-8')).toBe('')
+    expect(readFileSync(join(DiTingHome, '.env'), 'utf-8')).toBe('')
   })
 
   it('creates LongCat preset as a custom provider instead of env-backed builtin provider', async () => {
@@ -113,7 +113,7 @@ describe('providers controller create', () => {
     await create(ctx)
 
     expect(ctx.body).toEqual({ success: true })
-    const configAfter = readYaml(join(hermesHome, 'config.yaml'))
+    const configAfter = readYaml(join(DiTingHome, 'config.yaml'))
     expect(configAfter.model).toEqual({ default: 'LongCat-2.0-Preview', provider: 'custom:longcat' })
     expect(configAfter.custom_providers).toEqual([
       expect.objectContaining({
@@ -124,7 +124,7 @@ describe('providers controller create', () => {
         api_mode: 'codex_responses',
       }),
     ])
-    expect(readFileSync(join(hermesHome, '.env'), 'utf-8')).not.toContain('LONGCAT_API_KEY')
+    expect(readFileSync(join(DiTingHome, '.env'), 'utf-8')).not.toContain('LONGCAT_API_KEY')
   })
 
   it('persists api_mode for custom providers', async () => {
@@ -140,7 +140,7 @@ describe('providers controller create', () => {
     await create(ctx)
 
     expect(ctx.body).toEqual({ success: true })
-    const configAfter = readYaml(join(hermesHome, 'config.yaml'))
+    const configAfter = readYaml(join(DiTingHome, 'config.yaml'))
     expect(configAfter.custom_providers).toEqual([
       expect.objectContaining({
         name: 'research-proxy',

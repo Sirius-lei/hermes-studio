@@ -24,7 +24,7 @@ vi.mock('@/composables/useTheme', () => ({
   useTheme: () => ({ isDark: false }),
 }))
 
-vi.mock('@/components/hermes/chat/VirtualMessageList.vue', () => ({
+vi.mock('@/components/DiTing/chat/VirtualMessageList.vue', () => ({
   default: defineComponent({
     name: 'VirtualMessageList',
     props: {
@@ -54,7 +54,7 @@ vi.mock('@/components/hermes/chat/VirtualMessageList.vue', () => ({
   }),
 }))
 
-vi.mock('@/components/hermes/chat/MessageItem.vue', () => ({
+vi.mock('@/components/DiTing/chat/MessageItem.vue', () => ({
   default: defineComponent({
     name: 'MessageItem',
     props: { message: { type: Object, required: true } },
@@ -62,8 +62,8 @@ vi.mock('@/components/hermes/chat/MessageItem.vue', () => ({
   }),
 }))
 
-import MessageList from '@/components/hermes/chat/MessageList.vue'
-import { useChatStore, type Message, type Session } from '@/stores/hermes/chat'
+import MessageList from '@/components/DiTing/chat/MessageList.vue'
+import { useChatStore, type Message, type Session } from '@/stores/DiTing/chat'
 
 function makeMessage(id: string): Message {
   return { id, role: 'user', content: id, timestamp: Date.now() }
@@ -169,7 +169,7 @@ describe('MessageList session scroll position', () => {
 
     const link = wrapper.get('.history-archive-link')
     expect(link.text()).toBe('chat.viewOlderInHistory')
-    expect(link.attributes('href')).toBe('#/hermes/history/session/history-cap-session?profile=default')
+    expect(link.attributes('href')).toBe('#/DiTing/history/session/history-cap-session?profile=default')
 
     wrapper.getComponent({ name: 'VirtualMessageList' }).vm.$emit('top-reach')
     await nextTick()

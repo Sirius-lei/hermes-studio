@@ -28,11 +28,11 @@ describe('workflow store', () => {
 
   beforeEach(async () => {
     vi.resetModules()
-    root = mkdtempSync(join(tmpdir(), 'hermes-workflow-store-'))
+    root = mkdtempSync(join(tmpdir(), 'DiTing-workflow-store-'))
     state.appHome = join(root, 'home')
     state.db = new DatabaseSync(join(root, 'workflow.db'))
-    const { initAllHermesTables } = await import('../../packages/server/src/db/hermes/schemas')
-    initAllHermesTables()
+    const { initAllDiTingTables } = await import('../../packages/server/src/db/DiTing/schemas')
+    initAllDiTingTables()
   })
 
   afterEach(() => {
@@ -42,7 +42,7 @@ describe('workflow store', () => {
   })
 
   it('creates workflows with a profile-scoped default workspace', async () => {
-    const { createWorkflow, getWorkflow } = await import('../../packages/server/src/db/hermes/workflow-store')
+    const { createWorkflow, getWorkflow } = await import('../../packages/server/src/db/DiTing/workflow-store')
 
     const workflow = createWorkflow({
       name: 'Research flow',
@@ -65,7 +65,7 @@ describe('workflow store', () => {
   })
 
   it('updates and deletes workflows', async () => {
-    const { createWorkflow, deleteWorkflow, getWorkflow, listWorkflows, updateWorkflow } = await import('../../packages/server/src/db/hermes/workflow-store')
+    const { createWorkflow, deleteWorkflow, getWorkflow, listWorkflows, updateWorkflow } = await import('../../packages/server/src/db/DiTing/workflow-store')
     const workflow = createWorkflow({ name: 'Draft', profile: 'default' })
 
     const updated = updateWorkflow(workflow.id, {
@@ -90,8 +90,8 @@ describe('workflow store', () => {
   })
 
   it('lists workflow runs by workflow ordered newest first', async () => {
-    const { createWorkflow } = await import('../../packages/server/src/db/hermes/workflow-store')
-    const { createWorkflowRun, listWorkflowRuns, updateWorkflowRun } = await import('../../packages/server/src/db/hermes/workflow-run-store')
+    const { createWorkflow } = await import('../../packages/server/src/db/DiTing/workflow-store')
+    const { createWorkflowRun, listWorkflowRuns, updateWorkflowRun } = await import('../../packages/server/src/db/DiTing/workflow-run-store')
     const workflow = createWorkflow({ name: 'Runs', profile: 'default' })
     const other = createWorkflow({ name: 'Other', profile: 'default' })
 
@@ -111,14 +111,14 @@ describe('workflow store', () => {
   })
 
   it('deletes workflow runs and their node session records', async () => {
-    const { createWorkflow } = await import('../../packages/server/src/db/hermes/workflow-store')
+    const { createWorkflow } = await import('../../packages/server/src/db/DiTing/workflow-store')
     const {
       createWorkflowRun,
       createWorkflowRunNodeSession,
       deleteWorkflowRun,
       getWorkflowRun,
       listWorkflowRunNodeSessions,
-    } = await import('../../packages/server/src/db/hermes/workflow-run-store')
+    } = await import('../../packages/server/src/db/DiTing/workflow-run-store')
     const workflow = createWorkflow({ name: 'Runs', profile: 'default' })
     const run = createWorkflowRun({ workflow_id: workflow.id, status: 'completed' })
     createWorkflowRunNodeSession({

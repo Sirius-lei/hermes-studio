@@ -18,17 +18,17 @@ describe('user avatar storage and controller', () => {
     db?.close()
     db = null
     vi.doUnmock('../../packages/server/src/db/index')
-    vi.doUnmock('../../packages/server/src/services/hermes/hermes-profile')
+    vi.doUnmock('../../packages/server/src/services/DiTing/DiTing-profile')
     vi.unstubAllEnvs()
     vi.resetModules()
   })
 
   async function initUsers() {
-    const schemas = await import('../../packages/server/src/db/hermes/schemas')
-    schemas.initAllHermesTables()
+    const schemas = await import('../../packages/server/src/db/DiTing/schemas')
+    schemas.initAllDiTingTables()
     return {
       schemas,
-      users: await import('../../packages/server/src/db/hermes/users-store'),
+      users: await import('../../packages/server/src/db/DiTing/users-store'),
       ctrl: await import('../../packages/server/src/controllers/auth'),
     }
   }

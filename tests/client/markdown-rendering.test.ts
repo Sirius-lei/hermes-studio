@@ -13,7 +13,7 @@ const mermaidMock = vi.hoisted(() => ({
 const downloadApiMock = vi.hoisted(() => ({
   downloadFile: vi.fn(() => Promise.resolve()),
   fetchFileText: vi.fn(() => Promise.resolve('preview content')),
-  getDownloadUrl: vi.fn((path: string) => `http://test.local/api/hermes/download?path=${encodeURIComponent(path)}`),
+  getDownloadUrl: vi.fn((path: string) => `http://test.local/api/DiTing/download?path=${encodeURIComponent(path)}`),
 }))
 
 vi.mock('mermaid', () => ({
@@ -58,13 +58,13 @@ vi.mock('naive-ui', () => ({
   }),
 }))
 
-vi.mock('@/api/hermes/download', () => ({
+vi.mock('@/api/DiTing/download', () => ({
   downloadFile: downloadApiMock.downloadFile,
   fetchFileText: downloadApiMock.fetchFileText,
   getDownloadUrl: downloadApiMock.getDownloadUrl,
 }))
 
-import MarkdownRenderer from '@/components/hermes/chat/MarkdownRenderer.vue'
+import MarkdownRenderer from '@/components/DiTing/chat/MarkdownRenderer.vue'
 
 describe('MarkdownRenderer', () => {
   afterEach(() => {
@@ -82,7 +82,7 @@ describe('MarkdownRenderer', () => {
     }))
     downloadApiMock.downloadFile.mockResolvedValue(undefined)
     downloadApiMock.fetchFileText.mockResolvedValue('preview content')
-    downloadApiMock.getDownloadUrl.mockImplementation((path: string) => `http://test.local/api/hermes/download?path=${encodeURIComponent(path)}`)
+    downloadApiMock.getDownloadUrl.mockImplementation((path: string) => `http://test.local/api/DiTing/download?path=${encodeURIComponent(path)}`)
 
     Object.defineProperty(window, 'isSecureContext', {
       configurable: true,
@@ -261,7 +261,7 @@ describe('MarkdownRenderer', () => {
 
     const video = wrapper.find('video.markdown-video')
     expect(video.exists()).toBe(true)
-    expect(video.attributes('src')).toContain('/api/hermes/download?path=')
+    expect(video.attributes('src')).toContain('/api/DiTing/download?path=')
     const src = new URL(video.attributes('src'))
     expect(decodeURIComponent(src.searchParams.get('path') || '')).toBe('/Users/ekko/Desktop/录屏2026-05-08 15.19.46.mov')
     expect(wrapper.find('.markdown-video-footer .att-name').text()).toBe('录屏2026-05-08 15.19.46.mov')
@@ -278,7 +278,7 @@ describe('MarkdownRenderer', () => {
     expect(audio.exists()).toBe(true)
     expect(audio.attributes('controls')).toBeDefined()
     expect(audio.attributes('preload')).toBe('metadata')
-    expect(audio.attributes('src')).toContain('/api/hermes/download?path=')
+    expect(audio.attributes('src')).toContain('/api/DiTing/download?path=')
     const src = new URL(audio.attributes('src'))
     expect(decodeURIComponent(src.searchParams.get('path') || '')).toBe('/tmp/song.mp3')
     expect(wrapper.find('.markdown-audio-footer .att-name').text()).toBe('song.mp3')
@@ -294,7 +294,7 @@ describe('MarkdownRenderer', () => {
 
     const img = wrapper.find('img')
     expect(img.exists()).toBe(true)
-    expect(img.attributes('src')).toContain('/api/hermes/download?path=')
+    expect(img.attributes('src')).toContain('/api/DiTing/download?path=')
     const src = new URL(img.attributes('src'))
     expect(decodeURIComponent(src.searchParams.get('path') || '')).toBe('/c/Users/Administrator/Desktop/screenshot.png')
     expect(img.attributes('alt')).toBe('桌面截图')
@@ -435,7 +435,7 @@ describe('MarkdownRenderer', () => {
       securityLevel: 'strict',
     }))
     expect(mermaidMock.render).toHaveBeenCalledWith(
-      expect.stringMatching(/^hermes-mermaid-/),
+      expect.stringMatching(/^DiTing-mermaid-/),
       expect.stringContaining('flowchart TD'),
     )
     expect(wrapper.find('[data-testid="mermaid-svg"]').exists()).toBe(true)
@@ -465,7 +465,7 @@ describe('MarkdownRenderer', () => {
 
     expect(wrapper.find('.markdown-body').find('h2').text()).toBe('Command flow')
     expect(mermaidMock.render).toHaveBeenCalledWith(
-      expect.stringMatching(/^hermes-mermaid-/),
+      expect.stringMatching(/^DiTing-mermaid-/),
       expect.stringContaining('flowchart LR'),
     )
     expect(wrapper.find('[data-testid="mermaid-svg"]').exists()).toBe(true)

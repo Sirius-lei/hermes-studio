@@ -7,8 +7,8 @@ import './styles/global.scss'
 import 'katex/dist/katex.min.css'
 
 // Apply theme classes before mount to prevent FOUC (Flash of Unstyled Content)
-const savedBrightness = localStorage.getItem('hermes_brightness') || 'system'
-const savedStyle = localStorage.getItem('hermes_style') || 'ink'
+const savedBrightness = localStorage.getItem('DiTing_brightness') || 'system'
+const savedStyle = localStorage.getItem('DiTing_style') || 'ink'
 
 // Resolve dark mode
 const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
@@ -17,7 +17,7 @@ const isDark = savedBrightness === 'dark' || (savedBrightness === 'system' && pr
 // Resolve style
 const isComic = savedStyle === 'comic'
 const isDesktopShell =
-  (window as typeof window & { hermesDesktop?: { isDesktop?: boolean } }).hermesDesktop?.isDesktop === true
+  (window as typeof window & { DiTingDesktop?: { isDesktop?: boolean } }).DiTingDesktop?.isDesktop === true
 
 // Apply classes to prevent FOUC
 if (isDark) {
@@ -27,7 +27,7 @@ if (isComic) {
   document.documentElement.classList.add('comic')
 }
 if (isDesktopShell) {
-  document.documentElement.classList.add('hermes-desktop-shell')
+  document.documentElement.classList.add('DiTing-desktop-shell')
 }
 
 // Read token from URL BEFORE router initializes (hash router strips params)

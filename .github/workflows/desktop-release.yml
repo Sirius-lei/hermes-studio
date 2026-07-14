@@ -101,7 +101,7 @@ jobs:
       - name: Write runtime release metadata
         shell: bash
         env:
-          HERMES_DESKTOP_RUNTIME_RELEASE_TAG: ${{ vars.HERMES_DESKTOP_RUNTIME_RELEASE_TAG }}
+          DiTing_DESKTOP_RUNTIME_RELEASE_TAG: ${{ vars.DiTing_DESKTOP_RUNTIME_RELEASE_TAG }}
         run: npm --prefix packages/desktop run write:runtime-release
 
       - name: Configure macOS signing
@@ -185,15 +185,15 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           pattern: latest-mac-*
-          path: /tmp/hermes-mac-manifests
+          path: /tmp/DiTing-mac-manifests
           merge-multiple: false
 
       - name: Merge macOS update manifests
         shell: bash
         run: |
           node packages/desktop/scripts/merge-mac-latest-yml.mjs \
-            /tmp/hermes-mac-manifests/latest-mac-arm64/latest-mac.yml \
-            /tmp/hermes-mac-manifests/latest-mac-x64/latest-mac.yml \
+            /tmp/DiTing-mac-manifests/latest-mac-arm64/latest-mac.yml \
+            /tmp/DiTing-mac-manifests/latest-mac-x64/latest-mac.yml \
             > /tmp/latest-mac.yml
 
       - name: Upload merged macOS updater manifest to release

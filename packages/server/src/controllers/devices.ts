@@ -10,7 +10,7 @@ import {
   type DeviceRelationRecord,
   type DeviceInboundStatus,
   type DeviceOutboundStatus,
-} from '../db/hermes/devices-store'
+} from '../db/DiTing/devices-store'
 import { getLanDiscoveryCache, getLanEndpointKind, isPrivateOrLoopbackIPv4, scanLanDevices, type LanDeviceInfo } from '../services/lan-discovery'
 import { getLanPeerSocketManager } from '../services/lan-peer-socket'
 import { getLanPeerToolsService } from '../services/lan-peer-tools'
@@ -35,8 +35,8 @@ type LinkInfoResponse = {
     release?: unknown
     arch?: unknown
   }
-  hermes_agent_version?: unknown
-  hermes_web_ui_version?: unknown
+  DiTing_agent_version?: unknown
+  DiTing_web_ui_version?: unknown
   http_port?: unknown
   endpoint_kind?: unknown
 }
@@ -110,8 +110,8 @@ function relationToDevice(relation: DeviceRelationRecord): LanDeviceInfo {
     url: relation.url,
     computer_name: relation.computer_name,
     os: relation.os,
-    hermes_agent_version: relation.hermes_agent_version,
-    hermes_web_ui_version: relation.hermes_web_ui_version,
+    DiTing_agent_version: relation.DiTing_agent_version,
+    DiTing_web_ui_version: relation.DiTing_web_ui_version,
     response_ms: relation.response_ms,
     last_seen_at: new Date(relation.last_seen_at || relation.updated_at || Date.now()).toISOString(),
   }
@@ -287,8 +287,8 @@ function deviceFromLinkInfo(baseUrl: URL, info: LinkInfoResponse, latencyMs: num
       release: String(info.os?.release || ''),
       arch: String(info.os?.arch || ''),
     },
-    hermes_agent_version: String(info.hermes_agent_version || ''),
-    hermes_web_ui_version: String(info.hermes_web_ui_version || ''),
+    DiTing_agent_version: String(info.DiTing_agent_version || ''),
+    DiTing_web_ui_version: String(info.DiTing_web_ui_version || ''),
     response_ms: latencyMs,
     last_seen_at: new Date().toISOString(),
   }
@@ -344,7 +344,7 @@ export async function getDevicePairingLink(ctx: any) {
   const origin = devicePairingOrigin(ctx)
   ctx.body = {
     code,
-    link: `${origin}/#/hermes/devices?pairing_code=${encodeURIComponent(code)}`,
+    link: `${origin}/#/DiTing/devices?pairing_code=${encodeURIComponent(code)}`,
   }
 }
 
@@ -437,8 +437,8 @@ function bodyToDevice(ctx: any, body: any): LanDeviceInfo | null {
       release: String(body?.os?.release || ''),
       arch: String(body?.os?.arch || ''),
     },
-    hermes_agent_version: String(body?.hermes_agent_version || ''),
-    hermes_web_ui_version: String(body?.hermes_web_ui_version || ''),
+    DiTing_agent_version: String(body?.DiTing_agent_version || ''),
+    DiTing_web_ui_version: String(body?.DiTing_web_ui_version || ''),
     response_ms: 0,
     last_seen_at: new Date().toISOString(),
   }

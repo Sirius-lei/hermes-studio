@@ -1,8 +1,8 @@
 import { expect, test, type Page } from '@playwright/test'
-import { authenticate, mockChatSocket, mockHermesApi, TEST_ACCESS_KEY } from './fixtures'
+import { authenticate, mockChatSocket, mockDiTingApi, TEST_ACCESS_KEY } from './fixtures'
 
 const inputPlaceholder = 'Type a message... (Enter to send, Shift+Enter for new line)'
-const archiveStorageKey = 'hermes.multiAgent.workflowArchives.v1'
+const archiveStorageKey = 'DiTing.multiAgent.workflowArchives.v1'
 
 async function sendChatMessage(page: Page, message: string) {
   const input = page.getByPlaceholder(inputPlaceholder)
@@ -30,12 +30,12 @@ async function emitSocketEvent(page: Page, sessionId: string, event: Record<stri
 
 test('renders the right-side multi-agent workflow panel with expandable execution details', async ({ page }) => {
   await authenticate(page, TEST_ACCESS_KEY, 'research')
-  await mockHermesApi(page)
+  await mockDiTingApi(page)
   await mockChatSocket(page)
 
   await page.addInitScript(() => {
-    window.localStorage.removeItem('hermes.multiAgent.workflowArchives.v1')
-    window.localStorage.setItem('hermes.subAgents.frontendDraft.v4', JSON.stringify([
+    window.localStorage.removeItem('DiTing.multiAgent.workflowArchives.v1')
+    window.localStorage.setItem('DiTing.subAgents.frontendDraft.v4', JSON.stringify([
       {
         id: 'data-agent',
         name: '问数智能体',
@@ -56,7 +56,7 @@ test('renders the right-side multi-agent workflow panel with expandable executio
     ]))
   })
 
-  await page.goto('/#/hermes/chat')
+  await page.goto('/#/DiTing/chat')
 
   await page.getByRole('button', { name: /开启多智能体协作模式|开启多智能体|多智能体/ }).click()
   const multiAgentPanel = page.getByTestId('multi-agent-panel')
@@ -101,10 +101,10 @@ test('renders the right-side multi-agent workflow panel with expandable executio
       status: 'running',
       currentNodeId: 'execute',
       nodes: [
-        { id: 'understand', title: '理解需求与约束', phase: '分析', status: 'done', executor: { type: 'hermes', name: '主智能体' }, summary: '已提取目标与边界。' },
-        { id: 'route', title: '生成任务清单', phase: '规划', status: 'done', executor: { type: 'hermes', name: '主智能体' }, summary: '已形成执行路径。' },
+        { id: 'understand', title: '理解需求与约束', phase: '分析', status: 'done', executor: { type: 'DiTing', name: '主智能体' }, summary: '已提取目标与边界。' },
+        { id: 'route', title: '生成任务清单', phase: '规划', status: 'done', executor: { type: 'DiTing', name: '主智能体' }, summary: '已形成执行路径。' },
         { id: 'execute', title: '执行子任务：问数智能体', phase: '执行', status: 'doing', executor: { type: 'subagent', id: 'data-agent', name: '问数智能体' }, summary: '正在查询 8 月月报数据。' },
-        { id: 'respond', title: '汇总阶段成果并回复用户', phase: '汇总', status: 'todo', executor: { type: 'hermes', name: '主智能体' }, summary: '等待结果汇总。' },
+        { id: 'respond', title: '汇总阶段成果并回复用户', phase: '汇总', status: 'todo', executor: { type: 'DiTing', name: '主智能体' }, summary: '等待结果汇总。' },
       ],
     },
   })
@@ -116,7 +116,7 @@ test('renders the right-side multi-agent workflow panel with expandable executio
   await expect(multiAgentPanel).toContainText('执行清单 (Todo List)')
   await expect(multiAgentPanel).toContainText('执行节点画布')
   await expect(multiAgentPanel).toContainText('问数智能体')
-  await expect(multiAgentPanel).not.toContainText('Hermes 编排')
+  await expect(multiAgentPanel).not.toContainText('DiTing 编排')
   await expect(multiAgentPanel).not.toContainText('状态流')
   const workflowCard = page.locator('.workflow-card')
   await expect(workflowCard).toHaveCount(1)
@@ -194,10 +194,10 @@ test('renders the right-side multi-agent workflow panel with expandable executio
       status: 'running',
       currentNodeId: 'execute',
       nodes: [
-        { id: 'understand', title: '理解需求与约束', phase: '分析', status: 'done', executor: { type: 'hermes', name: '主智能体' }, summary: '已提取目标与边界。' },
-        { id: 'route', title: '生成任务清单', phase: '规划', status: 'done', executor: { type: 'hermes', name: '主智能体' }, summary: '已形成执行路径。' },
+        { id: 'understand', title: '理解需求与约束', phase: '分析', status: 'done', executor: { type: 'DiTing', name: '主智能体' }, summary: '已提取目标与边界。' },
+        { id: 'route', title: '生成任务清单', phase: '规划', status: 'done', executor: { type: 'DiTing', name: '主智能体' }, summary: '已形成执行路径。' },
         { id: 'execute', title: '执行子任务：问数智能体', phase: '执行', status: 'doing', executor: { type: 'subagent', id: 'data-agent', name: '问数智能体' }, summary: '正在查询 9 月月报数据。' },
-        { id: 'respond', title: '汇总阶段成果并回复用户', phase: '汇总', status: 'todo', executor: { type: 'hermes', name: '主智能体' }, summary: '等待结果汇总。' },
+        { id: 'respond', title: '汇总阶段成果并回复用户', phase: '汇总', status: 'todo', executor: { type: 'DiTing', name: '主智能体' }, summary: '等待结果汇总。' },
       ],
     },
   })
@@ -231,11 +231,11 @@ test('renders the right-side multi-agent workflow panel with expandable executio
 
 test('builds real todo and canvas nodes from route.todo when planner nodes are missing', async ({ page }) => {
   await authenticate(page, TEST_ACCESS_KEY, 'research')
-  await mockHermesApi(page)
+  await mockDiTingApi(page)
   await mockChatSocket(page)
 
   await page.addInitScript(() => {
-    window.localStorage.setItem('hermes.subAgents.frontendDraft.v4', JSON.stringify([
+    window.localStorage.setItem('DiTing.subAgents.frontendDraft.v4', JSON.stringify([
       {
         id: 'data-agent',
         name: '问数智能体',
@@ -250,7 +250,7 @@ test('builds real todo and canvas nodes from route.todo when planner nodes are m
     ]))
   })
 
-  await page.goto('/#/hermes/chat')
+  await page.goto('/#/DiTing/chat')
   await page.getByRole('button', { name: /开启多智能体协作模式|开启多智能体|多智能体/ }).click()
 
   await sendChatMessage(page, '查询海关月报 8 月详情')
@@ -283,9 +283,9 @@ test('builds real todo and canvas nodes from route.todo when planner nodes are m
       status: 'running',
       currentNodeId: 'route',
       nodes: [
-        { id: 'understand', title: '理解需求与约束', phase: '分析', status: 'done', executor: { type: 'hermes', name: '主智能体' }, summary: '已提取目标与边界。' },
-        { id: 'route', title: '确认执行路径', phase: '规划', status: 'doing', executor: { type: 'hermes', name: '主智能体' }, summary: '等待补齐执行节点。' },
-        { id: 'respond', title: '汇总阶段成果并回复用户', phase: '汇总', status: 'todo', executor: { type: 'hermes', name: '主智能体' }, summary: '等待结果汇总。' },
+        { id: 'understand', title: '理解需求与约束', phase: '分析', status: 'done', executor: { type: 'DiTing', name: '主智能体' }, summary: '已提取目标与边界。' },
+        { id: 'route', title: '确认执行路径', phase: '规划', status: 'doing', executor: { type: 'DiTing', name: '主智能体' }, summary: '等待补齐执行节点。' },
+        { id: 'respond', title: '汇总阶段成果并回复用户', phase: '汇总', status: 'todo', executor: { type: 'DiTing', name: '主智能体' }, summary: '等待结果汇总。' },
       ],
     },
   })
@@ -322,12 +322,12 @@ test('builds real todo and canvas nodes from route.todo when planner nodes are m
 
 test('keeps downstream nodes blocked from success after delegated node failure', async ({ page }, testInfo) => {
   await authenticate(page, TEST_ACCESS_KEY, 'research')
-  await mockHermesApi(page)
+  await mockDiTingApi(page)
   await mockChatSocket(page)
 
   await page.addInitScript(() => {
-    window.localStorage.removeItem('hermes.multiAgent.workflowArchives.v1')
-    window.localStorage.setItem('hermes.subAgents.frontendDraft.v4', JSON.stringify([
+    window.localStorage.removeItem('DiTing.multiAgent.workflowArchives.v1')
+    window.localStorage.setItem('DiTing.subAgents.frontendDraft.v4', JSON.stringify([
       {
         id: 'data-agent',
         name: '问数智能体',
@@ -342,7 +342,7 @@ test('keeps downstream nodes blocked from success after delegated node failure',
     ]))
   })
 
-  await page.goto('/#/hermes/chat')
+  await page.goto('/#/DiTing/chat')
   await page.getByRole('button', { name: /开启多智能体协作模式|开启多智能体|多智能体/ }).click()
 
   await sendChatMessage(page, '继续核验张三涉案信息')
@@ -365,12 +365,12 @@ test('keeps downstream nodes blocked from success after delegated node failure',
       status: 'running',
       currentNodeId: 'task_1',
       nodes: [
-        { id: 'understand', title: '理解需求与约束', phase: '分析', status: 'done', executor: { type: 'hermes', name: '主智能体' }, summary: '已提取查询目标。' },
-        { id: 'route', title: '确认执行路径', phase: '路由', status: 'done', executor: { type: 'hermes', name: '主智能体' }, summary: '已确认委派问数智能体。' },
+        { id: 'understand', title: '理解需求与约束', phase: '分析', status: 'done', executor: { type: 'DiTing', name: '主智能体' }, summary: '已提取查询目标。' },
+        { id: 'route', title: '确认执行路径', phase: '路由', status: 'done', executor: { type: 'DiTing', name: '主智能体' }, summary: '已确认委派问数智能体。' },
         { id: 'task_1', title: '检索涉案记录', phase: '执行', status: 'doing', executor: { type: 'subagent', id: 'data-agent', name: '问数智能体' }, summary: '正在检索涉案记录。' },
-        { id: 'task_2', title: '身份归并与去重', phase: '执行', status: 'todo', executor: { type: 'hermes', name: '主智能体' }, summary: '等待检索结果。' },
-        { id: 'task_3', title: '汇总结果并回复用户', phase: '汇总', status: 'todo', executor: { type: 'hermes', name: '主智能体' }, summary: '等待身份归并完成。' },
-        { id: 'respond', title: '汇总阶段成果并回复用户', phase: '汇总', status: 'todo', executor: { type: 'hermes', name: '主智能体' }, summary: '等待最终回复。' },
+        { id: 'task_2', title: '身份归并与去重', phase: '执行', status: 'todo', executor: { type: 'DiTing', name: '主智能体' }, summary: '等待检索结果。' },
+        { id: 'task_3', title: '汇总结果并回复用户', phase: '汇总', status: 'todo', executor: { type: 'DiTing', name: '主智能体' }, summary: '等待身份归并完成。' },
+        { id: 'respond', title: '汇总阶段成果并回复用户', phase: '汇总', status: 'todo', executor: { type: 'DiTing', name: '主智能体' }, summary: '等待最终回复。' },
       ],
       dependencies: [
         { from: 'understand', to: 'route', type: 'blocks' },

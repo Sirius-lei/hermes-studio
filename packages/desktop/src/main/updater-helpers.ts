@@ -19,8 +19,8 @@ function updateCacheNames(appName: string): string[] {
       .toLowerCase()
     if (kebab) names.add(`${kebab}-updater`)
   }
-  names.add('hermes-studio-updater')
-  names.add('Hermes Studio-updater')
+  names.add('DiTing-studio-updater')
+  names.add('DiTing Studio-updater')
   return [...names]
 }
 
@@ -35,6 +35,6 @@ export function pendingUpdateDirectories(options: {
   if (localAppData) bases.add(localAppData)
   if (appDataPath) bases.add(appDataPath)
   if (!bases.size) return []
-  return [...bases].flatMap(base => updateCacheNames(options.appName || 'Hermes Studio')
+  return [...bases].flatMap(base => updateCacheNames(options.appName || 'DiTing Studio')
     .map(name => join(base, name, 'pending')))
 }

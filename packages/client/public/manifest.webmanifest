@@ -2,7 +2,7 @@
   "name": "智能体工作台",
   "short_name": "Agent",
   "description": "通用多智能体协作与对话工作台",
-  "start_url": "/#/hermes/chat",
+  "start_url": "/#/DiTing/chat",
   "scope": "/",
   "display": "standalone",
   "background_color": "#f7f7f4",

@@ -22,14 +22,14 @@ const getOrCreateSessionMock = vi.hoisted(() => vi.fn((sessionMap: Map<string, a
 const pendingUpsertMock = vi.hoisted(() => vi.fn())
 const pendingDeleteMock = vi.hoisted(() => vi.fn())
 
-vi.mock('../../packages/server/src/db/hermes/session-store', () => ({
+vi.mock('../../packages/server/src/db/DiTing/session-store', () => ({
   getSession: getSessionMock,
   createSession: createSessionMock,
   addMessage: addMessageMock,
   updateSessionStats: updateSessionStatsMock,
 }))
 
-vi.mock('../../packages/server/src/db/hermes/usage-store', () => ({
+vi.mock('../../packages/server/src/db/DiTing/usage-store', () => ({
   updateUsage: updateUsageMock,
 }))
 
@@ -37,16 +37,16 @@ vi.mock('../../packages/server/src/services/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }))
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/compression', () => ({
+vi.mock('../../packages/server/src/services/DiTing/run-chat/compression', () => ({
   getOrCreateSession: getOrCreateSessionMock,
   pushState: pushStateMock,
 }))
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/usage', () => ({
+vi.mock('../../packages/server/src/services/DiTing/run-chat/usage', () => ({
   calcAndUpdateUsage: calcAndUpdateUsageMock,
 }))
 
-vi.mock('../../packages/server/src/db/hermes/pending-subagent-task-store', () => ({
+vi.mock('../../packages/server/src/db/DiTing/pending-subagent-task-store', () => ({
   upsertPendingSubagentTask: pendingUpsertMock,
   deletePendingSubagentTask: pendingDeleteMock,
 }))
@@ -118,7 +118,7 @@ function makeDecision() {
       tools: [],
     },
     routeText: '委派问数智能体执行查询节点',
-    hermesInstructions: '请在失败后重新规划。',
+    DiTingInstructions: '请在失败后重新规划。',
     inputText: '查询张三的涉案信息',
     conversationContext: '',
     todo: ['查询涉案信息'],
@@ -141,7 +141,7 @@ function makeDecision() {
           title: '汇总涉案结果',
           phase: '汇总',
           status: 'todo',
-          executor: { type: 'hermes', name: '主智能体' },
+          executor: { type: 'DiTing', name: '主智能体' },
           summary: '等待查询节点完成后汇总结果',
         },
         {
@@ -149,7 +149,7 @@ function makeDecision() {
           title: '回复用户',
           phase: '汇总',
           status: 'todo',
-          executor: { type: 'hermes', name: '主智能体' },
+          executor: { type: 'DiTing', name: '主智能体' },
           summary: '等待汇总完成后回复',
         },
       ],
@@ -190,11 +190,11 @@ describe('handleSubagentRun delegated failure feedback', () => {
       artifacts: [],
     })))
 
-    const { handleSubagentRun } = await import('../../packages/server/src/services/hermes/run-chat/handle-subagent-run')
+    const { handleSubagentRun } = await import('../../packages/server/src/services/DiTing/run-chat/handle-subagent-run')
     const { nsp, emit } = makeNamespace()
     const socket = makeSocket()
     const sessionMap = new Map<string, any>([['session-1', { messages: [], events: [], queue: [], isWorking: false }]])
-    const continueWithHermes = vi.fn().mockResolvedValue(undefined)
+    const continueWithDiTing = vi.fn().mockResolvedValue(undefined)
 
     await handleSubagentRun(
       nsp,
@@ -208,10 +208,10 @@ describe('handleSubagentRun delegated failure feedback', () => {
       makeDecision(),
       undefined,
       true,
-      { continueWithHermes },
+      { continueWithDiTing },
     )
 
-    expect(continueWithHermes).toHaveBeenCalledTimes(1)
+    expect(continueWithDiTing).toHaveBeenCalledTimes(1)
     expect(emit).toHaveBeenCalledWith('assistant.message', expect.objectContaining({
       content: expect.stringContaining('问数智能体在“查询涉案信息”节点执行失败'),
     }))
@@ -223,7 +223,7 @@ describe('handleSubagentRun delegated failure feedback', () => {
       role: 'assistant',
       content: expect.stringContaining('我正在重新规划后续处理路径'),
     }))
-    expect(String(continueWithHermes.mock.calls[0]?.[0]?.input || '')).not.toContain('当前查询节点执行失败，数据库暂不可用。')
+    expect(String(continueWithDiTing.mock.calls[0]?.[0]?.input || '')).not.toContain('当前查询节点执行失败，数据库暂不可用。')
   })
 
   it('blocks finalization and continues recovery when delegated output is partial / not finalizable', async () => {
@@ -241,11 +241,11 @@ describe('handleSubagentRun delegated failure feedback', () => {
       artifacts: [],
     })))
 
-    const { handleSubagentRun } = await import('../../packages/server/src/services/hermes/run-chat/handle-subagent-run')
+    const { handleSubagentRun } = await import('../../packages/server/src/services/DiTing/run-chat/handle-subagent-run')
     const { nsp, emit } = makeNamespace()
     const socket = makeSocket()
     const sessionMap = new Map<string, any>([['session-1', { messages: [], events: [], queue: [], isWorking: false }]])
-    const continueWithHermes = vi.fn().mockResolvedValue(undefined)
+    const continueWithDiTing = vi.fn().mockResolvedValue(undefined)
 
     await handleSubagentRun(
       nsp,
@@ -259,10 +259,10 @@ describe('handleSubagentRun delegated failure feedback', () => {
       makeDecision(),
       undefined,
       true,
-      { continueWithHermes },
+      { continueWithDiTing },
     )
 
-    expect(continueWithHermes).toHaveBeenCalledTimes(1)
+    expect(continueWithDiTing).toHaveBeenCalledTimes(1)
     expect(emit).toHaveBeenCalledWith('subagent.result_received', expect.objectContaining({
       grounding_status: expect.stringMatching(/unsafe_to_finalize|truncated|unverified/),
       finalizable: false,
@@ -278,7 +278,7 @@ describe('handleSubagentRun delegated failure feedback', () => {
       role: 'assistant',
       content: expect.stringContaining('不足以形成最终结论'),
     }))
-    expect(String(continueWithHermes.mock.calls[0]?.[0]?.input || '')).not.toContain('当前返回内容存在截断，仅能确认部分涉案摘要。')
+    expect(String(continueWithDiTing.mock.calls[0]?.[0]?.input || '')).not.toContain('当前返回内容存在截断，仅能确认部分涉案摘要。')
   })
 
   it('emits assistant feedback before terminal failure when a failed delegated node is not recoverable', async () => {
@@ -292,7 +292,7 @@ describe('handleSubagentRun delegated failure feedback', () => {
       artifacts: [],
     })))
 
-    const { handleSubagentRun } = await import('../../packages/server/src/services/hermes/run-chat/handle-subagent-run')
+    const { handleSubagentRun } = await import('../../packages/server/src/services/DiTing/run-chat/handle-subagent-run')
     const { nsp, emit } = makeNamespace()
     const socket = makeSocket()
     const sessionMap = new Map<string, any>([['session-1', { messages: [], events: [], queue: [], isWorking: false }]])
@@ -342,7 +342,7 @@ describe('handleSubagentRun delegated failure feedback', () => {
       artifacts: [],
     })))
 
-    const { handleSubagentRun } = await import('../../packages/server/src/services/hermes/run-chat/handle-subagent-run')
+    const { handleSubagentRun } = await import('../../packages/server/src/services/DiTing/run-chat/handle-subagent-run')
     const { nsp, emit } = makeNamespace()
     const socket = makeSocket()
     const sessionMap = new Map<string, any>([['session-1', { messages: [], events: [], queue: [], isWorking: false }]])
@@ -407,7 +407,7 @@ describe('handleSubagentRun delegated failure feedback', () => {
       }),
     }))
 
-    const { handleSubagentRun } = await import('../../packages/server/src/services/hermes/run-chat/handle-subagent-run')
+    const { handleSubagentRun } = await import('../../packages/server/src/services/DiTing/run-chat/handle-subagent-run')
     const { nsp, emit } = makeNamespace()
     const socket = makeSocket()
     const sessionMap = new Map<string, any>([['session-1', { messages: [], events: [], queue: [], isWorking: false }]])

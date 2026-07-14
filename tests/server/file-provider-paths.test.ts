@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { join, resolve } from 'path'
 import { tmpdir } from 'os'
-import { normalizePlatformPath, validatePath } from '../../packages/server/src/services/hermes/file-provider'
-import { isPathWithin, relativePathFromBase } from '../../packages/server/src/services/hermes/hermes-path'
+import { normalizePlatformPath, validatePath } from '../../packages/server/src/services/DiTing/file-provider'
+import { isPathWithin, relativePathFromBase } from '../../packages/server/src/services/DiTing/DiTing-path'
 
 describe('file provider platform path normalization', () => {
   it('converts MSYS drive paths to Windows absolute paths on Windows', () => {
@@ -37,16 +37,16 @@ describe('file provider platform path normalization', () => {
   })
 })
 
-describe('Hermes path containment helpers', () => {
+describe('DiTing path containment helpers', () => {
   it('does not treat sibling paths with the same prefix as inside the base', () => {
-    expect(isPathWithin('/tmp/hermes-profile2/state.db', '/tmp/hermes-profile')).toBe(false)
-    expect(isPathWithin('/tmp/hermes-profile/state.db', '/tmp/hermes-profile')).toBe(true)
+    expect(isPathWithin('/tmp/DiTing-profile2/state.db', '/tmp/DiTing-profile')).toBe(false)
+    expect(isPathWithin('/tmp/DiTing-profile/state.db', '/tmp/DiTing-profile')).toBe(true)
   })
 
   it('returns normalized relative paths only for children', () => {
-    expect(relativePathFromBase('/tmp/hermes-profile/logs/run.txt', '/tmp/hermes-profile'))
+    expect(relativePathFromBase('/tmp/DiTing-profile/logs/run.txt', '/tmp/DiTing-profile'))
       .toBe('logs/run.txt')
-    expect(relativePathFromBase('/tmp/hermes-profile2/logs/run.txt', '/tmp/hermes-profile'))
+    expect(relativePathFromBase('/tmp/DiTing-profile2/logs/run.txt', '/tmp/DiTing-profile'))
       .toBeNull()
   })
 })

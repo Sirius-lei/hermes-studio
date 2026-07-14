@@ -2,7 +2,7 @@ import { createI18n } from 'vue-i18n'
 import { messages, supportedLocales } from './messages'
 import type { SupportedLocale } from './messages'
 
-const saved = localStorage.getItem('hermes_locale')
+const saved = localStorage.getItem('DiTing_locale')
 
 function resolveLocale(saved: string | null): SupportedLocale {
   if (saved && (supportedLocales as readonly string[]).includes(saved)) {

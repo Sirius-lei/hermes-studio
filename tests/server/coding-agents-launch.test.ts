@@ -14,10 +14,10 @@ function mockProcessUid(uid: number) {
 }
 
 function makeHome() {
-  const home = mkdtempSync(join(tmpdir(), 'hermes-coding-agent-launch-'))
+  const home = mkdtempSync(join(tmpdir(), 'DiTing-coding-agent-launch-'))
   homes.push(home)
-  process.env.HERMES_WEB_UI_HOME = home
-  process.env.HERMES_CODING_AGENT_GLOBAL_HOME = join(home, 'global-home')
+  process.env.DiTing_WEB_UI_HOME = home
+  process.env.DiTing_CODING_AGENT_GLOBAL_HOME = join(home, 'global-home')
   return home
 }
 
@@ -26,8 +26,8 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  delete process.env.HERMES_WEB_UI_HOME
-  delete process.env.HERMES_CODING_AGENT_GLOBAL_HOME
+  delete process.env.DiTing_WEB_UI_HOME
+  delete process.env.DiTing_CODING_AGENT_GLOBAL_HOME
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
   for (const home of homes.splice(0)) rmSync(home, { recursive: true, force: true })
@@ -68,19 +68,19 @@ describe('coding agent launch preparation', () => {
       command: 'claude',
       args: [
         '--append-system-prompt-file',
-        join(home, 'global-home', '.claude', 'hermes-rules.md'),
+        join(home, 'global-home', '.claude', 'DiTing-rules.md'),
         '--dangerously-skip-permissions',
       ],
       env: {},
-      shellCommand: `cd ${join(home, 'coding-agent', 'workspace', 'default', 'global')} && claude --append-system-prompt-file ${join(home, 'global-home', '.claude', 'hermes-rules.md')} --dangerously-skip-permissions`,
+      shellCommand: `cd ${join(home, 'coding-agent', 'workspace', 'default', 'global')} && claude --append-system-prompt-file ${join(home, 'global-home', '.claude', 'DiTing-rules.md')} --dangerously-skip-permissions`,
       files: [{
         key: 'prompt',
-        path: '~/.claude/hermes-rules.md',
-        absolutePath: join(home, 'global-home', '.claude', 'hermes-rules.md'),
+        path: '~/.claude/DiTing-rules.md',
+        absolutePath: join(home, 'global-home', '.claude', 'DiTing-rules.md'),
       }],
     })
-    const prompt = readFileSync(join(home, 'global-home', '.claude', 'hermes-rules.md'), 'utf-8')
-    expect(prompt).toContain('<!-- BEGIN HERMES WEB UI PROMPT -->')
+    const prompt = readFileSync(join(home, 'global-home', '.claude', 'DiTing-rules.md'), 'utf-8')
+    expect(prompt).toContain('<!-- BEGIN DiTing WEB UI PROMPT -->')
     expect(prompt).toContain('# 输出格式规范')
   })
 
@@ -100,11 +100,11 @@ describe('coding agent launch preparation', () => {
       command: 'claude',
       args: [
         '--append-system-prompt-file',
-        join(home, 'global-home', '.claude', 'hermes-rules.md'),
+        join(home, 'global-home', '.claude', 'DiTing-rules.md'),
         '--permission-mode',
         'auto',
       ],
-      shellCommand: `cd ${join(home, 'coding-agent', 'workspace', 'default', 'global')} && claude --append-system-prompt-file ${join(home, 'global-home', '.claude', 'hermes-rules.md')} --permission-mode auto`,
+      shellCommand: `cd ${join(home, 'coding-agent', 'workspace', 'default', 'global')} && claude --append-system-prompt-file ${join(home, 'global-home', '.claude', 'DiTing-rules.md')} --permission-mode auto`,
     })
   })
 
@@ -132,9 +132,9 @@ describe('coding agent launch preparation', () => {
     })
   })
 
-  it('preserves existing global Claude Code prompt files while updating the Hermes block', async () => {
+  it('preserves existing global Claude Code prompt files while updating the DiTing block', async () => {
     const home = makeHome()
-    const claudePromptPath = join(home, 'global-home', '.claude', 'hermes-rules.md')
+    const claudePromptPath = join(home, 'global-home', '.claude', 'DiTing-rules.md')
     mkdirSync(dirname(claudePromptPath), { recursive: true })
     writeFileSync(claudePromptPath, 'Existing Claude notes\n')
 
@@ -143,7 +143,7 @@ describe('coding agent launch preparation', () => {
 
     const claudePrompt = readFileSync(claudePromptPath, 'utf-8')
     expect(claudePrompt).toContain('Existing Claude notes')
-    expect(claudePrompt.match(/BEGIN HERMES WEB UI PROMPT/g)).toHaveLength(1)
+    expect(claudePrompt.match(/BEGIN DiTing WEB UI PROMPT/g)).toHaveLength(1)
   })
 
   it('uses a selected workspace directory when launching a coding agent', async () => {
@@ -183,7 +183,7 @@ describe('coding agent launch preparation', () => {
       '--mcp-config',
       join(result.rootDir, 'mcp.json'),
       '--append-system-prompt-file',
-      join(result.rootDir, 'hermes-rules.md'),
+      join(result.rootDir, 'DiTing-rules.md'),
       '--dangerously-skip-permissions',
     ])
     expect(result.shellCommand).toContain(`cd ${join(home, 'coding-agent', 'workspace', 'default', 'openrouter')} &&`)
@@ -215,55 +215,55 @@ describe('coding agent launch preparation', () => {
     expect(settings.env.ANTHROPIC_DEFAULT_SONNET_MODEL).not.toBe('claude-sonnet-4-6')
 
     const mcp = JSON.parse(readFileSync(join(result.rootDir, 'mcp.json'), 'utf-8'))
-    expect(mcp.mcpServers['hermes-studio-api']).toMatchObject({
+    expect(mcp.mcpServers['DiTing-studio-api']).toMatchObject({
       command: process.execPath,
-      args: [join(process.cwd(), 'bin/hermes-studio-mcp.mjs'), 'api'],
+      args: [join(process.cwd(), 'bin/DiTing-studio-mcp.mjs'), 'api'],
       env: {
-        HERMES_WEB_UI_URL: 'http://127.0.0.1:8648',
-        HERMES_WEB_UI_HOME: home,
-        HERMES_WEBUI_STATE_DIR: home,
-        HERMES_WEB_UI_PROFILE: 'default',
-        HERMES_MCP_SERVER_NAME: 'hermes-studio-api',
-        HERMES_MCP_TOOLSET: 'api',
-        HERMES_WEB_UI_MANAGED_MCP: '1',
+        DiTing_WEB_UI_URL: 'http://127.0.0.1:8648',
+        DiTing_WEB_UI_HOME: home,
+        DiTing_WEBUI_STATE_DIR: home,
+        DiTing_WEB_UI_PROFILE: 'default',
+        DiTing_MCP_SERVER_NAME: 'DiTing-studio-api',
+        DiTing_MCP_TOOLSET: 'api',
+        DiTing_WEB_UI_MANAGED_MCP: '1',
       },
     })
-    expect(mcp.mcpServers['hermes-studio-devices']).toMatchObject({
+    expect(mcp.mcpServers['DiTing-studio-devices']).toMatchObject({
       command: process.execPath,
-      args: [join(process.cwd(), 'bin/hermes-studio-mcp.mjs'), 'devices'],
+      args: [join(process.cwd(), 'bin/DiTing-studio-mcp.mjs'), 'devices'],
       env: {
-        HERMES_MCP_SERVER_NAME: 'hermes-studio-devices',
-        HERMES_MCP_TOOLSET: 'devices',
+        DiTing_MCP_SERVER_NAME: 'DiTing-studio-devices',
+        DiTing_MCP_TOOLSET: 'devices',
       },
     })
-    expect(mcp.mcpServers['hermes-studio-use']).toMatchObject({
+    expect(mcp.mcpServers['DiTing-studio-use']).toMatchObject({
       command: process.execPath,
-      args: [join(process.cwd(), 'bin/hermes-studio-mcp.mjs'), 'use'],
+      args: [join(process.cwd(), 'bin/DiTing-studio-mcp.mjs'), 'use'],
       env: {
-        HERMES_MCP_SERVER_NAME: 'hermes-studio-use',
-        HERMES_MCP_TOOLSET: 'use',
+        DiTing_MCP_SERVER_NAME: 'DiTing-studio-use',
+        DiTing_MCP_TOOLSET: 'use',
       },
     })
 
-    const prompt = readFileSync(join(result.rootDir, 'hermes-rules.md'), 'utf-8')
+    const prompt = readFileSync(join(result.rootDir, 'DiTing-rules.md'), 'utf-8')
     expect(prompt).toContain('# 输出格式规范')
     expect(prompt).toContain('当你的回复中包含图片、视频或文件引用时')
   })
 
-  it('cleans legacy Hermes MCP entries from scoped Claude and Codex configs', async () => {
+  it('cleans legacy DiTing MCP entries from scoped Claude and Codex configs', async () => {
     const home = makeHome()
     const claudeRoot = join(home, 'coding-agent', 'model', 'default', 'openrouter', 'claude-code')
     const claudeMcpPath = join(claudeRoot, 'mcp.json')
     mkdirSync(dirname(claudeMcpPath), { recursive: true })
     writeFileSync(claudeMcpPath, `${JSON.stringify({
       mcpServers: {
-        'hermes-studio': {
-          command: 'hermes-web-ui-mcp',
-          env: { HERMES_WEB_UI_MANAGED_MCP: '1' },
+        'DiTing-studio': {
+          command: 'DiTing-web-ui-mcp',
+          env: { DiTing_WEB_UI_MANAGED_MCP: '1' },
         },
-        'hermes-web-ui-mcp': {
-          command: 'hermes-web-ui-mcp',
-          env: { HERMES_WEB_UI_MANAGED_MCP: '1' },
+        'DiTing-web-ui-mcp': {
+          command: 'DiTing-web-ui-mcp',
+          env: { DiTing_WEB_UI_MANAGED_MCP: '1' },
         },
         custom: {
           command: 'custom-mcp',
@@ -279,21 +279,21 @@ describe('coding agent launch preparation', () => {
       apiKey: 'sk-test',
     })
     const claudeMcp = JSON.parse(readFileSync(join(claude.rootDir, 'mcp.json'), 'utf-8'))
-    expect(claudeMcp.mcpServers['hermes-studio']).toBeUndefined()
-    expect(claudeMcp.mcpServers['hermes-web-ui-mcp']).toBeUndefined()
+    expect(claudeMcp.mcpServers['DiTing-studio']).toBeUndefined()
+    expect(claudeMcp.mcpServers['DiTing-web-ui-mcp']).toBeUndefined()
     expect(claudeMcp.mcpServers.custom).toEqual({ command: 'custom-mcp' })
-    expect(claudeMcp.mcpServers['hermes-studio-api']).toBeDefined()
-    expect(claudeMcp.mcpServers['hermes-studio-devices']).toBeDefined()
-    expect(claudeMcp.mcpServers['hermes-studio-use']).toBeDefined()
+    expect(claudeMcp.mcpServers['DiTing-studio-api']).toBeDefined()
+    expect(claudeMcp.mcpServers['DiTing-studio-devices']).toBeDefined()
+    expect(claudeMcp.mcpServers['DiTing-studio-use']).toBeDefined()
 
     const codexRoot = join(home, 'coding-agent', 'model', 'default', 'openrouter', 'codex')
     const codexConfigPath = join(codexRoot, 'config.toml')
     mkdirSync(dirname(codexConfigPath), { recursive: true })
     writeFileSync(codexConfigPath, [
-      '[mcp_servers.hermes-studio]',
-      'command = "hermes-web-ui-mcp"',
-      '[mcp_servers.hermes-web-ui-mcp]',
-      'command = "hermes-web-ui-mcp"',
+      '[mcp_servers.DiTing-studio]',
+      'command = "DiTing-web-ui-mcp"',
+      '[mcp_servers.DiTing-web-ui-mcp]',
+      'command = "DiTing-web-ui-mcp"',
       '',
     ].join('\n'))
 
@@ -305,11 +305,11 @@ describe('coding agent launch preparation', () => {
       apiKey: 'sk-test',
     })
     const codexConfig = readFileSync(join(codex.rootDir, 'config.toml'), 'utf-8')
-    expect(codexConfig).not.toContain('[mcp_servers.hermes-studio]')
-    expect(codexConfig).not.toContain('[mcp_servers.hermes-web-ui-mcp]')
-    expect(codexConfig).toContain('[mcp_servers.hermes-studio-api]')
-    expect(codexConfig).toContain('[mcp_servers.hermes-studio-devices]')
-    expect(codexConfig).toContain('[mcp_servers.hermes-studio-use]')
+    expect(codexConfig).not.toContain('[mcp_servers.DiTing-studio]')
+    expect(codexConfig).not.toContain('[mcp_servers.DiTing-web-ui-mcp]')
+    expect(codexConfig).toContain('[mcp_servers.DiTing-studio-api]')
+    expect(codexConfig).toContain('[mcp_servers.DiTing-studio-devices]')
+    expect(codexConfig).toContain('[mcp_servers.DiTing-studio-use]')
   })
 
   it('isolates Claude Code settings for hidden chat runs only', async () => {
@@ -332,7 +332,7 @@ describe('coding agent launch preparation', () => {
       '--mcp-config',
       join(result.rootDir, 'mcp.json'),
       '--append-system-prompt-file',
-      join(result.rootDir, 'hermes-rules.md'),
+      join(result.rootDir, 'DiTing-rules.md'),
       '--dangerously-skip-permissions',
     ])
     expect(result.shellCommand).not.toContain('--setting-sources local')
@@ -362,7 +362,7 @@ describe('coding agent launch preparation', () => {
       '--mcp-config',
       join(result.rootDir, 'mcp.json'),
       '--append-system-prompt-file',
-      join(result.rootDir, 'hermes-rules.md'),
+      join(result.rootDir, 'DiTing-rules.md'),
       '--permission-mode',
       'auto',
     ])
@@ -411,25 +411,25 @@ describe('coding agent launch preparation', () => {
     expect(config).toContain(`model_catalog_json = "${join(result.rootDir, 'codex-model-catalog.json')}"`)
     expect(config).toContain('model_reasoning_summary = "auto"')
     expect(config).toContain('developer_instructions = """')
-    expect(config).toContain('Hermes Studio MCP usage')
+    expect(config).toContain('DiTing Studio MCP usage')
     expect(config).toContain('# 输出格式规范')
-    expect(config).toContain('[mcp_servers.hermes-studio-api]')
-    expect(config).toContain('[mcp_servers.hermes-studio-devices]')
-    expect(config).toContain('[mcp_servers.hermes-studio-use]')
+    expect(config).toContain('[mcp_servers.DiTing-studio-api]')
+    expect(config).toContain('[mcp_servers.DiTing-studio-devices]')
+    expect(config).toContain('[mcp_servers.DiTing-studio-use]')
     expect(config).toContain(`command = "${process.execPath}"`)
-    expect(config).toContain(`args = ["${join(process.cwd(), 'bin/hermes-studio-mcp.mjs')}", "api"]`)
-    expect(config).toContain(`args = ["${join(process.cwd(), 'bin/hermes-studio-mcp.mjs')}", "devices"]`)
-    expect(config).toContain(`args = ["${join(process.cwd(), 'bin/hermes-studio-mcp.mjs')}", "use"]`)
-    expect(config).toContain(`env = { HERMES_WEB_UI_URL = "http://127.0.0.1:8648", HERMES_WEB_UI_HOME = "${home}"`)
-    expect(config).toContain('HERMES_WEBUI_STATE_DIR = "')
-    expect(config).toContain('HERMES_WEB_UI_PROFILE = "default"')
-    expect(config).toContain('HERMES_MCP_SERVER_NAME = "hermes-studio-api"')
-    expect(config).toContain('HERMES_MCP_SERVER_NAME = "hermes-studio-devices"')
-    expect(config).toContain('HERMES_MCP_SERVER_NAME = "hermes-studio-use"')
-    expect(config).toContain('HERMES_MCP_TOOLSET = "api"')
-    expect(config).toContain('HERMES_MCP_TOOLSET = "devices"')
-    expect(config).toContain('HERMES_MCP_TOOLSET = "use"')
-    expect(config).toContain('HERMES_WEB_UI_MANAGED_MCP = "1"')
+    expect(config).toContain(`args = ["${join(process.cwd(), 'bin/DiTing-studio-mcp.mjs')}", "api"]`)
+    expect(config).toContain(`args = ["${join(process.cwd(), 'bin/DiTing-studio-mcp.mjs')}", "devices"]`)
+    expect(config).toContain(`args = ["${join(process.cwd(), 'bin/DiTing-studio-mcp.mjs')}", "use"]`)
+    expect(config).toContain(`env = { DiTing_WEB_UI_URL = "http://127.0.0.1:8648", DiTing_WEB_UI_HOME = "${home}"`)
+    expect(config).toContain('DiTing_WEBUI_STATE_DIR = "')
+    expect(config).toContain('DiTing_WEB_UI_PROFILE = "default"')
+    expect(config).toContain('DiTing_MCP_SERVER_NAME = "DiTing-studio-api"')
+    expect(config).toContain('DiTing_MCP_SERVER_NAME = "DiTing-studio-devices"')
+    expect(config).toContain('DiTing_MCP_SERVER_NAME = "DiTing-studio-use"')
+    expect(config).toContain('DiTing_MCP_TOOLSET = "api"')
+    expect(config).toContain('DiTing_MCP_TOOLSET = "devices"')
+    expect(config).toContain('DiTing_MCP_TOOLSET = "use"')
+    expect(config).toContain('DiTing_WEB_UI_MANAGED_MCP = "1"')
 
     expect(result.files.some(file => file.key === 'agents')).toBe(false)
 

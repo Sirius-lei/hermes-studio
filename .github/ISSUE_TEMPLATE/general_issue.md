@@ -16,7 +16,7 @@ assignees: ''
 
 ## Environment (if applicable)
 
-- Hermes Web UI Version:
-- Hermes Agent Version:
+- DiTing Web UI Version:
+- DiTing Agent Version:
 - Operating System:
 - Node Version:

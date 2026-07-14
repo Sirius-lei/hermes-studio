@@ -2,7 +2,7 @@
  * Chat Context Compressor
  *
  * Compresses 1:1 chat conversation history before sending to upstream.
- * Uses the Hermes structured summary prompt for LLM-based compression.
+ * Uses the DiTing structured summary prompt for LLM-based compression.
  *
  * Algorithm:
  * 1. If total tokens < trigger threshold → return as-is
@@ -18,12 +18,12 @@ import { randomUUID } from 'crypto'
 import { mkdir, writeFile } from 'fs/promises'
 import { resolve } from 'path'
 import { logger } from '../../services/logger'
-import { AgentBridgeClient, type AgentBridgeRunResult } from '../../services/hermes/agent-bridge'
+import { AgentBridgeClient, type AgentBridgeRunResult } from '../../services/DiTing/agent-bridge'
 import {
   getCompressionSnapshot,
   saveCompressionSnapshot,
   deleteCompressionSnapshot,
-} from '../../db/hermes/compression-snapshot'
+} from '../../db/DiTing/compression-snapshot'
 
 // ─── Types ───────────────────────────────────────────────
 

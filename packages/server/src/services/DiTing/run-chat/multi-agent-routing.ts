@@ -1,0 +1,1220 @@
+import {
+  generateTaskPlan,
+  generateTaskReplanDecision,
+  generateTaskRouteDecision,
+  streamTaskRouteReasoning,
+  type GeneratedTaskPlan,
+  type GeneratedTaskReplanDecision,
+  type GeneratedTaskRouteDecision,
+  type TaskPlanDependency,
+  type TaskPlanAgentRoute,
+  type TaskPlanTask,
+} from '../../task-planner'
+import { contentBlocksToString, extractTextForPreview } from './content-blocks'
+import type { ContentBlock } from './types'
+
+export interface MultiAgentRouteSkillRef {
+  name?: string
+  description?: string
+}
+
+export interface MultiAgentRouteCandidate {
+  id: string
+  name: string
+  description?: string
+  baseUrl?: string
+  chatPath?: string
+  enabled?: boolean
+  skills?: MultiAgentRouteSkillRef[]
+  tools?: MultiAgentRouteSkillRef[]
+}
+
+export interface MultiAgentPlanNodeExecutor {
+  type: 'DiTing' | 'subagent'
+  id?: string
+  name: string
+}
+
+export interface MultiAgentPlanNode {
+  id: string
+  title: string
+  phase: string
+  status: 'todo' | 'doing' | 'done' | 'partial' | 'unsafe' | 'blocked' | 'failed' | 'waiting_replan' | 'invalidated' | 'skipped'
+  executor: MultiAgentPlanNodeExecutor
+  summary: string
+}
+
+export interface MultiAgentPlanDependency {
+  from: string
+  to: string
+  type: 'blocks' | 'informs'
+}
+
+export interface MultiAgentExecutionPlan {
+  objective: string
+  status: 'idle' | 'running' | 'completed' | 'failed'
+  currentNodeId: string | null
+  nodes: MultiAgentPlanNode[]
+  dependencies: MultiAgentPlanDependency[]
+}
+
+export interface MultiAgentRouteDecision {
+  enabled: boolean
+  shouldPlan: boolean
+  summary: string
+  intent: string
+  category: string
+  confidence: number
+  reason: string
+  executionMode: 'delegate_subagent' | 'DiTing_native'
+  selectedAgent: MultiAgentRouteCandidate | null
+  routeText: string
+  DiTingInstructions: string | null
+  inputText: string
+  conversationContext: string
+  todo: string[]
+  constraints: string[]
+  plan: MultiAgentExecutionPlan | null
+  delegatedNodeIds: string[]
+}
+
+export interface MultiAgentRouteProgressEvent {
+  stage: 'understand' | 'route' | 'match_agents'
+  status: 'running' | 'done'
+  text: string
+}
+
+export interface MultiAgentRouteReasoningEvent {
+  stage: 'understand' | 'route' | 'match_agents'
+  text: string
+}
+
+export interface MultiAgentReplanDecision {
+  continueExecution: boolean
+  routeDecision: MultiAgentRouteDecision | null
+  followUpInput: string | null
+  responseStrategy: string
+}
+
+function uniqueTerms(values: string[]) {
+  return [...new Set(values.map(value => value.trim().toLowerCase()).filter(Boolean))]
+}
+
+function normalizeKey(value: unknown) {
+  return String(value || '').trim().toLowerCase()
+}
+
+function extractIntentTerms(text: string) {
+  const terms = new Set<string>()
+  const normalized = text.trim().toLowerCase()
+
+  for (const match of normalized.match(/[a-z0-9_/-]{2,}/g) || []) {
+    terms.add(match)
+  }
+
+  for (const chunk of text.match(/[\u4e00-\u9fff]{2,12}/g) || []) {
+    terms.add(chunk)
+    const maxSize = Math.min(4, chunk.length)
+    for (let size = 2; size <= maxSize; size += 1) {
+      for (let index = 0; index <= chunk.length - size; index += 1) {
+        terms.add(chunk.slice(index, index + size))
+      }
+    }
+  }
+
+  return [...terms]
+}
+
+function candidateText(agent: MultiAgentRouteCandidate): string {
+  return [
+    agent.name,
+    agent.description || '',
+    ...(agent.skills || []).flatMap(skill => [skill.name || '', skill.description || '']),
+    ...(agent.tools || []).flatMap(tool => [tool.name || '', tool.description || '']),
+  ].join(' ').toLowerCase()
+}
+
+function scoreCandidate(agent: MultiAgentRouteCandidate, terms: string[]) {
+  const name = agent.name.toLowerCase()
+  const description = String(agent.description || '').toLowerCase()
+  const skills = (agent.skills || []).map(skill => `${skill.name || ''} ${skill.description || ''}`.toLowerCase()).join(' ')
+  const tools = (agent.tools || []).map(tool => `${tool.name || ''} ${tool.description || ''}`.toLowerCase()).join(' ')
+
+  let score = 0
+  for (const term of uniqueTerms(terms)) {
+    if (term.length < 2) continue
+    if (name.includes(term)) {
+      score += 6
+      continue
+    }
+    if (skills.includes(term)) {
+      score += 4
+      continue
+    }
+    if (description.includes(term)) {
+      score += 3
+      continue
+    }
+    if (tools.includes(term)) {
+      score += 2
+    }
+  }
+  return score
+}
+
+function chooseCandidate(agents: MultiAgentRouteCandidate[], terms: string[]) {
+  let best: { agent: MultiAgentRouteCandidate; score: number } | null = null
+  for (const agent of agents) {
+    const score = scoreCandidate(agent, terms)
+    if (!best || score > best.score) best = { agent, score }
+  }
+  return best && best.score > 0 ? best : null
+}
+
+function isCasualChatMessage(text: string) {
+  const normalized = text.trim().replace(/\s+/g, '')
+  if (!normalized) return true
+  return /^(你好|您好|在吗|谢谢|多谢|收到|好的|好滴|ok|okk|哈哈|hi|hello|继续|开始吧|可以|行吧|嗯嗯|收到啦)[!,.，。？！?]*$/i.test(normalized)
+}
+
+function inferCategoryFromContent(text: string) {
+  if (/sql|bi|报表|数据|分析|指标|问数|dashboard|gmv|留存|转化|查询|统计|同比|环比|看板/i.test(text)) {
+    return '数据任务'
+  }
+  if (/代码|开发|前端|后端|部署|测试|工程|debug|api|接口|研发|缺陷|发布|脚本/i.test(text)) {
+    return '工程任务'
+  }
+  if (/客服|运营|销售|工单|活动|内容|增长|用户|投放|线索|业务/i.test(text)) {
+    return '业务任务'
+  }
+  return '通用任务'
+}
+
+function inferCategoryFromAgent(agent: MultiAgentRouteCandidate | null) {
+  if (!agent) return '通用任务'
+  const text = candidateText(agent)
+  if (/sql|bi|报表|数据|分析|指标|问数|dashboard|gmv|留存|转化/.test(text)) return '数据任务'
+  if (/代码|开发|前端|后端|部署|测试|工程|debug|api/.test(text)) return '工程任务'
+  if (/客服|运营|销售|工单|活动|内容|增长|用户/.test(text)) return '业务任务'
+  return '通用任务'
+}
+
+function summarizeText(text: string, maxLength = 72) {
+  return text.length > maxLength ? `${text.slice(0, maxLength).trim()}...` : text
+}
+
+function buildConversationAwareRequirement(inputText: string, conversationContext?: string) {
+  const context = String(conversationContext || '').trim()
+  if (!context) return inputText
+  return [
+    '以下是当前 session 最近对话上下文，请结合上下文理解本轮用户补充说明：',
+    context,
+    `最新用户消息：${inputText}`,
+  ].join('\n\n')
+}
+
+function normalizeCandidates(candidates: MultiAgentRouteCandidate[]) {
+  return candidates
+    .map(candidate => ({
+      id: String(candidate.id || '').trim(),
+      name: String(candidate.name || candidate.id || '').trim(),
+      description: String(candidate.description || '').trim(),
+      baseUrl: String(candidate.baseUrl || '').trim(),
+      chatPath: String(candidate.chatPath || '/v1/chat/completions').trim() || '/v1/chat/completions',
+      enabled: candidate.enabled !== false,
+      skills: Array.isArray(candidate.skills) ? candidate.skills : [],
+      tools: Array.isArray(candidate.tools) ? candidate.tools : [],
+    }))
+    .filter(candidate => candidate.id && candidate.name)
+}
+
+function canDirectDelegate(agent: MultiAgentRouteCandidate | null, confidence: number, category: string) {
+  if (!agent) return false
+  if (agent.enabled === false) return false
+  if (!agent.baseUrl) return false
+  if (confidence >= 84) return true
+  return confidence >= 78 && category !== '通用任务'
+}
+
+function buildDiTingInstructions(decision: MultiAgentRouteDecision) {
+  const lines = [
+    'Multi-agent collaboration mode is enabled for this run.',
+    `Server route category: ${decision.category}.`,
+    `Server route confidence: ${decision.confidence}%.`,
+    `User request summary: ${decision.summary}`,
+  ]
+  if (decision.selectedAgent) {
+    lines.push(`Preferred sub-agent: ${decision.selectedAgent.name} (${decision.selectedAgent.id}).`)
+    if (decision.selectedAgent.description) lines.push(`Sub-agent description: ${decision.selectedAgent.description}`)
+    if ((decision.selectedAgent.skills || []).length > 0) {
+      lines.push(`Sub-agent skills: ${(decision.selectedAgent.skills || []).map(skill => skill.name || '').filter(Boolean).join(', ')}`)
+    }
+    if ((decision.selectedAgent.tools || []).length > 0) {
+      lines.push(`Sub-agent tools: ${(decision.selectedAgent.tools || []).map(tool => tool.name || '').filter(Boolean).join(', ')}`)
+    }
+  } else {
+    lines.push('No confident sub-agent match was found from the current runtime list.')
+  }
+  lines.push(
+    'Execution policy:',
+    '- Treat this as a general task portal, not a coding-only workflow.',
+    `- Router intent: ${decision.intent}.`,
+    '- Before using unrelated built-in skills, validate whether the preferred sub-agent should handle the request.',
+    '- If direct delegation is unavailable in the current runtime, stay in orchestrator mode and explain the chosen path clearly.',
+    '- Keep the final answer aligned with the selected execution path instead of silently falling back to arbitrary skills.',
+  )
+  if (decision.todo.length > 0) {
+    lines.push(`- Router todo: ${decision.todo.join(' -> ')}`)
+  }
+  if (decision.constraints.length > 0) {
+    lines.push(`- Router constraints: ${decision.constraints.join('；')}`)
+  }
+  return lines.join('\n')
+}
+
+function buildFallbackExecutionPlan(summary: string, routeText: string): MultiAgentExecutionPlan {
+  const DiTingExecutor: MultiAgentPlanNodeExecutor = {
+    type: 'DiTing',
+    name: 'DiTing',
+  }
+  return {
+    objective: summary,
+    status: 'running',
+    currentNodeId: 'route',
+    nodes: [
+      {
+        id: 'understand',
+        title: '理解需求与约束',
+        phase: '分析',
+        status: 'done',
+        executor: DiTingExecutor,
+        summary: '已接收用户需求并提取当前任务目标。',
+      },
+      {
+        id: 'route',
+        title: '确认执行路径',
+        phase: '路由',
+        status: 'doing',
+        executor: DiTingExecutor,
+        summary: routeText,
+      },
+      {
+        id: 'respond',
+        title: '汇总阶段成果并回复用户',
+        phase: '汇总',
+        status: 'todo',
+        executor: DiTingExecutor,
+        summary: '等待执行完成后生成最终回复。',
+      },
+    ],
+    dependencies: [],
+  }
+}
+
+function buildLinearDependencies(nodeIds: string[]): MultiAgentPlanDependency[] {
+  if (nodeIds.length <= 1) return []
+  return nodeIds.slice(1).map((nodeId, index) => ({
+    from: nodeIds[index],
+    to: nodeId,
+    type: 'blocks',
+  }))
+}
+
+function planTaskNodeId(taskId: string, index: number) {
+  const normalized = String(taskId || `task-${index + 1}`)
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+  return `task_${normalized || index + 1}`
+}
+
+function findTaskRoute(taskId: string, routes: TaskPlanAgentRoute[]) {
+  return routes.find(route => normalizeKey(route.task_id) === normalizeKey(taskId)) || null
+}
+
+function acceptanceSummary(task: TaskPlanTask) {
+  const criteria = Array.isArray(task.acceptance_criteria)
+    ? task.acceptance_criteria.map(item => String(item || '').trim()).filter(Boolean)
+    : []
+  return criteria.slice(0, 2).join('；')
+}
+
+function formatTaskSummary(task: TaskPlanTask, route: TaskPlanAgentRoute | null) {
+  const parts = [
+    String(task.description || '').trim(),
+    acceptanceSummary(task) ? `验收：${acceptanceSummary(task)}` : '',
+    route?.reason ? `分配理由：${String(route.reason || '').trim()}` : '',
+  ].filter(Boolean)
+  return summarizeText(parts.join('。'), 160) || '等待执行。'
+}
+
+function taskExecutor(
+  task: TaskPlanTask,
+  route: TaskPlanAgentRoute | null,
+  candidates: MultiAgentRouteCandidate[],
+): MultiAgentPlanNodeExecutor {
+  const recommendedId = normalizeKey(route?.agent_id || task.recommended_agent_id)
+  const recommendedName = String(route?.agent_name || task.recommended_agent_name || '').trim()
+  const candidate = candidates.find(item =>
+    normalizeKey(item.id) === recommendedId
+    || (recommendedName && normalizeKey(item.name) === normalizeKey(recommendedName)),
+  ) || null
+  if (candidate) {
+    return {
+      type: 'subagent',
+      id: candidate.id,
+      name: candidate.name,
+    }
+  }
+  return {
+    type: 'DiTing',
+    name: 'DiTing',
+  }
+}
+
+export function pickDominantPlannedAgent(plan: GeneratedTaskPlan['plan'], candidates: MultiAgentRouteCandidate[]) {
+  const buckets = new Map<string, {
+    agent: MultiAgentRouteCandidate
+    score: number
+    totalConfidence: number
+    taskIds: string[]
+  }>()
+
+  for (const route of plan.agent_routes || []) {
+    const candidate = candidates.find(item =>
+      normalizeKey(item.id) === normalizeKey(route.agent_id)
+      || (route.agent_name && normalizeKey(item.name) === normalizeKey(route.agent_name)),
+    )
+    if (!candidate) continue
+    const confidence = Number.isFinite(route.confidence) ? Math.max(0, Math.min(1, Number(route.confidence))) : 0.5
+    const current = buckets.get(candidate.id) || {
+      agent: candidate,
+      score: 0,
+      totalConfidence: 0,
+      taskIds: [],
+    }
+    current.score += Math.max(0.2, confidence)
+    current.totalConfidence += confidence
+    if (route.task_id && !current.taskIds.includes(route.task_id)) current.taskIds.push(route.task_id)
+    buckets.set(candidate.id, current)
+  }
+
+  const ranked = [...buckets.values()].sort((left, right) => right.score - left.score)
+  if (ranked.length === 0) return null
+  const winner = ranked[0]
+  return {
+    agent: winner.agent,
+    averageConfidence: winner.totalConfidence / Math.max(1, winner.taskIds.length),
+    taskIds: winner.taskIds,
+  }
+}
+
+function plannedConfidencePercent(averageConfidence: number, taskCount: number) {
+  return Math.max(
+    78,
+    Math.min(98, 70 + Math.round(Math.max(0, Math.min(1, averageConfidence)) * 20) + Math.min(8, taskCount * 2)),
+  )
+}
+
+export function buildExecutionPlanFromTaskPlanner(args: {
+  generated: GeneratedTaskPlan
+  routeText: string
+  candidates: MultiAgentRouteCandidate[]
+}): MultiAgentExecutionPlan {
+  const DiTingExecutor: MultiAgentPlanNodeExecutor = {
+    type: 'DiTing',
+    name: 'DiTing',
+  }
+  const routes = args.generated.plan.agent_routes || []
+  const taskNodeIdByTaskId = new Map<string, string>()
+  const taskNodes = args.generated.plan.tasks.map((task, index): MultiAgentPlanNode => {
+    const route = findTaskRoute(task.id, routes)
+    const nodeId = planTaskNodeId(task.id, index)
+    taskNodeIdByTaskId.set(task.id, nodeId)
+    return {
+      id: nodeId,
+      title: String(task.title || `任务 ${index + 1}`).trim() || `任务 ${index + 1}`,
+      phase: String(task.phase || `阶段 ${index + 1}`).trim() || `阶段 ${index + 1}`,
+      status: 'todo',
+      executor: taskExecutor(task, route, args.candidates),
+      summary: formatTaskSummary(task, route),
+    }
+  })
+  const mappedDependencies: MultiAgentPlanDependency[] = (args.generated.plan.dependencies || [])
+    .map((dependency: TaskPlanDependency): MultiAgentPlanDependency | null => {
+      const from = taskNodeIdByTaskId.get(dependency.from) || ''
+      const to = taskNodeIdByTaskId.get(dependency.to) || ''
+      if (!from || !to || from === to) return null
+      return {
+        from,
+        to,
+        type: dependency.type === 'informs' ? 'informs' : 'blocks',
+      }
+    })
+    .filter((item): item is MultiAgentPlanDependency => Boolean(item))
+  const taskDependencies = mappedDependencies.length > 0
+    ? mappedDependencies
+    : buildLinearDependencies(taskNodes.map(node => node.id))
+
+  return {
+    objective: args.generated.summary || args.generated.title || '已生成任务规划',
+    status: 'running',
+    currentNodeId: 'route',
+    nodes: [
+      {
+        id: 'understand',
+        title: '理解需求与约束',
+        phase: '分析',
+        status: 'done',
+        executor: DiTingExecutor,
+        summary: '已接收用户需求并提取当前任务目标。',
+      },
+      {
+        id: 'route',
+        title: '确认执行路径',
+        phase: '路由',
+        status: 'doing',
+        executor: DiTingExecutor,
+        summary: args.routeText,
+      },
+      ...taskNodes,
+      {
+        id: 'respond',
+        title: '汇总阶段成果并回复用户',
+        phase: '汇总',
+        status: 'todo',
+        executor: DiTingExecutor,
+        summary: '等待前置任务完成后由 DiTing 组织最终回复。',
+      },
+    ],
+    dependencies: [
+      ...taskDependencies,
+      ...taskNodes.map(node => ({
+        from: node.id,
+        to: 'respond',
+        type: 'informs' as const,
+      })),
+    ],
+  }
+}
+
+function formatPlanForInstructions(generated: GeneratedTaskPlan) {
+  const routes = generated.plan.agent_routes || []
+  const lines = [
+    'Planner todo list:',
+    ...generated.plan.tasks.map((task, index) => {
+      const route = findTaskRoute(task.id, routes)
+      const owner = route?.agent_name || task.recommended_agent_name || 'DiTing'
+      return `${index + 1}. [${task.phase}] ${task.title} -> ${owner}; ${formatTaskSummary(task, route)}`
+    }),
+  ]
+  if ((generated.plan.risks || []).length > 0) {
+    lines.push('Planner risks:')
+    for (const risk of generated.plan.risks.slice(0, 5)) {
+      lines.push(`- ${risk}`)
+    }
+  }
+  return lines.join('\n')
+}
+
+function buildBaseRouteDecision(input: {
+  enabled?: boolean
+  input: string | ContentBlock[]
+  candidates?: MultiAgentRouteCandidate[]
+  conversationContext?: string
+}): MultiAgentRouteDecision {
+  const inputText = extractTextForPreview(input.input).trim() || contentBlocksToString(input.input).trim()
+  const conversationContext = String(input.conversationContext || '').trim()
+  const conversationAwareRequirement = buildConversationAwareRequirement(inputText, conversationContext)
+  const enabled = input.enabled === true
+  if (!enabled) {
+    return {
+      enabled: false,
+      shouldPlan: false,
+      summary: summarizeText(inputText),
+      intent: 'disabled',
+      category: '普通对话',
+      confidence: 0,
+      reason: '多智能体协作模式未开启。',
+      executionMode: 'DiTing_native',
+      selectedAgent: null,
+      routeText: '多智能体协作未开启，继续由 DiTing 默认链路处理。',
+      DiTingInstructions: null,
+      inputText,
+      conversationContext,
+      todo: [],
+      constraints: [],
+      plan: null,
+      delegatedNodeIds: [],
+    }
+  }
+
+  const casual = isCasualChatMessage(inputText)
+  const candidates = normalizeCandidates(input.candidates || [])
+  const terms = extractIntentTerms(conversationAwareRequirement)
+  const best = chooseCandidate(candidates, terms)
+  const categoryFromContent = inferCategoryFromContent(conversationAwareRequirement)
+  const categoryFromAgent = inferCategoryFromAgent(best?.agent || null)
+  const category = categoryFromContent !== '通用任务' ? categoryFromContent : categoryFromAgent
+  const shouldPlan = !casual
+  const structureBoost = Math.min(10, Math.floor(Math.min(inputText.length, 120) / 18))
+  const categoryBoost = category !== '通用任务' ? 8 : 0
+  const scoreBoost = best ? Math.min(18, best.score) : 0
+  const confidence = shouldPlan
+    ? Math.min(98, 76 + structureBoost + categoryBoost + scoreBoost)
+    : Math.min(52, 30 + structureBoost)
+  const selectedAgent = best?.agent || null
+  const directDelegate = shouldPlan && canDirectDelegate(selectedAgent, confidence, category)
+  const executionMode = directDelegate ? 'delegate_subagent' : 'DiTing_native'
+
+  let reason = '当前消息更适合继续由 DiTing 直接处理。'
+  if (!shouldPlan) {
+    reason = '识别为普通寒暄或轻量对话，不进入多智能体路由。'
+  } else if (selectedAgent && directDelegate) {
+    reason = `根据消息内容与子智能体元数据相似度，优先直连 ${selectedAgent.name}。`
+  } else if (selectedAgent) {
+    reason = `已匹配到 ${selectedAgent.name}，但当前不满足直连条件，改由 DiTing 编排执行。`
+  } else {
+    reason = '没有找到高置信度的子智能体配置，改由 DiTing 编排执行。'
+  }
+
+  let routeText = '多智能体协作：继续由 DiTing 默认链路处理。'
+  if (!shouldPlan) {
+    routeText = '多智能体协作：识别为普通对话，继续由 DiTing 直接处理。'
+  } else if (selectedAgent && directDelegate) {
+    routeText = `多智能体协作：已路由到子智能体「${selectedAgent.name}」(${category}，置信度 ${confidence}%)，将优先直连其运行时。`
+  } else if (selectedAgent) {
+    routeText = `多智能体协作：匹配到子智能体「${selectedAgent.name}」(${category}，置信度 ${confidence}%)，当前改由 DiTing 编排执行。`
+  } else {
+    routeText = `多智能体协作：未找到高置信度子智能体(${category}，置信度 ${confidence}%)，继续由 DiTing 编排执行。`
+  }
+
+  const decision: MultiAgentRouteDecision = {
+    enabled,
+    shouldPlan,
+    summary: summarizeText(inputText),
+    intent: casual ? 'casual_chat' : 'general_request',
+    category: shouldPlan ? category : '普通对话',
+    confidence,
+    reason,
+    executionMode,
+    selectedAgent,
+    routeText,
+    DiTingInstructions: shouldPlan ? buildDiTingInstructions({
+      enabled,
+      shouldPlan,
+      summary: summarizeText(inputText),
+      intent: casual ? 'casual_chat' : 'general_request',
+      category,
+      confidence,
+      reason,
+      executionMode,
+      selectedAgent,
+      routeText,
+      DiTingInstructions: null,
+      inputText,
+      conversationContext,
+      todo: [],
+      constraints: [],
+      plan: null,
+      delegatedNodeIds: [],
+    }) : null,
+    inputText,
+    conversationContext,
+    todo: shouldPlan ? ['理解需求', '选择执行路径'] : [],
+    constraints: [],
+    plan: shouldPlan ? buildFallbackExecutionPlan(summarizeText(inputText), routeText) : null,
+    delegatedNodeIds: [],
+  }
+  return decision
+}
+
+function selectCandidateFromRouter(args: {
+  normalizedCandidates: MultiAgentRouteCandidate[]
+  routed: GeneratedTaskRouteDecision
+  fallback: MultiAgentRouteCandidate | null
+}) {
+  const byId = args.normalizedCandidates.find(candidate =>
+    normalizeKey(candidate.id) === normalizeKey(args.routed.selected_agent_id),
+  )
+  if (byId) return byId
+  const byName = args.normalizedCandidates.find(candidate =>
+    args.routed.selected_agent_name && normalizeKey(candidate.name) === normalizeKey(args.routed.selected_agent_name),
+  )
+  if (byName) return byName
+  return args.fallback
+}
+
+function mapRouterExecutionMode(mode: GeneratedTaskRouteDecision['execution_mode'], selectedAgent: MultiAgentRouteCandidate | null, confidence: number, category: string) {
+  if (mode === 'subagent' && canDirectDelegate(selectedAgent, confidence, category)) return 'delegate_subagent' as const
+  return 'DiTing_native' as const
+}
+
+function shouldUseRuntimeDelegateOverride(args: {
+  base: MultiAgentRouteDecision
+  routed: GeneratedTaskRouteDecision
+  selectedAgent: MultiAgentRouteCandidate | null
+  category: string
+  confidence: number
+}) {
+  if (!args.base.shouldPlan) return false
+  if (!args.selectedAgent) return false
+  if (args.selectedAgent.enabled === false) return false
+  if (!args.selectedAgent.baseUrl) return false
+  if (args.routed.execution_mode === 'subagent') return false
+  if (isCasualChatMessage(args.base.inputText)) return false
+  if (args.base.executionMode === 'delegate_subagent') return true
+  if (args.category === '通用任务') return false
+  if (!args.base.selectedAgent) return false
+  return normalizeKey(args.base.selectedAgent.id) === normalizeKey(args.selectedAgent.id) && args.confidence >= 88
+}
+
+function fallbackDelegateTodo(agent: MultiAgentRouteCandidate) {
+  return [
+    '确认用户查询目标与可用数据源',
+    `将任务交给${agent.name}执行`,
+    '接收子智能体阶段结果并汇总回复',
+  ]
+}
+
+function mergeDelegateOverrideConstraints(constraints: string[]) {
+  const cleaned = constraints
+    .map(item => String(item || '').trim())
+    .filter(Boolean)
+    .filter(item => !/(不能|无法|拒绝|不允许|不提供|直接回答)/.test(item))
+    .slice(0, 4)
+  if (!cleaned.some(item => /权限|合规|授权|数据源/.test(item))) {
+    cleaned.push('由子智能体返回数据源权限、缺失参数或合规校验结果。')
+  }
+  return cleaned
+}
+
+function buildRouterRouteText(args: {
+  mode: GeneratedTaskRouteDecision['execution_mode']
+  selectedAgent: MultiAgentRouteCandidate | null
+  category: string
+  confidence: number
+  needClarify: boolean
+}) {
+  if (args.mode === 'direct') {
+    return `多智能体协作：识别为普通对话，继续由 DiTing 直接回答。`
+  }
+  if (args.needClarify || args.mode === 'clarify') {
+    return '多智能体协作：当前信息不足，先向用户澄清后再继续执行。'
+  }
+  if (args.mode === 'subagent' && args.selectedAgent) {
+    return `多智能体协作：已匹配子智能体「${args.selectedAgent.name}」(${args.category}，置信度 ${args.confidence}%)，优先交由其执行。`
+  }
+  return `多智能体协作：当前由 DiTing 编排执行(${args.category}，置信度 ${args.confidence}%)。`
+}
+
+function fallbackTaskCount(decision: MultiAgentRouteDecision) {
+  return Math.max(2, Math.min(5, decision.todo.length || 2))
+}
+
+function buildExecutionPlanFromRouterTodo(
+  decision: MultiAgentRouteDecision,
+  options: {
+    nodeIdPrefix?: string
+  } = {},
+): MultiAgentExecutionPlan | null {
+  if (!decision.shouldPlan || decision.executionMode === 'DiTing_native' && decision.intent === 'casual_chat') return null
+  const DiTingExecutor: MultiAgentPlanNodeExecutor = { type: 'DiTing', name: 'DiTing' }
+  const selectedExecutor: MultiAgentPlanNodeExecutor = decision.executionMode === 'delegate_subagent' && decision.selectedAgent
+    ? { type: 'subagent', id: decision.selectedAgent.id, name: decision.selectedAgent.name }
+    : DiTingExecutor
+  const todo = decision.todo.length > 0
+    ? decision.todo.slice(0, 5)
+    : Array.from({ length: fallbackTaskCount(decision) }, (_, index) => `执行步骤 ${index + 1}`)
+  const nodeIdPrefix = String(options.nodeIdPrefix || 'task_router').trim() || 'task_router'
+  const taskNodes = todo.map((item, index): MultiAgentPlanNode => ({
+    id: `${nodeIdPrefix}_${index + 1}`,
+    title: item,
+    phase: index === 0 ? '分析' : index === todo.length - 1 ? '汇总' : '执行',
+    status: 'todo',
+    executor: selectedExecutor,
+    summary: decision.constraints[index] || decision.reason || '等待执行。',
+  }))
+  const taskDependencies = buildLinearDependencies(taskNodes.map(node => node.id))
+  return {
+    objective: decision.summary,
+    status: 'running',
+    currentNodeId: 'route',
+    nodes: [
+      {
+        id: 'understand',
+        title: '理解需求与约束',
+        phase: '分析',
+        status: 'done',
+        executor: DiTingExecutor,
+        summary: '已接收用户需求并抽取当前目标。',
+      },
+      {
+        id: 'route',
+        title: '确认执行路径',
+        phase: '路由',
+        status: 'doing',
+        executor: DiTingExecutor,
+        summary: decision.routeText,
+      },
+      ...taskNodes,
+      {
+        id: 'respond',
+        title: '汇总阶段成果并回复用户',
+        phase: '汇总',
+        status: 'todo',
+        executor: DiTingExecutor,
+        summary: '等待前置步骤完成后由 DiTing 组织最终回复。',
+      },
+    ],
+    dependencies: [
+      ...taskDependencies,
+      ...taskNodes.map(node => ({
+        from: node.id,
+        to: 'respond',
+        type: 'informs' as const,
+      })),
+    ],
+  }
+}
+
+function activateExecutionPlan(plan: MultiAgentExecutionPlan): MultiAgentExecutionPlan {
+  const taskNodes = plan.nodes.filter(node => !['understand', 'route', 'respond'].includes(node.id))
+  const firstTaskNode = taskNodes[0] || null
+  const activeNodeId = firstTaskNode?.id || 'respond'
+
+  return {
+    ...plan,
+    currentNodeId: activeNodeId,
+    nodes: plan.nodes.map((node) => {
+      if (node.id === 'understand') return { ...node, status: 'done' as const }
+      if (node.id === 'route') return { ...node, status: 'done' as const }
+      if (node.id === activeNodeId) return { ...node, status: 'doing' as const }
+      if (node.id === 'respond' && activeNodeId === 'respond') {
+        return {
+          ...node,
+          status: 'doing' as const,
+          summary: '当前无需继续下发子任务，主智能体正在组织最终回复。',
+        }
+      }
+      return node.id === 'respond'
+        ? { ...node, status: 'todo' as const }
+        : { ...node, status: 'todo' as const }
+    }),
+  }
+}
+
+function summarizeObservation(text: string, maxLength = 360) {
+  const normalized = text.replace(/\s+/g, ' ').trim()
+  if (!normalized) return ''
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 3).trim()}...` : normalized
+}
+
+function buildReplanFollowUpInput(args: {
+  requirement: string
+  conversationContext?: string
+  observation: string
+  todo: string[]
+  responseStrategy: string
+}) {
+  const remainingTodo = args.todo.map((item, index) => `${index + 1}. ${item}`).join('\n')
+  return [
+    '继续上一轮多智能体协作。',
+    args.conversationContext
+      ? `最近对话上下文：\n${args.conversationContext}`
+      : '',
+    `原始用户需求：${args.requirement}`,
+    `已收到的子智能体阶段成果：${summarizeObservation(args.observation, 420)}`,
+    args.todo.length > 0 ? `请继续执行以下剩余任务：\n${remainingTodo}` : '',
+    `执行策略：${args.responseStrategy}`,
+    '要求：不要重复已经完成的子任务；如果阶段成果已经足够，请直接整理为最终答复；否则补齐缺失步骤后再回复用户。',
+  ].filter(Boolean).join('\n\n')
+}
+
+function currentPlanForReplan(decision: MultiAgentRouteDecision) {
+  return {
+    summary: decision.summary,
+    reason: decision.reason,
+    route_text: decision.routeText,
+    todo: decision.todo,
+    constraints: decision.constraints,
+    plan: decision.plan,
+    delegated_node_ids: decision.delegatedNodeIds,
+    selected_agent: decision.selectedAgent
+      ? {
+          id: decision.selectedAgent.id,
+          name: decision.selectedAgent.name,
+        }
+      : null,
+  }
+}
+
+function delegatedNodeIdsFromPlan(plan: MultiAgentExecutionPlan | null, selectedAgent: MultiAgentRouteCandidate | null) {
+  if (!plan || !selectedAgent) return []
+  return plan.nodes
+    .filter(node => node.executor.type === 'subagent' && normalizeKey(node.executor.id) === normalizeKey(selectedAgent.id))
+    .map(node => node.id)
+}
+
+export async function resolveMultiAgentRoute(input: {
+  enabled?: boolean
+  input: string | ContentBlock[]
+  candidates?: MultiAgentRouteCandidate[]
+  conversationContext?: string
+  profile: string
+  provider?: string
+  model?: string
+  onProgress?: (event: MultiAgentRouteProgressEvent) => void
+  onReasoning?: (event: MultiAgentRouteReasoningEvent) => void
+}): Promise<MultiAgentRouteDecision> {
+  const base = buildBaseRouteDecision(input)
+  if (!base.enabled || !base.shouldPlan) return base
+
+  const normalizedCandidates = normalizeCandidates(input.candidates || [])
+  const conversationAwareRequirement = buildConversationAwareRequirement(
+    base.inputText,
+    base.conversationContext || input.conversationContext,
+  )
+  try {
+    input.onProgress?.({
+      stage: 'understand',
+      status: 'done',
+      text: '主智能体已完成基础需求理解。',
+    })
+    input.onProgress?.({
+      stage: 'route',
+      status: 'running',
+      text: '主智能体正在生成路由决策。',
+    })
+    const routeReasoningPromise = streamTaskRouteReasoning({
+      profile: input.profile,
+      requirement: conversationAwareRequirement,
+      provider: input.provider,
+      model: input.model,
+      agents: normalizedCandidates,
+      onChunk: (chunk) => {
+        const cleaned = summarizeText(String(chunk.text || '').replace(/\s+/g, ' ').trim(), 180)
+        if (!cleaned) return
+        input.onReasoning?.({
+          stage: 'route',
+          text: cleaned,
+        })
+      },
+    }).catch(() => null)
+    const routed = await generateTaskRouteDecision({
+      profile: input.profile,
+      requirement: conversationAwareRequirement,
+      provider: input.provider,
+      model: input.model,
+      agents: normalizedCandidates,
+    })
+    await routeReasoningPromise
+    const selectedAgent = selectCandidateFromRouter({
+      normalizedCandidates,
+      routed,
+      fallback: base.selectedAgent,
+    })
+    const category = routed.category !== '通用任务'
+      ? routed.category
+      : (base.category !== '通用任务' ? base.category : inferCategoryFromAgent(selectedAgent))
+    const confidence = Math.max(base.confidence, Math.round(Math.max(0, Math.min(1, routed.confidence)) * 100))
+    const runtimeDelegateOverride = shouldUseRuntimeDelegateOverride({
+      base,
+      routed,
+      selectedAgent,
+      category,
+      confidence,
+    })
+    const effectiveRouteMode: GeneratedTaskRouteDecision['execution_mode'] = runtimeDelegateOverride
+      ? 'subagent'
+      : routed.execution_mode
+    const effectiveNeedClarify = runtimeDelegateOverride ? false : routed.need_clarify
+    const executionMode = mapRouterExecutionMode(effectiveRouteMode, selectedAgent, confidence, category)
+    const routeText = buildRouterRouteText({
+      mode: effectiveRouteMode,
+      selectedAgent,
+      category,
+      confidence,
+      needClarify: effectiveNeedClarify,
+    })
+    const routerReason = runtimeDelegateOverride && selectedAgent
+      ? `路由模型返回 ${routed.execution_mode}，但运行时能力匹配已确认 ${selectedAgent.name} 更适合作为主执行方。`
+      : routed.reason
+    const todo = runtimeDelegateOverride && selectedAgent
+      ? fallbackDelegateTodo(selectedAgent)
+      : routed.todo
+    const constraints = runtimeDelegateOverride
+      ? mergeDelegateOverrideConstraints(routed.constraints)
+      : routed.constraints
+    const decisionFromRouter: MultiAgentRouteDecision = {
+      ...base,
+      summary: summarizeText(base.inputText),
+      intent: routed.intent,
+      category,
+      confidence,
+      reason: routerReason,
+      executionMode,
+      selectedAgent,
+      routeText,
+      inputText: base.inputText,
+      conversationContext: base.conversationContext,
+      todo,
+      constraints,
+      DiTingInstructions: null,
+      plan: null,
+      delegatedNodeIds: [],
+    }
+    input.onProgress?.({
+      stage: 'route',
+      status: 'done',
+      text: effectiveNeedClarify
+        ? '主智能体已判断当前信息不足，需要先澄清。'
+        : `主智能体已完成路由决策，执行模式：${effectiveRouteMode}。`,
+    })
+
+    if (effectiveNeedClarify || effectiveRouteMode === 'clarify' || effectiveRouteMode === 'direct') {
+      const plan = buildExecutionPlanFromRouterTodo(decisionFromRouter)
+      return {
+        ...decisionFromRouter,
+        shouldPlan: effectiveRouteMode !== 'direct',
+        plan,
+        delegatedNodeIds: delegatedNodeIdsFromPlan(plan, selectedAgent),
+        DiTingInstructions: buildDiTingInstructions({
+          ...decisionFromRouter,
+          shouldPlan: effectiveRouteMode !== 'direct',
+          plan,
+          delegatedNodeIds: delegatedNodeIdsFromPlan(plan, selectedAgent),
+        }),
+      }
+    }
+
+    input.onProgress?.({
+      stage: 'match_agents',
+      status: 'running',
+      text: selectedAgent
+        ? `主智能体正在校验子智能体「${selectedAgent.name}」是否适合作为主执行方。`
+        : '主智能体未命中高置信度子智能体，准备由 DiTing 编排执行。',
+    })
+    input.onReasoning?.({
+      stage: 'match_agents',
+      text: selectedAgent
+        ? `正在比对子智能体能力与任务目标，确认是否交由 ${selectedAgent.name} 主执行。`
+        : '未命中可直接委派对象，开始生成由 DiTing 编排的执行清单。',
+    })
+    const generated = await generateTaskPlan({
+      profile: input.profile,
+      requirement: conversationAwareRequirement,
+      provider: input.provider,
+      model: input.model,
+      agents: normalizedCandidates,
+    })
+    const plannedPick = pickDominantPlannedAgent(generated.plan, normalizedCandidates)
+    const dominantAgent = plannedPick?.agent || selectedAgent
+    const plannedCategory = category !== '通用任务' ? category : inferCategoryFromAgent(dominantAgent)
+    const plannedConfidence = plannedPick
+      ? Math.max(confidence, plannedConfidencePercent(plannedPick.averageConfidence, plannedPick.taskIds.length))
+      : confidence
+    const plannedExecutionMode = mapRouterExecutionMode(effectiveRouteMode, dominantAgent, plannedConfidence, plannedCategory)
+
+    let reason = decisionFromRouter.reason
+    let finalRouteText = routeText
+    if (plannedPick?.agent && plannedExecutionMode === 'delegate_subagent') {
+      reason = runtimeDelegateOverride
+        ? `${decisionFromRouter.reason} 主智能体已完成任务规划，识别出 ${plannedPick.agent.name} 是主要执行方。`
+        : `主智能体已完成任务规划，识别出 ${plannedPick.agent.name} 是主要执行方。`
+      finalRouteText = `多智能体协作：主智能体已完成任务规划，主执行子智能体为「${plannedPick.agent.name}」(${plannedCategory}，置信度 ${plannedConfidence}%)，将优先直连其运行时。`
+    } else if (plannedPick?.agent) {
+      reason = runtimeDelegateOverride
+        ? `${decisionFromRouter.reason} 主智能体已完成任务规划，匹配到 ${plannedPick.agent.name}，当前改由 DiTing 编排执行。`
+        : `主智能体已完成任务规划，匹配到 ${plannedPick.agent.name}，当前改由 DiTing 编排执行。`
+      finalRouteText = `多智能体协作：主智能体已完成任务规划，匹配到子智能体「${plannedPick.agent.name}」(${plannedCategory}，置信度 ${plannedConfidence}%)，当前由 DiTing 编排执行。`
+    } else {
+      reason = '主智能体已完成任务规划，当前由 DiTing 继续编排。'
+      finalRouteText = '多智能体协作：主智能体已完成任务规划，未匹配到可直连子智能体，继续由 DiTing 编排执行。'
+    }
+
+    const executionPlan = buildExecutionPlanFromTaskPlanner({
+      generated,
+      routeText: finalRouteText,
+      candidates: normalizedCandidates,
+    })
+    const delegatedNodeIds = plannedExecutionMode === 'delegate_subagent'
+      ? (plannedPick?.taskIds.length
+          ? plannedPick.taskIds.map((taskId, index) => planTaskNodeId(taskId, index))
+          : (generated.plan.tasks[0] ? [planTaskNodeId(generated.plan.tasks[0].id, 0)] : []))
+      : []
+    input.onProgress?.({
+      stage: 'match_agents',
+      status: 'done',
+      text: dominantAgent
+        ? `主智能体已确认主执行方：${dominantAgent.name}。`
+        : '主智能体已确认由 DiTing 主链路继续执行。',
+    })
+
+    return {
+      ...decisionFromRouter,
+      category: plannedCategory,
+      confidence: plannedConfidence,
+      reason,
+      executionMode: plannedExecutionMode,
+      selectedAgent: dominantAgent,
+      routeText: finalRouteText,
+      DiTingInstructions: `${buildDiTingInstructions({
+        ...decisionFromRouter,
+        category: plannedCategory,
+        confidence: plannedConfidence,
+        reason,
+        executionMode: plannedExecutionMode,
+        selectedAgent: dominantAgent,
+        routeText: finalRouteText,
+        DiTingInstructions: null,
+        plan: null,
+        delegatedNodeIds,
+      })}\n\n${formatPlanForInstructions(generated)}`,
+      plan: executionPlan,
+      delegatedNodeIds,
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return {
+      ...base,
+      intent: base.intent || 'fallback_skill',
+      reason: `${base.reason} 任务规划生成失败：${message}`,
+      routeText: `${base.routeText} 任务规划生成失败，当前不展示伪造节点。`,
+      DiTingInstructions: base.DiTingInstructions
+        ? `${base.DiTingInstructions}\n\nPlanner status: failed to generate todo list. Continue without fabricating a plan.`
+        : null,
+      plan: null,
+      delegatedNodeIds: [],
+    }
+  }
+}
+
+export async function resolveMultiAgentReplan(input: {
+  profile: string
+  provider?: string | null
+  model?: string | null
+  candidates?: MultiAgentRouteCandidate[]
+  previous: MultiAgentRouteDecision
+  observation: string
+  onProgress?: (event: MultiAgentRouteProgressEvent) => void
+  onReasoning?: (event: MultiAgentRouteReasoningEvent) => void
+}): Promise<MultiAgentReplanDecision> {
+  const observation = summarizeObservation(input.observation, 520)
+  if (!observation) {
+    return {
+      continueExecution: false,
+      routeDecision: null,
+      followUpInput: null,
+      responseStrategy: '',
+    }
+  }
+
+  input.onProgress?.({
+    stage: 'route',
+    status: 'running',
+    text: '主智能体正在吸收子智能体阶段成果，并评估是否需要继续执行。',
+  })
+
+  let replanned: GeneratedTaskReplanDecision
+  try {
+    const conversationAwareRequirement = buildConversationAwareRequirement(
+      input.previous.inputText,
+      input.previous.conversationContext,
+    )
+    replanned = await generateTaskReplanDecision({
+      profile: input.profile,
+      provider: input.provider,
+      model: input.model,
+      requirement: conversationAwareRequirement,
+      observation,
+      currentPlan: currentPlanForReplan(input.previous),
+      agents: normalizeCandidates(input.candidates || []),
+    })
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    input.onReasoning?.({
+      stage: 'route',
+      text: `重规划评估失败：${message}。当前默认进入最终汇总。`,
+    })
+    input.onProgress?.({
+      stage: 'route',
+      status: 'done',
+      text: '主智能体未能完成重规划评估，当前改为直接汇总阶段成果。',
+    })
+    return {
+      continueExecution: false,
+      routeDecision: null,
+      followUpInput: null,
+      responseStrategy: '',
+    }
+  }
+
+  input.onReasoning?.({
+    stage: 'route',
+    text: replanned.reason,
+  })
+
+  if (!replanned.continue_execution || replanned.todo.length === 0) {
+    input.onProgress?.({
+      stage: 'route',
+      status: 'done',
+      text: '主智能体判断阶段成果已足够，后续直接进入最终汇总。',
+    })
+    return {
+      continueExecution: false,
+      routeDecision: null,
+      followUpInput: null,
+      responseStrategy: replanned.response_strategy,
+    }
+  }
+
+  const routeText = `多智能体协作：主智能体已吸收阶段成果，继续执行剩余 ${replanned.todo.length} 个节点。`
+  const routeDecisionBase: MultiAgentRouteDecision = {
+    ...input.previous,
+    shouldPlan: true,
+    reason: replanned.reason,
+    executionMode: 'DiTing_native',
+    selectedAgent: null,
+    routeText,
+    todo: replanned.todo,
+    constraints: replanned.constraints,
+    DiTingInstructions: null,
+    plan: null,
+    delegatedNodeIds: [],
+  }
+  const plan = buildExecutionPlanFromRouterTodo(routeDecisionBase, { nodeIdPrefix: 'replan_task_router' }) || buildFallbackExecutionPlan(
+    summarizeText(input.previous.inputText),
+    routeText,
+  )
+  const activePlan = activateExecutionPlan(plan)
+  const routeDecision: MultiAgentRouteDecision = {
+    ...routeDecisionBase,
+    plan: activePlan,
+    DiTingInstructions: `${buildDiTingInstructions({
+      ...routeDecisionBase,
+      plan: activePlan,
+      DiTingInstructions: null,
+      delegatedNodeIds: [],
+    })}\n\n当前处于多智能体协作的二次规划阶段。\n你已经收到子智能体返回的阶段成果，请把它视为已完成观察，不要重复已完成步骤。\n阶段成果：${observation}\n后续执行策略：${replanned.response_strategy}`,
+  }
+
+  input.onProgress?.({
+    stage: 'route',
+    status: 'done',
+    text: `主智能体已完成重规划，准备继续处理 ${replanned.todo.length} 个剩余节点。`,
+  })
+
+  return {
+    continueExecution: true,
+    routeDecision,
+    followUpInput: buildReplanFollowUpInput({
+      requirement: input.previous.inputText,
+      conversationContext: input.previous.conversationContext,
+      observation,
+      todo: replanned.todo,
+      responseStrategy: replanned.response_strategy,
+    }),
+    responseStrategy: replanned.response_strategy,
+  }
+}

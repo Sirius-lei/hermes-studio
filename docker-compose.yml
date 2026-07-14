@@ -1,38 +1,38 @@
 services:
-  hermes-webui:
+  DiTing-webui:
     build:
       context: .
       dockerfile: Dockerfile
       args:
-        BASE_IMAGE: ${HERMES_AGENT_IMAGE:-nousresearch/hermes-agent:latest}
+        BASE_IMAGE: ${DiTing_AGENT_IMAGE:-nousresearch/DiTing-agent:latest}
         NODE_VERSION: ${NODE_VERSION:-24.15.0}
-    image: ${WEBUI_IMAGE:-hermes-web-ui-local:latest}
-    container_name: ${WEBUI_CONTAINER_NAME:-hermes-webui}
+    image: ${WEBUI_IMAGE:-DiTing-web-ui-local:latest}
+    container_name: ${WEBUI_CONTAINER_NAME:-DiTing-webui}
     ports:
       - "${PORT:-6060}:${PORT:-6060}"
       - "${PREVIEW_FRONTEND_PORT:-8651}:8651"
       - "${XAI_OAUTH_PORT:-56121}:56121"
     volumes:
-      - ${HERMES_HOME_DIR:-./hermes_data}:/home/agent/.hermes
-      - ${HERMES_WEB_UI_HOME_DIR:-./hermes_data/hermes-web-ui}:/home/agent/.hermes-web-ui
+      - ${DiTing_HOME_DIR:-./DiTing_data}:/home/agent/.DiTing
+      - ${DiTing_WEB_UI_HOME_DIR:-./DiTing_data/DiTing-web-ui}:/home/agent/.DiTing-web-ui
     environment:
       - PORT=${PORT:-6060}
       - BIND_HOST=0.0.0.0
-      - HERMES_HOME=/home/agent/.hermes
-      - HERMES_WEB_UI_HOME=/home/agent/.hermes-web-ui
-      - HERMES_ACTIVE_PROFILE=${HERMES_ACTIVE_PROFILE:-default}
-      - HERMES_DOCKER_REQUIRE_PROFILE_CONFIG=${HERMES_DOCKER_REQUIRE_PROFILE_CONFIG:-1}
-      - HERMES_WEB_UI_MANAGED_GATEWAY=1
-      - HERMES_WEB_UI_REQUIRE_AGENT_BRIDGE=1
-      - HERMES_AGENT_BRIDGE_ENDPOINT=${HERMES_AGENT_BRIDGE_ENDPOINT:-tcp://127.0.0.1:18765}
-      - HERMES_AGENT_BRIDGE_AUTO_RESTART=${HERMES_AGENT_BRIDGE_AUTO_RESTART:-1}
-      - HERMES_AGENT_BRIDGE_WORKER_TRANSPORT=${HERMES_AGENT_BRIDGE_WORKER_TRANSPORT:-tcp}
-      - HERMES_AGENT_BRIDGE_WORKER_PORT_BASE=${HERMES_AGENT_BRIDGE_WORKER_PORT_BASE:-18780}
-      - HERMES_AGENT_BRIDGE_WARM_PROFILES=${HERMES_AGENT_BRIDGE_WARM_PROFILES:-active}
-      - HERMES_AGENT_BRIDGE_WORKER_IDLE_TIMEOUT_SECONDS=${HERMES_AGENT_BRIDGE_WORKER_IDLE_TIMEOUT_SECONDS:-86400}
-      - HERMES_AGENT_BRIDGE_SESSION_IDLE_TIMEOUT_SECONDS=${HERMES_AGENT_BRIDGE_SESSION_IDLE_TIMEOUT_SECONDS:-86400}
-      - HERMES_WEB_UI_XAI_CALLBACK_BIND_HOST=0.0.0.0
-      - HERMES_ALLOW_ROOT_GATEWAY=1
+      - DiTing_HOME=/home/agent/.DiTing
+      - DiTing_WEB_UI_HOME=/home/agent/.DiTing-web-ui
+      - DiTing_ACTIVE_PROFILE=${DiTing_ACTIVE_PROFILE:-default}
+      - DiTing_DOCKER_REQUIRE_PROFILE_CONFIG=${DiTing_DOCKER_REQUIRE_PROFILE_CONFIG:-1}
+      - DiTing_WEB_UI_MANAGED_GATEWAY=1
+      - DiTing_WEB_UI_REQUIRE_AGENT_BRIDGE=1
+      - DiTing_AGENT_BRIDGE_ENDPOINT=${DiTing_AGENT_BRIDGE_ENDPOINT:-tcp://127.0.0.1:18765}
+      - DiTing_AGENT_BRIDGE_AUTO_RESTART=${DiTing_AGENT_BRIDGE_AUTO_RESTART:-1}
+      - DiTing_AGENT_BRIDGE_WORKER_TRANSPORT=${DiTing_AGENT_BRIDGE_WORKER_TRANSPORT:-tcp}
+      - DiTing_AGENT_BRIDGE_WORKER_PORT_BASE=${DiTing_AGENT_BRIDGE_WORKER_PORT_BASE:-18780}
+      - DiTing_AGENT_BRIDGE_WARM_PROFILES=${DiTing_AGENT_BRIDGE_WARM_PROFILES:-active}
+      - DiTing_AGENT_BRIDGE_WORKER_IDLE_TIMEOUT_SECONDS=${DiTing_AGENT_BRIDGE_WORKER_IDLE_TIMEOUT_SECONDS:-86400}
+      - DiTing_AGENT_BRIDGE_SESSION_IDLE_TIMEOUT_SECONDS=${DiTing_AGENT_BRIDGE_SESSION_IDLE_TIMEOUT_SECONDS:-86400}
+      - DiTing_WEB_UI_XAI_CALLBACK_BIND_HOST=0.0.0.0
+      - DiTing_ALLOW_ROOT_GATEWAY=1
     restart: unless-stopped
     init: true
     stdin_open: true

@@ -64,15 +64,15 @@ for (const dir of [PY_DIR, NODE_DIR]) {
   }
 }
 
-const hermesAgentVersion = output(pyBin, [
+const DiTingAgentVersion = output(pyBin, [
   '-c',
-  'import importlib.metadata as m; print(m.version("hermes-agent"))',
+  'import importlib.metadata as m; print(m.version("DiTing-agent"))',
 ])
-const assetName = `hermes-runtime-hermes-agent-${hermesAgentVersion}-${PLATFORM}.tar.gz`
-const manifestName = `hermes-runtime-${PLATFORM}.json`
+const assetName = `DiTing-runtime-DiTing-agent-${DiTingAgentVersion}-${PLATFORM}.tar.gz`
+const manifestName = `DiTing-runtime-${PLATFORM}.json`
 
 mkdirSync(OUT_DIR, { recursive: true })
-const stage = mkdtempSync(join(tmpdir(), `hermes-runtime-${PLATFORM}-`))
+const stage = mkdtempSync(join(tmpdir(), `DiTing-runtime-${PLATFORM}-`))
 
 try {
   cpSync(PY_DIR, join(stage, 'python'), { recursive: true, force: true, verbatimSymlinks: true })
@@ -89,7 +89,7 @@ try {
     platform: PLATFORM,
     targetOs: TARGET_OS,
     targetArch: TARGET_ARCH,
-    hermesAgentVersion,
+    DiTingAgentVersion,
     asset: {
       name: assetName,
     },

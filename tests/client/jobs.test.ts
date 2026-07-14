@@ -6,7 +6,7 @@ vi.stubGlobal('fetch', mockFetch)
 
 vi.mock('@/router', () => ({
   default: {
-    currentRoute: { value: { name: 'hermes.jobs' } },
+    currentRoute: { value: { name: 'DiTing.jobs' } },
     replace: vi.fn(),
   },
 }))
@@ -16,9 +16,9 @@ import {
   scheduleToDisplayText,
   scheduleToEditableInput,
   updateJob,
-} from '../../packages/client/src/api/hermes/jobs'
-import { listCronRuns } from '../../packages/client/src/api/hermes/cron-history'
-import type { Job } from '../../packages/client/src/api/hermes/jobs'
+} from '../../packages/client/src/api/DiTing/jobs'
+import { listCronRuns } from '../../packages/client/src/api/DiTing/cron-history'
+import type { Job } from '../../packages/client/src/api/DiTing/jobs'
 
 function makeJob(overrides: Partial<Job> = {}): Job {
   return {
@@ -51,7 +51,7 @@ function makeJob(overrides: Partial<Job> = {}): Job {
   }
 }
 
-describe('Hermes jobs edit payloads', () => {
+describe('DiTing jobs edit payloads', () => {
   beforeEach(() => {
     localStorage.clear()
     vi.clearAllMocks()
@@ -138,7 +138,7 @@ describe('Hermes jobs edit payloads', () => {
   })
 
   it('sends active profile header when loading job run history', async () => {
-    localStorage.setItem('hermes_active_profile_name', 'research')
+    localStorage.setItem('DiTing_active_profile_name', 'research')
     mockFetch.mockResolvedValue({
       ok: true,
       status: 200,
@@ -150,6 +150,6 @@ describe('Hermes jobs edit payloads', () => {
     expect(mockFetch).toHaveBeenCalledOnce()
     const [url, options] = mockFetch.mock.calls[0]
     expect(url).toBe('/api/cron-history?jobId=job-1')
-    expect(options.headers['X-Hermes-Profile']).toBe('research')
+    expect(options.headers['X-DiTing-Profile']).toBe('research')
   })
 })

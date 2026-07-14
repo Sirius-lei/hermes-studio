@@ -66,7 +66,7 @@ function createAssetApp(
 
 describe('static compression middleware', () => {
   it('prefers Brotli for compressible static responses', async () => {
-    const source = 'const payload = "hermes web ui";\n'.repeat(200)
+    const source = 'const payload = "DiTing web ui";\n'.repeat(200)
     const response = await requestApp(
       createAssetApp('application/javascript', source),
       { 'Accept-Encoding': 'gzip, br' },

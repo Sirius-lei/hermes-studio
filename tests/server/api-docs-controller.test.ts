@@ -21,7 +21,7 @@ describe('api docs controller', () => {
     expect(ctx.body.paths['/api/auth/users/{id}'].put.parameters).toEqual([
       expect.objectContaining({ name: 'id', in: 'path', required: true }),
     ])
-    expect(ctx.body.paths['/api/hermes/kanban/search-sessions'].get.parameters).toEqual(
+    expect(ctx.body.paths['/api/DiTing/kanban/search-sessions'].get.parameters).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: 'task_id', in: 'query', required: true }),
         expect.objectContaining({ name: 'profile', in: 'query', required: true }),

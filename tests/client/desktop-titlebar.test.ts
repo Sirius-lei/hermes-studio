@@ -10,7 +10,7 @@ type DesktopBridge = {
 }
 
 function setDesktopBridge(bridge: DesktopBridge) {
-  Object.defineProperty(window, 'hermesDesktop', {
+  Object.defineProperty(window, 'DiTingDesktop', {
     configurable: true,
     value: bridge,
   })
@@ -19,7 +19,7 @@ function setDesktopBridge(bridge: DesktopBridge) {
 describe('DesktopTitleBar', () => {
   afterEach(() => {
     vi.restoreAllMocks()
-    delete (window as typeof window & { hermesDesktop?: DesktopBridge }).hermesDesktop
+    delete (window as typeof window & { DiTingDesktop?: DesktopBridge }).DiTingDesktop
   })
 
   it('does not render a custom title bar on Linux so native window controls remain visible', () => {

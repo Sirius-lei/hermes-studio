@@ -11,6 +11,7 @@ function readRootPackage() {
 
 type LoadHealthControllerOptions = {
   injectedVersion?: string
+  agentVersionRaw?: string
   bridgeReadiness?: any
   bridgeReadinessError?: Error
   managerError?: Error
@@ -41,8 +42,8 @@ async function loadHealthController(options: LoadHealthControllerOptions = {}) {
     delete (globalThis as any).__APP_VERSION__
   }
 
-  vi.doMock('../../packages/server/src/services/hermes/hermes-cli', () => ({
-    getVersion: vi.fn().mockResolvedValue('Hermes Agent v0.11.0\n'),
+  vi.doMock('../../packages/server/src/services/DiTing/DiTing-cli', () => ({
+    getVersion: vi.fn().mockResolvedValue(options.agentVersionRaw || 'DiTing Agent v0.11.0\n'),
   }))
 
   const checkReadiness = options.bridgeReadinessError
@@ -51,13 +52,13 @@ async function loadHealthController(options: LoadHealthControllerOptions = {}) {
   const getRuntimeState = options.runtimeStateError
     ? vi.fn(() => { throw options.runtimeStateError })
     : vi.fn(() => ({
-        endpoint: options.bridgeReadiness?.endpoint || 'ipc:///tmp/hermes-agent-bridge.sock',
+        endpoint: options.bridgeReadiness?.endpoint || 'ipc:///tmp/DiTing-agent-bridge.sock',
       }))
   const getAgentBridgeManager = options.managerError
     ? vi.fn(() => { throw options.managerError })
     : vi.fn(() => ({ checkReadiness, getRuntimeState }))
 
-  vi.doMock('../../packages/server/src/services/hermes/agent-bridge/manager', () => ({
+  vi.doMock('../../packages/server/src/services/DiTing/agent-bridge/manager', () => ({
     getAgentBridgeManager,
   }))
 
@@ -114,6 +115,19 @@ describe('health controller version metadata', () => {
     await healthCheck(ctx)
 
     expect(ctx.body.webui_version).toBe('9.9.9-test')
+  })
+
+  it('does not expose the legacy runtime brand in health metadata', async () => {
+    const { healthCheck } = await loadHealthController({
+      agentVersionRaw: 'Legacy Agent v0.17.0 (runtime)\n',
+    })
+    const ctx = createMockCtx()
+
+    await healthCheck(ctx)
+
+    expect(ctx.body.platform).toBe('DiTing-agent')
+    expect(ctx.body.version).toBe('v0.17.0 (runtime)')
+    expect(JSON.stringify(ctx.body)).not.toContain('Legacy Agent')
   })
 
   it('checks npm latest using the root package name', async () => {
@@ -173,7 +187,7 @@ describe('health controller version metadata', () => {
 
     const { healthCheck, getAgentBridgeManager, checkReadiness } = await loadHealthControllerWithoutInjectedVersion({
       bridgeReadiness: {
-        endpoint: 'ipc:///tmp/hermes-agent-bridge.sock',
+        endpoint: 'ipc:///tmp/DiTing-agent-bridge.sock',
         endpointKind: 'ipc',
         status: 'unreachable',
         reachable: false,
@@ -185,7 +199,7 @@ describe('health controller version metadata', () => {
         restartScheduled: true,
         restartAttempts: 3,
         pid: 9876,
-        error: 'connect ENOENT /tmp/hermes-agent-bridge.sock',
+        error: 'connect ENOENT /tmp/DiTing-agent-bridge.sock',
       },
     })
     const ctx = createMockCtx()
@@ -209,14 +223,14 @@ describe('health controller version metadata', () => {
       error: 'connect ENOENT [redacted endpoint]',
     })
     expect(ctx.body.agent_bridge).not.toHaveProperty('endpoint')
-    expect(JSON.stringify(ctx.body.agent_bridge)).not.toContain('/tmp/hermes-agent-bridge.sock')
+    expect(JSON.stringify(ctx.body.agent_bridge)).not.toContain('/tmp/DiTing-agent-bridge.sock')
   })
 
   it('handles agent bridge readiness probe errors without failing the health check', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }))
 
     const { healthCheck, checkReadiness, getRuntimeState } = await loadHealthControllerWithoutInjectedVersion({
-      bridgeReadinessError: new Error('bridge manager unavailable at ipc:///tmp/hermes-agent-bridge.sock (ENOENT /tmp/hermes-agent-bridge.sock)'),
+      bridgeReadinessError: new Error('bridge manager unavailable at ipc:///tmp/DiTing-agent-bridge.sock (ENOENT /tmp/DiTing-agent-bridge.sock)'),
     })
     const ctx = createMockCtx()
 
@@ -231,15 +245,15 @@ describe('health controller version metadata', () => {
       reachable: false,
       error: 'bridge manager unavailable at [redacted endpoint] (ENOENT [redacted endpoint])',
     })
-    expect(JSON.stringify(ctx.body.agent_bridge)).not.toContain('/tmp/hermes-agent-bridge.sock')
-    expect(JSON.stringify(ctx.body.agent_bridge)).not.toContain('ipc:///tmp/hermes-agent-bridge.sock')
+    expect(JSON.stringify(ctx.body.agent_bridge)).not.toContain('/tmp/DiTing-agent-bridge.sock')
+    expect(JSON.stringify(ctx.body.agent_bridge)).not.toContain('ipc:///tmp/DiTing-agent-bridge.sock')
   })
 
   it('handles manager construction errors without failing the base health check', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }))
 
     const { healthCheck, getAgentBridgeManager, checkReadiness } = await loadHealthControllerWithoutInjectedVersion({
-      managerError: new Error('bad bridge config /tmp/hermes-agent-bridge.sock'),
+      managerError: new Error('bad bridge config /tmp/DiTing-agent-bridge.sock'),
     })
     const ctx = createMockCtx()
 

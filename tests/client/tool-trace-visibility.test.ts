@@ -14,9 +14,9 @@ vi.mock('@/composables/useTheme', () => ({
   useTheme: () => ({ isDark: false }),
 }))
 
-import MessageList from '@/components/hermes/chat/MessageList.vue'
-import HistoryMessageList from '@/components/hermes/chat/HistoryMessageList.vue'
-import { useChatStore, type Message, type Session } from '@/stores/hermes/chat'
+import MessageList from '@/components/DiTing/chat/MessageList.vue'
+import HistoryMessageList from '@/components/DiTing/chat/HistoryMessageList.vue'
+import { useChatStore, type Message, type Session } from '@/stores/DiTing/chat'
 import { useToolTraceVisibility } from '@/composables/useToolTraceVisibility'
 
 const MessageItemStub = defineComponent({
@@ -48,7 +48,7 @@ const sampleMessages: Message[] = [
 describe('tool trace visibility', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
-    localStorage.removeItem('hermes_show_tool_calls')
+    localStorage.removeItem('DiTing_show_tool_calls')
     useToolTraceVisibility().setToolTraceVisible(true)
   })
 

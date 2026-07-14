@@ -4,16 +4,16 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import YAML from 'js-yaml'
 
-vi.mock('../../packages/server/src/services/hermes/hermes-cli', () => ({
+vi.mock('../../packages/server/src/services/DiTing/DiTing-cli', () => ({
   restartGateway: vi.fn().mockResolvedValue(undefined),
 }))
 
-let hermesHome = ''
+let DiTingHome = ''
 
 async function loadProvidersController() {
   vi.resetModules()
-  process.env.HERMES_HOME = hermesHome
-  return import('../../packages/server/src/controllers/hermes/providers')
+  process.env.DiTing_HOME = DiTingHome
+  return import('../../packages/server/src/controllers/DiTing/providers')
 }
 
 function makeCtx(poolKey: string, overrides: Record<string, any> = {}) {
@@ -26,7 +26,7 @@ function makeCtx(poolKey: string, overrides: Record<string, any> = {}) {
   }
 }
 
-function readAuth(profileDir = hermesHome) {
+function readAuth(profileDir = DiTingHome) {
   return JSON.parse(readFileSync(join(profileDir, 'auth.json'), 'utf-8'))
 }
 
@@ -36,28 +36,28 @@ function readYaml(filePath: string) {
 
 describe('providers controller delete', () => {
   beforeEach(() => {
-    hermesHome = mkdtempSync(join(tmpdir(), 'hwui-provider-delete-'))
-    mkdirSync(hermesHome, { recursive: true })
-    writeFileSync(join(hermesHome, 'config.yaml'), 'model:\n  provider: openai-codex\n  default: gpt-5.5\n')
+    DiTingHome = mkdtempSync(join(tmpdir(), 'hwui-provider-delete-'))
+    mkdirSync(DiTingHome, { recursive: true })
+    writeFileSync(join(DiTingHome, 'config.yaml'), 'model:\n  provider: openai-codex\n  default: gpt-5.5\n')
   })
 
   afterEach(() => {
-    delete process.env.HERMES_HOME
-    vi.doUnmock('../../packages/server/src/controllers/hermes/providers')
+    delete process.env.DiTing_HOME
+    vi.doUnmock('../../packages/server/src/controllers/DiTing/providers')
     vi.clearAllMocks()
-    if (hermesHome) rmSync(hermesHome, { recursive: true, force: true })
-    hermesHome = ''
+    if (DiTingHome) rmSync(DiTingHome, { recursive: true, force: true })
+    DiTingHome = ''
   })
 
   it('removes built-in API-key provider credentials from env and auth pool', async () => {
-    writeFileSync(join(hermesHome, '.env'), [
+    writeFileSync(join(DiTingHome, '.env'), [
       ['DEEPSEEK_API_KEY', 'deepseek-placeholder'].join('='),
       ['DEEPSEEK_BASE_URL', 'https://deepseek-proxy.invalid/v1'].join('='),
       ['OPENROUTER_API_KEY', 'openrouter-placeholder'].join('='),
       ['OPENROUTER_BASE_URL', 'https://openrouter-proxy.invalid/v1'].join('='),
       '',
     ].join('\n'))
-    writeFileSync(join(hermesHome, 'auth.json'), JSON.stringify({
+    writeFileSync(join(DiTingHome, 'auth.json'), JSON.stringify({
       providers: {
         deepseek: { access_token: 'legacy-token' },
         openrouter: { access_token: 'keep-token' },
@@ -74,7 +74,7 @@ describe('providers controller delete', () => {
     await remove(ctx)
 
     expect(ctx.body).toEqual({ success: true })
-    const envAfter = readFileSync(join(hermesHome, '.env'), 'utf-8')
+    const envAfter = readFileSync(join(DiTingHome, '.env'), 'utf-8')
     expect(envAfter).not.toContain('DEEPSEEK_API_KEY')
     expect(envAfter).not.toContain('DEEPSEEK_BASE_URL')
     expect(envAfter).toContain(['OPENROUTER_API_KEY', 'openrouter-placeholder'].join('='))
@@ -90,7 +90,7 @@ describe('providers controller delete', () => {
   })
 
   it('does not remove unrelated base URL env for a provider without a base URL env mapping', async () => {
-    writeFileSync(join(hermesHome, '.env'), [
+    writeFileSync(join(DiTingHome, '.env'), [
       ['XAI_BASE_URL', 'https://xai-proxy.invalid/v1'].join('='),
       ['DEEPSEEK_BASE_URL', 'https://deepseek-proxy.invalid/v1'].join('='),
       '',
@@ -102,13 +102,13 @@ describe('providers controller delete', () => {
     await remove(ctx)
 
     expect(ctx.body).toEqual({ success: true })
-    const envAfter = readFileSync(join(hermesHome, '.env'), 'utf-8')
+    const envAfter = readFileSync(join(DiTingHome, '.env'), 'utf-8')
     expect(envAfter).toContain(['XAI_BASE_URL', 'https://xai-proxy.invalid/v1'].join('='))
     expect(envAfter).toContain(['DEEPSEEK_BASE_URL', 'https://deepseek-proxy.invalid/v1'].join('='))
   })
 
   it('removes custom provider config and any matching stored auth entry', async () => {
-    writeFileSync(join(hermesHome, 'config.yaml'), [
+    writeFileSync(join(DiTingHome, 'config.yaml'), [
       'model:',
       '  provider: openai-codex',
       '  default: gpt-5.5',
@@ -123,7 +123,7 @@ describe('providers controller delete', () => {
       '    model: keep-model',
       '',
     ].join('\n'))
-    writeFileSync(join(hermesHome, 'auth.json'), JSON.stringify({
+    writeFileSync(join(DiTingHome, 'auth.json'), JSON.stringify({
       credential_pool: {
         'custom:deepseek-proxy': [{ label: 'custom' }],
         'custom:keep-provider': [{ label: 'keep' }],
@@ -136,7 +136,7 @@ describe('providers controller delete', () => {
     await remove(ctx)
 
     expect(ctx.body).toEqual({ success: true })
-    const configAfter = readFileSync(join(hermesHome, 'config.yaml'), 'utf-8')
+    const configAfter = readFileSync(join(DiTingHome, 'config.yaml'), 'utf-8')
     expect(configAfter).not.toContain('deepseek-proxy')
     expect(configAfter).toContain('keep-provider')
 
@@ -146,7 +146,7 @@ describe('providers controller delete', () => {
   })
 
   it('removes v12 providers dict entries when requested by source', async () => {
-    writeFileSync(join(hermesHome, 'config.yaml'), [
+    writeFileSync(join(DiTingHome, 'config.yaml'), [
       'model:',
       '  provider: custom:dict-provider',
       '  default: dict-model',
@@ -160,7 +160,7 @@ describe('providers controller delete', () => {
       '    default_model: keep-model',
       '',
     ].join('\n'))
-    writeFileSync(join(hermesHome, 'auth.json'), JSON.stringify({
+    writeFileSync(join(DiTingHome, 'auth.json'), JSON.stringify({
       credential_pool: {
         'custom:dict-provider': [{ label: 'dict' }],
         'custom:keep-provider': [{ label: 'keep' }],
@@ -175,7 +175,7 @@ describe('providers controller delete', () => {
     await remove(ctx)
 
     expect(ctx.body).toEqual({ success: true })
-    const configAfter = readYaml(join(hermesHome, 'config.yaml'))
+    const configAfter = readYaml(join(DiTingHome, 'config.yaml'))
     expect(configAfter.providers).not.toHaveProperty('dict-provider')
     expect(configAfter.providers).toHaveProperty('keep-provider')
     expect(configAfter.model).toEqual({
@@ -189,7 +189,7 @@ describe('providers controller delete', () => {
   })
 
   it('uses provider source to delete one side when legacy and dict providers share a name', async () => {
-    writeFileSync(join(hermesHome, 'config.yaml'), [
+    writeFileSync(join(DiTingHome, 'config.yaml'), [
       'model:',
       '  provider: custom:shared',
       '  default: legacy-model',
@@ -214,14 +214,14 @@ describe('providers controller delete', () => {
     await remove(ctx)
 
     expect(ctx.body).toEqual({ success: true })
-    const configAfter = readYaml(join(hermesHome, 'config.yaml'))
+    const configAfter = readYaml(join(DiTingHome, 'config.yaml'))
     expect(configAfter.providers).not.toHaveProperty('shared')
     expect(configAfter.custom_providers).toHaveLength(1)
     expect(configAfter.custom_providers[0].name).toBe('shared')
   })
 
   it('keeps OAuth-style provider deletion clearing stored auth entries', async () => {
-    writeFileSync(join(hermesHome, 'auth.json'), JSON.stringify({
+    writeFileSync(join(DiTingHome, 'auth.json'), JSON.stringify({
       providers: {
         'openai-codex': { account_id: 'remove-me' },
         copilot: { account_id: 'keep-me' },
@@ -246,7 +246,7 @@ describe('providers controller delete', () => {
   })
 
   it('does not create auth.json when deleting a provider without stored auth credentials', async () => {
-    writeFileSync(join(hermesHome, '.env'), [['DEEPSEEK_API_KEY', 'deepseek-placeholder'].join('='), ''].join('\n'))
+    writeFileSync(join(DiTingHome, '.env'), [['DEEPSEEK_API_KEY', 'deepseek-placeholder'].join('='), ''].join('\n'))
 
     const { remove } = await loadProvidersController()
     const ctx = makeCtx('deepseek')
@@ -254,24 +254,24 @@ describe('providers controller delete', () => {
     await remove(ctx)
 
     expect(ctx.body).toEqual({ success: true })
-    expect(existsSync(join(hermesHome, 'auth.json'))).toBe(false)
+    expect(existsSync(join(DiTingHome, 'auth.json'))).toBe(false)
   })
 
   it('deletes provider state from the request-scoped profile only', async () => {
-    const researchDir = join(hermesHome, 'profiles', 'research')
+    const researchDir = join(DiTingHome, 'profiles', 'research')
     mkdirSync(researchDir, { recursive: true })
-    writeFileSync(join(hermesHome, 'config.yaml'), [
+    writeFileSync(join(DiTingHome, 'config.yaml'), [
       'model:',
       '  provider: deepseek',
       '  default: keep-default-model',
       '',
     ].join('\n'))
-    writeFileSync(join(hermesHome, '.env'), [
+    writeFileSync(join(DiTingHome, '.env'), [
       ['DEEPSEEK_API_KEY', 'keep-default-key'].join('='),
       ['OPENROUTER_API_KEY', 'keep-default-openrouter'].join('='),
       '',
     ].join('\n'))
-    writeFileSync(join(hermesHome, 'auth.json'), JSON.stringify({
+    writeFileSync(join(DiTingHome, 'auth.json'), JSON.stringify({
       providers: {
         deepseek: { access_token: 'keep-default-token' },
       },
@@ -313,10 +313,10 @@ describe('providers controller delete', () => {
 
     expect(ctx.body).toEqual({ success: true })
 
-    const defaultEnvAfter = readFileSync(join(hermesHome, '.env'), 'utf-8')
+    const defaultEnvAfter = readFileSync(join(DiTingHome, '.env'), 'utf-8')
     expect(defaultEnvAfter).toContain(['DEEPSEEK_API_KEY', 'keep-default-key'].join('='))
     expect(defaultEnvAfter).toContain(['OPENROUTER_API_KEY', 'keep-default-openrouter'].join('='))
-    expect(readFileSync(join(hermesHome, 'config.yaml'), 'utf-8')).toContain('keep-default-model')
+    expect(readFileSync(join(DiTingHome, 'config.yaml'), 'utf-8')).toContain('keep-default-model')
     expect(readAuth()).toEqual({
       providers: {
         deepseek: { access_token: 'keep-default-token' },

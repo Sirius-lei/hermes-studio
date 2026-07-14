@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { filterBridgeToolCallMarkupDelta, flushPendingToolCallMarkup } from '../../packages/server/src/services/hermes/run-chat/bridge-delta'
+import { filterBridgeToolCallMarkupDelta, flushPendingToolCallMarkup } from '../../packages/server/src/services/DiTing/run-chat/bridge-delta'
 
 describe('run-chat bridge delta filtering', () => {
   it('keeps ordinary assistant text', () => {

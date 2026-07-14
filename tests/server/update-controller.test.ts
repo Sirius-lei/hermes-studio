@@ -18,9 +18,9 @@ async function loadUpdateController(overrides: Partial<UpdateControllerMocks> = 
   const spawn = overrides.spawn ?? vi.fn(() => ({ unref, on: vi.fn() }))
   const existsSync = overrides.existsSync ?? vi.fn(() => true)
   const readFileSync = overrides.readFileSync ?? vi.fn(() => JSON.stringify({
-    name: 'hermes-web-ui',
+    name: 'DiTing-web-ui',
     version: '0.0.0',
-    repository: { url: 'https://github.com/EKKOLearnAI/hermes-studio.git' },
+    repository: { url: 'https://github.com/EKKOLearnAI/DiTing-studio.git' },
   }))
   const appendFileSync = overrides.appendFileSync ?? vi.fn()
 
@@ -68,8 +68,8 @@ function getNpmCliPath() {
 
 function getGlobalCliScript(prefix: string) {
   return process.platform === 'win32'
-    ? join(prefix, 'node_modules', 'hermes-web-ui', 'bin', 'hermes-web-ui.mjs')
-    : join(prefix, 'lib', 'node_modules', 'hermes-web-ui', 'bin', 'hermes-web-ui.mjs')
+    ? join(prefix, 'node_modules', 'DiTing-web-ui', 'bin', 'DiTing-web-ui.mjs')
+    : join(prefix, 'lib', 'node_modules', 'DiTing-web-ui', 'bin', 'DiTing-web-ui.mjs')
 }
 
 describe('update controller', () => {
@@ -91,7 +91,7 @@ describe('update controller', () => {
     } else {
       process.env.PORT = originalPort
     }
-    delete process.env.HERMES_WEB_UI_PREVIEW_REPO
+    delete process.env.DiTing_WEB_UI_PREVIEW_REPO
   })
 
   it('updates and restarts through the running Node executable, not PATH shims', async () => {
@@ -116,7 +116,7 @@ describe('update controller', () => {
 
     expect(mocks.execFile).toHaveBeenCalledWith(
       process.execPath,
-      [npmCli, 'install', '-g', 'hermes-web-ui@latest'],
+      [npmCli, 'install', '-g', 'DiTing-web-ui@latest'],
       expect.objectContaining({
         encoding: 'utf-8',
         timeout: 10 * 60 * 1000,
@@ -159,14 +159,14 @@ describe('update controller', () => {
     const npmCli = getNpmCliPath()
     let installCallback: ((error: Error | null, stdout: string, stderr: string) => void) | undefined
     const execFile = vi.fn((_command: string, args: string[], _options: any, callback: any) => {
-      if (args.includes('install') && args.includes('hermes-web-ui@latest')) {
+      if (args.includes('install') && args.includes('DiTing-web-ui@latest')) {
         installCallback = callback
         return
       }
       callback(null, '', '')
     })
     const execFileSync = vi.fn((_command: string, args: string[]) => {
-      if (args.includes('install') && args.includes('hermes-web-ui@latest')) {
+      if (args.includes('install') && args.includes('DiTing-web-ui@latest')) {
         throw new Error('global update install must not use execFileSync')
       }
       return ''
@@ -183,17 +183,17 @@ describe('update controller', () => {
     expect(second.status).toBe(409)
     expect(second.body).toEqual({
       success: false,
-      message: 'hermes-web-ui update is already in progress',
+      message: 'DiTing-web-ui update is already in progress',
     })
     expect(mocks.execFile).toHaveBeenCalledWith(
       process.execPath,
-      [npmCli, 'install', '-g', 'hermes-web-ui@latest'],
+      [npmCli, 'install', '-g', 'DiTing-web-ui@latest'],
       expect.objectContaining({ timeout: 10 * 60 * 1000 }),
       expect.any(Function),
     )
     expect(mocks.execFileSync).not.toHaveBeenCalledWith(
       process.execPath,
-      [npmCli, 'install', '-g', 'hermes-web-ui@latest'],
+      [npmCli, 'install', '-g', 'DiTing-web-ui@latest'],
       expect.any(Object),
     )
 
@@ -243,7 +243,7 @@ describe('update controller', () => {
 
   it('returns a 500 with stderr when installation fails', async () => {
     const execFile = vi.fn((_command: string, args: string[], _options: any, callback: any) => {
-      if (args.includes('install') && args.includes('hermes-web-ui@latest')) {
+      if (args.includes('install') && args.includes('DiTing-web-ui@latest')) {
         const error = new Error('install failed') as Error & { stderr?: string }
         error.stderr = 'engine mismatch'
         callback(error, '', 'engine mismatch')
@@ -260,7 +260,7 @@ describe('update controller', () => {
     expect(ctx.body).toEqual({ success: false, message: 'engine mismatch' })
     expect(mocks.execFileSync).not.toHaveBeenCalledWith(
       process.execPath,
-      [expect.any(String), 'install', '-g', 'hermes-web-ui@latest'],
+      [expect.any(String), 'install', '-g', 'DiTing-web-ui@latest'],
       expect.any(Object),
     )
     expect(mocks.spawn).not.toHaveBeenCalled()
@@ -268,7 +268,7 @@ describe('update controller', () => {
   })
 
   it('loads preview tags through async git with a short timeout', async () => {
-    process.env.HERMES_WEB_UI_PREVIEW_REPO = 'https://github.com/EKKOLearnAI/hermes-studio'
+    process.env.DiTing_WEB_UI_PREVIEW_REPO = 'https://github.com/EKKOLearnAI/DiTing-studio'
     const execFile = vi.fn((_command: string, _args: string[], _options: any, callback: any) => {
       callback(null, [
         'abc123\trefs/tags/v0.6.6',
@@ -291,14 +291,14 @@ describe('update controller', () => {
     })
     expect(mocks.execFile).toHaveBeenCalledWith(
       'git',
-      ['ls-remote', '--tags', '--refs', 'https://github.com/EKKOLearnAI/hermes-studio.git'],
+      ['ls-remote', '--tags', '--refs', 'https://github.com/EKKOLearnAI/DiTing-studio.git'],
       expect.objectContaining({ timeout: 8000 }),
       expect.any(Function),
     )
   })
 
   it('falls back to GitHub API when async git tag loading fails', async () => {
-    process.env.HERMES_WEB_UI_PREVIEW_REPO = 'https://github.com/EKKOLearnAI/hermes-studio'
+    process.env.DiTing_WEB_UI_PREVIEW_REPO = 'https://github.com/EKKOLearnAI/DiTing-studio'
     const execFile = vi.fn((_command: string, _args: string[], _options: any, callback: any) => {
       callback(new Error('git timeout'), '', '')
     })
@@ -325,9 +325,9 @@ describe('update controller', () => {
       ],
     })
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://api.github.com/repos/EKKOLearnAI/hermes-studio/tags?per_page=100',
+      'https://api.github.com/repos/EKKOLearnAI/DiTing-studio/tags?per_page=100',
       expect.objectContaining({
-        headers: { 'User-Agent': 'hermes-web-ui-preview' },
+        headers: { 'User-Agent': 'DiTing-web-ui-preview' },
         signal: expect.any(AbortSignal),
       }),
     )

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { authenticate, mockChatSocket, mockHermesApi, TEST_ACCESS_KEY } from './fixtures'
+import { authenticate, mockChatSocket, mockDiTingApi, TEST_ACCESS_KEY } from './fixtures'
 
 const inputPlaceholder = 'Type a message... (Enter to send, Shift+Enter for new line)'
 
@@ -32,10 +32,10 @@ async function waitForRun(page: Page, index = 0) {
 
 test('sends a chat run and renders streamed Socket.IO response events', async ({ page }) => {
   await authenticate(page, TEST_ACCESS_KEY, 'research')
-  const api = await mockHermesApi(page)
+  const api = await mockDiTingApi(page)
   await mockChatSocket(page)
 
-  await page.goto('/#/hermes/chat')
+  await page.goto('/#/DiTing/chat')
 
   await sendChatMessage(page, 'Summarize the queue')
 
@@ -58,29 +58,31 @@ test('sends a chat run and renders streamed Socket.IO response events', async ({
     const socket = (window as any).__PW_CHAT_SOCKET__.latest
     socket.__trigger('run.started', { event: 'run.started', session_id: sid, run_id: 'run-1' })
     socket.__trigger('message.delta', { event: 'message.delta', session_id: sid, run_id: 'run-1', delta: 'Streaming ' })
-    socket.__trigger('message.delta', { event: 'message.delta', session_id: sid, run_id: 'run-1', delta: 'answer from Hermes' })
+    socket.__trigger('message.delta', { event: 'message.delta', session_id: sid, run_id: 'run-1', delta: 'answer from DiTing' })
     socket.__trigger('run.completed', {
       event: 'run.completed',
       session_id: sid,
       run_id: 'run-1',
-      output: 'Streaming answer from Hermes',
+      output: 'Streaming answer from DiTing',
       inputTokens: 11,
       outputTokens: 7,
     })
   }, run.session_id)
 
-  await expect(page.getByText('Streaming answer from Hermes')).toBeVisible()
+  const streamedAnswer = page.locator('.message.assistant .message-bubble').getByText('Streaming answer from DiTing', { exact: true })
+  await expect(streamedAnswer).toHaveCount(1)
+  await expect(streamedAnswer).toBeVisible()
   await expect(page.getByRole('button', { name: 'Stop' })).toHaveCount(0)
   expect(api.unexpectedRequests).toEqual([])
 })
 
 test('uses the newly selected profile for the next chat-run socket after profile switch reload', async ({ page }) => {
   await authenticate(page, TEST_ACCESS_KEY, 'default')
-  const api = await mockHermesApi(page, { initialProfileName: 'default' })
+  const api = await mockDiTingApi(page, { initialProfileName: 'default' })
   await mockChatSocket(page)
 
-  await page.goto('/#/hermes/chat')
-  expect(await page.evaluate(() => window.localStorage.getItem('hermes_active_profile_name'))).toBe('default')
+  await page.goto('/#/DiTing/chat')
+  expect(await page.evaluate(() => window.localStorage.getItem('DiTing_active_profile_name'))).toBe('default')
 
   await sendChatMessage(page, 'Warm up default socket')
   const defaultRun = await waitForRun(page)
@@ -98,10 +100,10 @@ test('uses the newly selected profile for the next chat-run socket after profile
   }, defaultRun.run.session_id)
   await expect(page.getByRole('button', { name: 'Stop' })).toHaveCount(0)
 
-  await page.evaluate(() => window.localStorage.setItem('hermes_active_profile_name', 'research'))
+  await page.evaluate(() => window.localStorage.setItem('DiTing_active_profile_name', 'research'))
   await page.reload()
   await page.waitForLoadState('domcontentloaded')
-  expect(await page.evaluate(() => window.localStorage.getItem('hermes_active_profile_name'))).toBe('research')
+  expect(await page.evaluate(() => window.localStorage.getItem('DiTing_active_profile_name'))).toBe('research')
 
   await sendChatMessage(page, 'Use the active research profile')
   const { socket, run } = await waitForRun(page)
@@ -110,18 +112,18 @@ test('uses the newly selected profile for the next chat-run socket after profile
   expect(socket.options.auth).toEqual({ token: TEST_ACCESS_KEY })
   expect(socket.options.query).toEqual({ profile: 'research' })
   expect(run.input).toBe('Use the active research profile')
-  expect(await page.evaluate(() => window.localStorage.getItem('hermes_active_profile_name'))).toBe('research')
+  expect(await page.evaluate(() => window.localStorage.getItem('DiTing_active_profile_name'))).toBe('research')
 
-  expect(api.requests.some((request) => request.pathname === '/api/hermes/profiles/active')).toBe(false)
+  expect(api.requests.some((request) => request.pathname === '/api/DiTing/profiles/active')).toBe(false)
   expect(api.unexpectedRequests).toEqual([])
 })
 
 test('keeps queued runs on one socket and does not duplicate streamed handlers', async ({ page }) => {
   await authenticate(page, TEST_ACCESS_KEY, 'research')
-  const api = await mockHermesApi(page)
+  const api = await mockDiTingApi(page)
   await mockChatSocket(page)
 
-  await page.goto('/#/hermes/chat')
+  await page.goto('/#/DiTing/chat')
 
   await sendChatMessage(page, 'First queued contract')
   const first = await waitForRun(page)
@@ -208,10 +210,10 @@ test('keeps queued runs on one socket and does not duplicate streamed handlers',
 
 test('clears previous compression status when a new run starts', async ({ page }) => {
   await authenticate(page, TEST_ACCESS_KEY, 'research')
-  const api = await mockHermesApi(page)
+  const api = await mockDiTingApi(page)
   await mockChatSocket(page)
 
-  await page.goto('/#/hermes/chat')
+  await page.goto('/#/DiTing/chat')
 
   await sendChatMessage(page, 'Trigger compression before answering')
   const first = await waitForRun(page)
@@ -255,10 +257,10 @@ test('clears previous compression status when a new run starts', async ({ page }
 
 test('surfaces an empty completed run as an error instead of leaving chat stalled', async ({ page }) => {
   await authenticate(page, TEST_ACCESS_KEY, 'research')
-  const api = await mockHermesApi(page)
+  const api = await mockDiTingApi(page)
   await mockChatSocket(page)
 
-  await page.goto('/#/hermes/chat')
+  await page.goto('/#/DiTing/chat')
 
   await sendChatMessage(page, 'Call a broken provider')
   const { run } = await waitForRun(page)
@@ -284,10 +286,10 @@ test('surfaces an empty completed run as an error instead of leaving chat stalle
 
 test('renders tool trace and sends explicit approval decisions over the chat-run socket', async ({ page }) => {
   await authenticate(page, TEST_ACCESS_KEY, 'research')
-  const api = await mockHermesApi(page)
+  const api = await mockDiTingApi(page)
   await mockChatSocket(page)
 
-  await page.goto('/#/hermes/chat')
+  await page.goto('/#/DiTing/chat')
 
   await sendChatMessage(page, 'Use write_file with approval')
   const { run } = await waitForRun(page)
@@ -406,10 +408,10 @@ test('renders tool trace and sends explicit approval decisions over the chat-run
 
 test('keeps prior tool trace visible while hiding only the active run tool trace', async ({ page }) => {
   await authenticate(page, TEST_ACCESS_KEY, 'research')
-  const api = await mockHermesApi(page)
+  const api = await mockDiTingApi(page)
   await mockChatSocket(page)
 
-  await page.goto('/#/hermes/chat')
+  await page.goto('/#/DiTing/chat')
 
   await sendChatMessage(page, 'First tool trace')
   const first = await waitForRun(page)
@@ -509,10 +511,10 @@ test('keeps prior tool trace visible while hiding only the active run tool trace
 
 test('keeps completed same-run tool traces hidden until the run finishes', async ({ page }) => {
   await authenticate(page, TEST_ACCESS_KEY, 'research')
-  const api = await mockHermesApi(page)
+  const api = await mockDiTingApi(page)
   await mockChatSocket(page)
 
-  await page.goto('/#/hermes/chat')
+  await page.goto('/#/DiTing/chat')
 
   await sendChatMessage(page, 'Run multiple tools')
   const { run } = await waitForRun(page)
@@ -602,10 +604,10 @@ test('keeps completed same-run tool traces hidden until the run finishes', async
 
 test('keeps unnamed tool trace messages out of the transcript after completion', async ({ page }) => {
   await authenticate(page, TEST_ACCESS_KEY, 'research')
-  const api = await mockHermesApi(page)
+  const api = await mockDiTingApi(page)
   await mockChatSocket(page)
 
-  await page.goto('/#/hermes/chat')
+  await page.goto('/#/DiTing/chat')
 
   await sendChatMessage(page, 'Run internal unnamed tool')
   const { run } = await waitForRun(page)
@@ -737,10 +739,10 @@ test('keeps unnamed resumed tool traces hidden after session reload', async ({ p
       },
     }
   }, sessionId)
-  const api = await mockHermesApi(page, { sessions: [sessionSummary] })
+  const api = await mockDiTingApi(page, { sessions: [sessionSummary] })
   await mockChatSocket(page)
 
-  await page.goto('/#/hermes/chat')
+  await page.goto('/#/DiTing/chat')
 
   await expect(page.getByText('History answer visible.')).toBeVisible()
   await expect(page.locator('.message.tool .tool-line')).toHaveCount(0)
@@ -841,10 +843,10 @@ test('restores named resumed tool traces from assistant tool calls after session
       },
     }
   }, sessionId)
-  const api = await mockHermesApi(page, { sessions: [sessionSummary] })
+  const api = await mockDiTingApi(page, { sessions: [sessionSummary] })
   await mockChatSocket(page)
 
-  await page.goto('/#/hermes/chat')
+  await page.goto('/#/DiTing/chat')
 
   await expect(page.getByText('Named history answer visible.')).toBeVisible()
   const restoredTrace = page.locator('.message.tool .tool-line').filter({ hasText: 'read_file' })

@@ -7,14 +7,14 @@ import { getWebUiHome } from '../config'
 let updateInProgress = false
 const NODE_ENVIRONMENT_MISSING_CODE = 'node_environment_missing'
 
-const PREVIEW_DIR_NAME = 'hermes-web-ui-pereview'
-const PREVIEW_HOME_DIR_NAME = 'hermes-web-ui-pereview-home'
+const PREVIEW_DIR_NAME = 'DiTing-web-ui-pereview'
+const PREVIEW_HOME_DIR_NAME = 'DiTing-web-ui-pereview-home'
 const PREVIEW_BACKEND_PORT = 8650
 const PREVIEW_FRONTEND_PORT = 8651
 const PREVIEW_AGENT_BRIDGE_PORT = 18650
 const PREVIEW_AGENT_BRIDGE_WORKER_PORT_BASE = 19650
-const PREVIEW_AGENT_BRIDGE_ENDPOINT_ENV = 'HERMES_WEB_UI_PREVIEW_AGENT_BRIDGE_ENDPOINT'
-const PREVIEW_AGENT_BRIDGE_TRANSPORT_ENV = 'HERMES_WEB_UI_PREVIEW_AGENT_BRIDGE_TRANSPORT'
+const PREVIEW_AGENT_BRIDGE_ENDPOINT_ENV = 'DiTing_WEB_UI_PREVIEW_AGENT_BRIDGE_ENDPOINT'
+const PREVIEW_AGENT_BRIDGE_TRANSPORT_ENV = 'DiTing_WEB_UI_PREVIEW_AGENT_BRIDGE_TRANSPORT'
 const PREVIEW_FRONTEND_URL = `http://localhost:${PREVIEW_FRONTEND_PORT}`
 const PREVIEW_TAG_REF_PATTERN = /^[A-Za-z0-9._/-]+$/
 const PREVIEW_MAIN_REF = 'main'
@@ -112,7 +112,7 @@ function normalizeGithubRepoUrl(raw: string): string {
 }
 
 function getPreviewRepoBaseUrl(): string {
-  const configured = process.env.HERMES_WEB_UI_PREVIEW_REPO?.trim()
+  const configured = process.env.DiTing_WEB_UI_PREVIEW_REPO?.trim()
   const repository = configured || readPackageInfo()?.repositoryUrl || ''
   const normalized = normalizeGithubRepoUrl(repository)
   if (!normalized) throw new Error('Preview repository is not configured')
@@ -322,7 +322,7 @@ function getPreviewViteHostArg() {
 }
 
 function getGlobalPackageBin(root: string) {
-  return join(root, 'hermes-web-ui', 'bin', 'hermes-web-ui.mjs')
+  return join(root, 'DiTing-web-ui', 'bin', 'DiTing-web-ui.mjs')
 }
 
 function getCurrentNodeEnv() {
@@ -384,7 +384,7 @@ function getPreviewAgentBridgeEndpoint() {
   if (configured) return configured
 
   const transport = normalizePreviewAgentBridgeTransport(process.env[PREVIEW_AGENT_BRIDGE_TRANSPORT_ENV])
-    || normalizePreviewAgentBridgeTransport(process.env.HERMES_AGENT_BRIDGE_WORKER_TRANSPORT)
+    || normalizePreviewAgentBridgeTransport(process.env.DiTing_AGENT_BRIDGE_WORKER_TRANSPORT)
   const useTcp = transport ? transport === 'tcp' : process.platform === 'win32'
   return useTcp
     ? `tcp://127.0.0.1:${PREVIEW_AGENT_BRIDGE_PORT}`
@@ -663,8 +663,8 @@ function assertPreviewPackage() {
   }
 
   const pkg = JSON.parse(readFileSync(packagePath, 'utf-8'))
-  if (pkg?.name !== 'hermes-web-ui') {
-    throw new Error(`Preview directory is not hermes-web-ui: ${getPreviewDir()}`)
+  if (pkg?.name !== 'DiTing-web-ui') {
+    throw new Error(`Preview directory is not DiTing-web-ui: ${getPreviewDir()}`)
   }
 }
 
@@ -718,7 +718,7 @@ function patchPreviewWebSocketClient(source: string) {
   return source.replace(
     /const host = import\.meta\.env\.DEV\s*\?\s*formatHostForPort\(location\.hostname,\s*\d+\)\s*:\s*location\.host/g,
     [
-      'const directDevPort = import.meta.env.VITE_HERMES_DIRECT_WS_PORT',
+      'const directDevPort = import.meta.env.VITE_DiTing_DIRECT_WS_PORT',
       '  const host = import.meta.env.DEV && directDevPort',
       '    ? formatHostForPort(location.hostname, Number(directDevPort))',
       '    : location.host',
@@ -728,8 +728,8 @@ function patchPreviewWebSocketClient(source: string) {
 
 function patchPreviewApiClient(source: string) {
   return source.replace(
-    /return localStorage\.getItem\(['"]hermes_server_url['"]\) \|\| DEFAULT_BASE_URL/,
-    "return import.meta.env.VITE_HERMES_PREVIEW === '1' ? DEFAULT_BASE_URL : localStorage.getItem('hermes_server_url') || DEFAULT_BASE_URL",
+    /return localStorage\.getItem\(['"]DiTing_server_url['"]\) \|\| DEFAULT_BASE_URL/,
+    "return import.meta.env.VITE_DiTing_PREVIEW === '1' ? DEFAULT_BASE_URL : localStorage.getItem('DiTing_server_url') || DEFAULT_BASE_URL",
   )
 }
 
@@ -737,14 +737,14 @@ function patchPreviewViteConfig(source: string) {
   let next = source.replace(
     /const BACKEND = ['"]http:\/\/127\.0\.0\.1:\d+['"]/,
     [
-      `const BACKEND_PORT = process.env.HERMES_WEB_UI_BACKEND_PORT || '${PREVIEW_BACKEND_PORT}'`,
+      `const BACKEND_PORT = process.env.DiTing_WEB_UI_BACKEND_PORT || '${PREVIEW_BACKEND_PORT}'`,
       'const BACKEND = `http://127.0.0.1:${BACKEND_PORT}`',
     ].join('\n'),
   )
-  if (!next.includes('HERMES_WEB_UI_FRONTEND_PORT')) {
+  if (!next.includes('DiTing_WEB_UI_FRONTEND_PORT')) {
     next = next.replace(
       /server:\s*\{/,
-      `server: {\n    port: Number(process.env.HERMES_WEB_UI_FRONTEND_PORT || ${PREVIEW_FRONTEND_PORT}),\n    strictPort: true,`,
+      `server: {\n    port: Number(process.env.DiTing_WEB_UI_FRONTEND_PORT || ${PREVIEW_FRONTEND_PORT}),\n    strictPort: true,`,
     )
   }
   next = next.replace(
@@ -756,15 +756,15 @@ function patchPreviewViteConfig(source: string) {
 
 function patchPreviewSidebar(source: string) {
   let next = source
-  if (!next.includes('VITE_HERMES_PREVIEW')) {
+  if (!next.includes('VITE_DiTing_PREVIEW')) {
     next = next.replace(
       /const isSuperAdmin = computed\(\(\) => isStoredSuperAdmin\(\)\);/,
-      "const isSuperAdmin = computed(() => isStoredSuperAdmin());\nconst isVersionPreview = import.meta.env.VITE_HERMES_PREVIEW === '1';",
+      "const isSuperAdmin = computed(() => isStoredSuperAdmin());\nconst isVersionPreview = import.meta.env.VITE_DiTing_PREVIEW === '1';",
     )
   }
   next = next.replace(
-    /<RouteLinkItem v-if="isSuperAdmin" class="nav-item" :to="\{ name: 'hermes\.versionPreview' \}"/,
-    '<RouteLinkItem v-if="isSuperAdmin && !isVersionPreview" class="nav-item" :to="{ name: \'hermes.versionPreview\' }"',
+    /<RouteLinkItem v-if="isSuperAdmin" class="nav-item" :to="\{ name: 'DiTing\.versionPreview' \}"/,
+    '<RouteLinkItem v-if="isSuperAdmin && !isVersionPreview" class="nav-item" :to="{ name: \'DiTing.versionPreview\' }"',
   )
   return next
 }
@@ -790,9 +790,9 @@ function applyPreviewRuntimePatch() {
     patchFileIfExists(viteConfigPath, patchPreviewViteConfig)
   }
 
-  patchFileIfExists(join(previewDir, 'packages/client/src/components/hermes/chat/TerminalPanel.vue'), patchPreviewWebSocketClient)
-  patchFileIfExists(join(previewDir, 'packages/client/src/views/hermes/TerminalView.vue'), patchPreviewWebSocketClient)
-  patchFileIfExists(join(previewDir, 'packages/client/src/api/hermes/kanban.ts'), patchPreviewWebSocketClient)
+  patchFileIfExists(join(previewDir, 'packages/client/src/components/DiTing/chat/TerminalPanel.vue'), patchPreviewWebSocketClient)
+  patchFileIfExists(join(previewDir, 'packages/client/src/views/DiTing/TerminalView.vue'), patchPreviewWebSocketClient)
+  patchFileIfExists(join(previewDir, 'packages/client/src/api/DiTing/kanban.ts'), patchPreviewWebSocketClient)
   patchFileIfExists(join(previewDir, 'packages/client/src/api/client.ts'), patchPreviewApiClient)
   patchFileIfExists(join(previewDir, 'packages/client/src/components/layout/AppSidebar.vue'), patchPreviewSidebar)
 }
@@ -870,7 +870,7 @@ async function downloadGithubZip(ref: string, targetDir: string, type: 'tag' | '
   const url = `https://codeload.github.com/${owner}/${repo}/${archiveKind}/refs/${refKind}/${encodeURIComponent(ref)}`
   appendPreviewActionLog(`download archive: ${url}`)
   const res = await fetch(url, {
-    headers: { 'User-Agent': 'hermes-web-ui-preview' },
+    headers: { 'User-Agent': 'DiTing-web-ui-preview' },
     signal: AbortSignal.timeout(60_000),
   })
   if (!res.ok) throw new Error(`Failed to download GitHub archive: HTTP ${res.status}`)
@@ -969,7 +969,7 @@ async function getGlobalRootAsync() {
 async function getGlobalCliScriptAsync() {
   const cli = getGlobalPackageBin(await getGlobalRootAsync())
   if (!existsSync(cli)) {
-    throw new Error(`Updated hermes-web-ui CLI not found: ${cli}`)
+    throw new Error(`Updated DiTing-web-ui CLI not found: ${cli}`)
   }
   return cli
 }
@@ -981,7 +981,7 @@ async function runUpdateInstall() {
     console.warn('[update] failed to clean npm cache, continuing update:', err)
   }
 
-  return runNpmAsync(['install', '-g', 'hermes-web-ui@latest'], { timeout: 10 * 60 * 1000 })
+  return runNpmAsync(['install', '-g', 'DiTing-web-ui@latest'], { timeout: 10 * 60 * 1000 })
 }
 
 async function spawnRestart(port: string) {
@@ -1000,7 +1000,7 @@ export async function handleUpdate(ctx: any) {
     ctx.status = 409
     ctx.body = {
       success: false,
-      message: 'hermes-web-ui update is already in progress',
+      message: 'DiTing-web-ui update is already in progress',
     }
     return
   }
@@ -1013,7 +1013,7 @@ export async function handleUpdate(ctx: any) {
 
     ctx.body = {
       success: true,
-      message: output.trim() || 'hermes-web-ui updated successfully',
+      message: output.trim() || 'DiTing-web-ui updated successfully',
     }
 
     keepUpdateLockForRestart = true
@@ -1079,7 +1079,7 @@ export async function previewTags(ctx: any) {
   try {
     appendPreviewActionLog('load tags with GitHub API')
     const res = await fetch(`${getPreviewRepoApiUrl()}/tags?per_page=100`, {
-      headers: { 'User-Agent': 'hermes-web-ui-preview' },
+      headers: { 'User-Agent': 'DiTing-web-ui-preview' },
       signal: AbortSignal.timeout(15_000),
     })
     if (!res.ok) {
@@ -1197,14 +1197,14 @@ export async function startPreview(ctx: any) {
         ...getCurrentNodeEnv(),
         NODE_ENV: 'development',
         PORT: String(PREVIEW_BACKEND_PORT),
-        HERMES_WEB_UI_HOME: getPreviewHomeDir(),
-        HERMES_WEBUI_STATE_DIR: getPreviewHomeDir(),
-        HERMES_AGENT_BRIDGE_ENDPOINT: getPreviewAgentBridgeEndpoint(),
-        HERMES_AGENT_BRIDGE_WORKER_PORT_BASE: String(PREVIEW_AGENT_BRIDGE_WORKER_PORT_BASE),
+        DiTing_WEB_UI_HOME: getPreviewHomeDir(),
+        DiTing_WEBUI_STATE_DIR: getPreviewHomeDir(),
+        DiTing_AGENT_BRIDGE_ENDPOINT: getPreviewAgentBridgeEndpoint(),
+        DiTing_AGENT_BRIDGE_WORKER_PORT_BASE: String(PREVIEW_AGENT_BRIDGE_WORKER_PORT_BASE),
         AUTH_TOKEN: '',
-        HERMES_WEB_UI_BACKEND_PORT: String(PREVIEW_BACKEND_PORT),
-        HERMES_WEB_UI_FRONTEND_PORT: String(PREVIEW_FRONTEND_PORT),
-        VITE_HERMES_PREVIEW: '1',
+        DiTing_WEB_UI_BACKEND_PORT: String(PREVIEW_BACKEND_PORT),
+        DiTing_WEB_UI_FRONTEND_PORT: String(PREVIEW_FRONTEND_PORT),
+        VITE_DiTing_PREVIEW: '1',
       }
       const execution = npmExecution(['run', 'dev'], env)
       const logFd = openPreviewLogFile()

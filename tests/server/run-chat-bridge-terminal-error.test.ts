@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { bridgeTerminalError } from '../../packages/server/src/services/hermes/run-chat/handle-bridge-run'
+import { bridgeTerminalError } from '../../packages/server/src/services/DiTing/run-chat/handle-bridge-run'
 
 describe('bridge terminal error detection', () => {
   it('uses bridge status errors directly', () => {

@@ -1,0 +1,6393 @@
+import { startRunViaSocket, resumeSession, registerSessionHandlers, unregisterSessionHandlers, getChatRunSocket, respondToolApproval, onPeerUserMessage, onSessionCommand, onSessionTitleUpdated, respondClarify, type ChatRunTransport, type RunEvent, type ResumeSessionPayload, type StartRunRequest, type ContentBlock as ContentBlockImport } from '@/api/DiTing/chat'
+import { fetchSessionCollaborationRuns, type CollaborationRunRecord } from '@/api/DiTing/collaboration-runs'
+import { deleteSession as deleteSessionApi, fetchSessionMessagesPage, fetchSessions, setSessionModel, type DiTingMessage, type SessionSummary } from '@/api/DiTing/sessions'
+import { getActiveProfileName, getActiveUserContextId } from '@/api/client'
+import { inferCodingAgentApiMode, normalizeCodingAgentApiMode } from '@/api/coding-agents'
+import { getDownloadUrl } from '@/api/DiTing/download'
+import type { ProviderApiMode } from '@/api/DiTing/system'
+import { defineStore } from 'pinia'
+import { ref, computed, watch } from 'vue'
+import { useAppStore } from './app'
+import { useProfilesStore } from './profiles'
+import { useSettingsStore } from './settings'
+import { primeCompletionSound, playCompletionSound } from '@/utils/completion-sound'
+import { showCompletionNotification } from '@/utils/completion-notification'
+import { detectThinkingBoundary } from '@/utils/thinking-parser'
+import { sanitizeAgentDisplayText } from '@/utils/agent-display-text'
+import { isKnownBridgeSessionCommand } from '@/utils/DiTing/bridge-session-commands'
+import { responseErrorMessage } from '@/utils/http-error'
+import { recordSubAgentInvocationComplete, recordSubAgentInvocationStart } from '@/utils/subagent-storage'
+
+// Re-export ContentBlock for convenience
+export type ContentBlock = ContentBlockImport
+
+export const LIVE_CHAT_MESSAGE_PAGE_SIZE = 150
+export const LIVE_CHAT_MAX_LOADED_MESSAGES = 300
+
+export interface Attachment {
+  id: string
+  name: string
+  type: string
+  size: number
+  url: string
+  file?: File
+}
+
+export interface MultiAgentRunCandidate {
+  id: string
+  name: string
+  description?: string
+  baseUrl?: string
+  chatPath?: string
+  enabled?: boolean
+  skills?: Array<{ name?: string; description?: string }>
+  tools?: Array<{ name?: string; description?: string }>
+}
+
+export interface MultiAgentRunOptions {
+  enabled: boolean
+  candidates?: MultiAgentRunCandidate[]
+}
+
+export type MultiAgentNodeOutcomeState = 'unknown' | 'success' | 'partial' | 'failure' | 'unsafe'
+
+export interface MultiAgentPlanNodeState {
+  id: string
+  title: string
+  phase: string
+  status: 'todo' | 'doing' | 'done' | 'partial' | 'blocked' | 'unsafe' | 'failed' | 'waiting_replan' | 'invalidated' | 'skipped'
+  outcome: MultiAgentNodeOutcomeState
+  dependsOn: string[]
+  executor: {
+    type: 'DiTing' | 'subagent'
+    id?: string
+    name: string
+  }
+  summary: string
+}
+
+export interface MultiAgentPlanDependencyState {
+  from: string
+  to: string
+  type: 'blocks' | 'informs'
+}
+
+export interface MultiAgentExecutionEventState {
+  id: string
+  kind: 'route' | 'subagent.task_sent' | 'subagent.task_accepted' | 'subagent.start' | 'subagent.tool' | 'subagent.progress' | 'subagent.artifact_published' | 'subagent.result_received' | 'subagent.result_rejected' | 'subagent.finalization_blocked' | 'subagent.clarify_required' | 'subagent.complete'
+  title: string
+  text: string
+  status: 'info' | 'running' | 'done' | 'error'
+  timestamp: number
+  agentId?: string
+  agentName?: string
+  toolName?: string
+  output?: string
+}
+
+export interface MultiAgentThinkingStepState {
+  id: string
+  title: string
+  detail: string
+  status: 'pending' | 'running' | 'done'
+}
+
+export interface MultiAgentWorkflowStepState {
+  id: string
+  title: string
+  detail: string
+  status: 'pending' | 'running' | 'done' | 'error'
+}
+
+export interface MultiAgentWorkflowEventState {
+  id: string
+  title: string
+  text: string
+  status: 'info' | 'running' | 'done' | 'error'
+  timestamp: number
+  agentName?: string
+  toolName?: string
+}
+
+export interface MultiAgentWorkflowSubagentStreamState {
+  id: string
+  nodeId?: string
+  agentId?: string
+  agentName: string
+  title: string
+  text: string
+  status: 'running' | 'done' | 'error'
+  toolName?: string
+  updatedAt: number
+}
+
+export interface MultiAgentWorkflowMessageState {
+  title: string
+  subtitle: string
+  objective: string
+  current: string
+  status: 'running' | 'done' | 'error'
+  reasoningText: string
+  mainAgentStream: string
+  subagentStreams: MultiAgentWorkflowSubagentStreamState[]
+  steps: MultiAgentWorkflowStepState[]
+  events: MultiAgentWorkflowEventState[]
+}
+
+export interface MultiAgentRouteState {
+  runId: string
+  sessionId: string
+  mode: 'delegate_subagent' | 'DiTing_native'
+  intent: string
+  category: string
+  reason: string
+  text: string
+  objective: string
+  status: 'idle' | 'running' | 'completed' | 'failed'
+  currentNodeId: string | null
+  selectedAgentId: string
+  selectedAgentName: string
+  todo: string[]
+  constraints: string[]
+  planNodes: MultiAgentPlanNodeState[]
+  planDependencies: MultiAgentPlanDependencyState[]
+  activity: MultiAgentExecutionEventState[]
+  thinkingSteps: MultiAgentThinkingStepState[]
+  startedAt: number
+  endedAt: number | null
+}
+
+function isMultiAgentStatus(value: unknown): value is MultiAgentRouteState['status'] {
+  return value === 'idle' || value === 'running' || value === 'completed' || value === 'failed'
+}
+
+function isPlanNodeStatus(value: unknown): value is MultiAgentPlanNodeState['status'] {
+  return value === 'todo'
+    || value === 'doing'
+    || value === 'done'
+    || value === 'partial'
+    || value === 'blocked'
+    || value === 'unsafe'
+    || value === 'failed'
+    || value === 'waiting_replan'
+    || value === 'invalidated'
+    || value === 'skipped'
+}
+
+function isThinkingStepStatus(value: unknown): value is MultiAgentThinkingStepState['status'] {
+  return value === 'pending' || value === 'running' || value === 'done'
+}
+
+function collaborationRunToRouteState(record: CollaborationRunRecord): MultiAgentRouteState | null {
+  const snapshot = record.snapshot_json && typeof record.snapshot_json === 'object'
+    ? record.snapshot_json as Record<string, unknown>
+    : null
+  if (!snapshot) return null
+
+  const planNodes = Array.isArray(snapshot.planNodes)
+    ? snapshot.planNodes
+      .filter((node): node is Record<string, unknown> => !!node && typeof node === 'object')
+      .map((node, index): MultiAgentPlanNodeState => ({
+        id: String(node.id || `node_${index + 1}`),
+        title: sanitizeMultiAgentText(node.title || `节点 ${index + 1}`) || `节点 ${index + 1}`,
+        phase: sanitizeMultiAgentText(node.phase || '执行') || '执行',
+        status: isPlanNodeStatus(node.status) ? node.status : 'todo',
+        outcome: normalizeMultiAgentNodeOutcome(node.outcome, isPlanNodeStatus(node.status) ? node.status : 'todo'),
+        dependsOn: Array.isArray(node.dependsOn) ? node.dependsOn.map(item => String(item || '').trim()).filter(Boolean) : [],
+        executor: node.executor && typeof node.executor === 'object' && (node.executor as any).type === 'subagent'
+          ? {
+              type: 'subagent',
+              id: typeof (node.executor as any).id === 'string' ? (node.executor as any).id : undefined,
+              name: sanitizeMultiAgentText((node.executor as any).name || '子智能体') || '子智能体',
+            }
+          : {
+              type: 'DiTing',
+              name: sanitizeMultiAgentText((node.executor as any)?.name || '主智能体') || '主智能体',
+            },
+        summary: sanitizeMultiAgentText(node.summary || ''),
+      }))
+    : []
+
+  const planDependencies = Array.isArray(snapshot.planDependencies)
+    ? snapshot.planDependencies
+      .filter((dep): dep is Record<string, unknown> => !!dep && typeof dep === 'object')
+      .map((dep): MultiAgentPlanDependencyState => ({
+        from: String(dep.from || '').trim(),
+        to: String(dep.to || '').trim(),
+        type: dep.type === 'informs' ? 'informs' : 'blocks',
+      }))
+      .filter(dep => dep.from && dep.to && dep.from !== dep.to)
+    : []
+
+  const activity = Array.isArray(snapshot.activity)
+    ? snapshot.activity
+      .filter((item): item is Record<string, unknown> => !!item && typeof item === 'object')
+      .map((item, index): MultiAgentExecutionEventState => ({
+        id: String(item.id || `activity_${index + 1}`),
+        kind: String(item.kind || 'route') as MultiAgentExecutionEventState['kind'],
+        title: sanitizeMultiAgentText(item.title || '协作事件') || '协作事件',
+        text: sanitizeMultiAgentText(item.text || ''),
+        status: item.status === 'done' ? 'done' : item.status === 'error' ? 'error' : item.status === 'running' ? 'running' : 'info',
+        timestamp: typeof item.timestamp === 'number' ? item.timestamp : Date.now(),
+        agentId: typeof item.agentId === 'string' ? item.agentId : undefined,
+        agentName: sanitizeMultiAgentText(item.agentName || '') || undefined,
+        toolName: sanitizeMultiAgentText(item.toolName || '') || undefined,
+        output: typeof item.output === 'string' ? item.output : undefined,
+      }))
+    : []
+
+  const thinkingSteps = Array.isArray(snapshot.thinkingSteps)
+    ? snapshot.thinkingSteps
+      .filter((step): step is Record<string, unknown> => !!step && typeof step === 'object')
+      .map((step, index): MultiAgentThinkingStepState => ({
+        id: String(step.id || `thinking_${index + 1}`),
+        title: sanitizeMultiAgentText(step.title || `步骤 ${index + 1}`) || `步骤 ${index + 1}`,
+        detail: sanitizeMultiAgentText(step.detail || ''),
+        status: isThinkingStepStatus(step.status) ? step.status : 'pending',
+      }))
+    : []
+
+  return {
+    runId: String(snapshot.runId || record.id),
+    sessionId: String(snapshot.sessionId || record.session_id),
+    mode: snapshot.mode === 'delegate_subagent' ? 'delegate_subagent' : 'DiTing_native',
+    intent: sanitizeMultiAgentText(snapshot.intent || record.intent || ''),
+    category: sanitizeMultiAgentText(snapshot.category || record.category || '协作分析') || '协作分析',
+    reason: sanitizeMultiAgentText(snapshot.reason || record.reason || ''),
+    text: sanitizeMultiAgentText(snapshot.text || record.text || ''),
+    objective: sanitizeMultiAgentText(snapshot.objective || record.objective || ''),
+    status: isMultiAgentStatus(snapshot.status) ? snapshot.status : (record.status === 'completed' ? 'completed' : record.status === 'failed' ? 'failed' : 'running'),
+    currentNodeId: typeof snapshot.currentNodeId === 'string' ? snapshot.currentNodeId : record.current_node_id,
+    selectedAgentId: sanitizeMultiAgentText(snapshot.selectedAgentId || record.selected_agent_id || ''),
+    selectedAgentName: sanitizeMultiAgentText(snapshot.selectedAgentName || record.selected_agent_name || ''),
+    todo: Array.isArray(snapshot.todo) ? snapshot.todo.map(item => sanitizeMultiAgentText(item)).filter(Boolean) : [],
+    constraints: Array.isArray(snapshot.constraints) ? snapshot.constraints.map(item => sanitizeMultiAgentText(item)).filter(Boolean) : [],
+    planNodes,
+    planDependencies,
+    activity,
+    thinkingSteps,
+    startedAt: typeof snapshot.startedAt === 'number' ? snapshot.startedAt : record.started_at,
+    endedAt: typeof snapshot.endedAt === 'number' ? snapshot.endedAt : record.ended_at,
+  }
+}
+
+function summarizeMultiAgentObjectiveText(value: string, maxLength = 160) {
+  const normalized = sanitizeMultiAgentText(value).replace(/\s+/g, ' ').trim()
+  if (!normalized) return ''
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 3).trimEnd()}...` : normalized
+}
+
+const RESERVED_MULTI_AGENT_NODE_IDS = new Set(['understand', 'route', 'respond'])
+const WORKFLOW_ARCHIVE_PREFIX = '__DiTing_MULTI_AGENT_WORKFLOW__'
+const WORKFLOW_ARCHIVE_STORAGE_KEY = 'DiTing.multiAgent.workflowArchives.v1'
+
+function isReservedMultiAgentNodeId(nodeId?: string | null): boolean {
+  return !!nodeId && RESERVED_MULTI_AGENT_NODE_IDS.has(nodeId)
+}
+
+export interface Message {
+  id: string
+  role: 'user' | 'assistant' | 'system' | 'tool' | 'command'
+  content: string
+  timestamp: number
+  toolName?: string
+  toolCallId?: string
+  toolPreview?: string
+  toolArgs?: unknown
+  toolResult?: unknown
+  toolStatus?: 'running' | 'done' | 'error'
+  toolDuration?: number  // 工具执行时长（秒）
+  isStreaming?: boolean
+  attachments?: Attachment[]
+  // 思考/推理文本。两条来源：
+  //   1) 历史消息：来自 DiTingMessage.reasoning 字段
+  //   2) 流式：由 reasoning.delta / thinking.delta / reasoning.available 事件累加
+  // 不含 <think> 包裹标签；内容自身可以为多段纯文本。
+  reasoning?: string
+  queued?: boolean
+  systemType?: 'command' | 'error' | 'fork-divider' | 'workflow'
+  commandAction?: string
+  commandData?: Record<string, unknown>
+  workflow?: MultiAgentWorkflowMessageState
+  finishReason?: string | null
+  runMarker?: string | null
+}
+
+interface MultiAgentWorkflowArchiveRecord {
+  id: string
+  sessionId: string
+  messageId: string
+  createdAt: number
+  updatedAt: number
+  workflow: MultiAgentWorkflowMessageState
+}
+
+export interface PendingApproval {
+  sessionId: string
+  approvalId: string
+  command: string
+  description: string
+  choices: Array<'once' | 'session' | 'always' | 'deny'>
+  allowPermanent: boolean
+  isMemoryWrite: boolean
+  requestedAt: number
+}
+
+export interface PendingClarify {
+  sessionId: string
+  clarifyId: string
+  question: string
+  choices: string[] | null
+  timeoutMs: number
+  requestedAt: number
+}
+
+export interface Session {
+  id: string
+  profile?: string
+  title: string
+  source?: string
+  agent?: string
+  agentSessionId?: string
+  agentNativeSessionId?: string
+  codingAgentId?: 'claude-code' | 'codex'
+  codingAgentMode?: 'global' | 'scoped'
+  messages: Message[]
+  createdAt: number
+  updatedAt: number
+  model?: string
+  provider?: string
+  baseUrl?: string
+  apiKey?: string
+  apiMode?: ProviderApiMode
+  messageCount?: number
+  messageTotal?: number
+  loadedMessageCount?: number
+  hasMoreBefore?: boolean
+  isLoadingOlderMessages?: boolean
+  inputTokens?: number
+  outputTokens?: number
+  contextTokens?: number
+  endedAt?: number | null
+  parentSessionId?: string | null
+  forkPointMessageId?: string | null
+  parentTitle?: string | null
+  parentLastMessage?: string | null
+  parentLastMessageRole?: string | null
+  lastActiveAt?: number
+  workspace?: string | null
+  /** Per-session reasoning effort override.
+   * Empty string / undefined = use config.yaml default.
+   * Values: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' */
+  reasoningEffort?: string
+}
+
+interface CompressionState {
+  compressing: boolean
+  messageCount: number
+  beforeTokens: number
+  afterTokens: number
+  compressed: boolean | null
+  error?: string
+}
+
+function uid(): string {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
+}
+
+function isToolOutputError(output: unknown): boolean {
+  if (typeof output !== 'string' || !output.trim()) return false
+  try {
+    const parsed = JSON.parse(output)
+    if (parsed && typeof parsed === 'object') {
+      const record = parsed as Record<string, unknown>
+      if (record.success === false) return true
+      if (record.error != null && String(record.error).trim() !== '') return true
+    }
+  } catch {
+    return false
+  }
+  return false
+}
+
+function errorMessageText(error: unknown): string {
+  if (typeof error === 'string') return error.trim()
+  if (error == null) return ''
+  if (typeof error !== 'object') return String(error).trim()
+
+  if (Array.isArray(error)) {
+    return error.map(errorMessageText).filter(Boolean).join('\n')
+  }
+
+  const record = error as Record<string, unknown>
+  for (const key of ['message', 'error', 'detail', 'description', 'code']) {
+    const text = errorMessageText(record[key])
+    if (text) return text
+  }
+
+  try {
+    return JSON.stringify(error)
+  } catch {
+    return String(error)
+  }
+}
+
+function sanitizeMultiAgentText(value: unknown): string {
+  return sanitizeAgentDisplayText(typeof value === 'string' ? value : String(value ?? ''))
+}
+
+function latestMultiAgentReasoningText(value: unknown, maxLength = 220): string {
+  const normalized = sanitizeMultiAgentText(value).replace(/\s+/g, ' ').trim()
+  if (!normalized) return ''
+  const segments = normalized
+    .split(/[\n。！？!?]+/)
+    .map(segment => segment.trim())
+    .filter(Boolean)
+  const latest = segments[segments.length - 1] || normalized
+  return latest.length > maxLength ? `${latest.slice(0, maxLength - 3).trimEnd()}...` : latest
+}
+
+function compactSubagentEventKey(value: unknown, maxLength = 48): string {
+  const normalized = sanitizeMultiAgentText(typeof value === 'string' ? value : String(value ?? ''))
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, maxLength)
+  if (!normalized) return 'none'
+  return normalized
+    .replace(/[^a-zA-Z0-9\u4e00-\u9fff_-]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    || 'none'
+}
+
+function normalizeMultiAgentNodeStatus(
+  value: unknown,
+  fallback: MultiAgentPlanNodeState['status'] = 'todo',
+): MultiAgentPlanNodeState['status'] {
+  return value === 'todo'
+    || value === 'doing'
+    || value === 'done'
+    || value === 'partial'
+    || value === 'blocked'
+    || value === 'unsafe'
+    || value === 'failed'
+    || value === 'waiting_replan'
+    || value === 'invalidated'
+    || value === 'skipped'
+    ? value
+    : fallback
+}
+
+function normalizeMultiAgentNodeOutcome(
+  value: unknown,
+  status?: MultiAgentPlanNodeState['status'],
+): MultiAgentNodeOutcomeState {
+  if (value === 'success' || value === 'partial' || value === 'failure' || value === 'unsafe' || value === 'unknown') return value
+  if (status === 'done') return 'success'
+  if (status === 'partial') return 'partial'
+  if (status === 'unsafe') return 'unsafe'
+  if (status === 'blocked' || status === 'failed' || status === 'waiting_replan' || status === 'invalidated' || status === 'skipped') return 'failure'
+  return 'unknown'
+}
+
+function isTerminalMultiAgentNodeStatus(status: MultiAgentPlanNodeState['status']) {
+  return status === 'done'
+    || status === 'partial'
+    || status === 'unsafe'
+    || status === 'blocked'
+    || status === 'failed'
+    || status === 'waiting_replan'
+    || status === 'invalidated'
+    || status === 'skipped'
+}
+
+const GENERIC_SUBAGENT_TOOL_NAMES = new Set(['bash', 'sh', 'zsh', 'fish', 'cmd', 'powershell', 'pwsh'])
+
+function normalizeSubagentToolName(value: unknown): string {
+  const toolName = sanitizeMultiAgentText(typeof value === 'string' ? value : String(value ?? ''))
+  if (!toolName) return ''
+  return GENERIC_SUBAGENT_TOOL_NAMES.has(toolName.toLowerCase())
+    ? '运行时命令'
+    : toolName
+}
+
+function resolveSubagentCompletionVisualState(evt: Record<string, unknown>): {
+  toolStatus: 'running' | 'done' | 'error'
+  nodeStatus: MultiAgentPlanNodeState['status']
+  nodeOutcome: MultiAgentNodeOutcomeState
+  blockedByGrounding: boolean
+} {
+  const eventStatus = sanitizeMultiAgentText(evt.status || '')
+  const nodeStatusValue = sanitizeMultiAgentText(evt.node_status || evt.status || '')
+  const groundingStatus = sanitizeMultiAgentText(evt.grounding_status || '')
+  const explicitFailure = eventStatus === 'failed'
+    || eventStatus === 'blocked'
+    || nodeStatusValue === 'failed'
+    || nodeStatusValue === 'blocked'
+  if (explicitFailure) {
+    return {
+      toolStatus: 'error',
+      nodeStatus: 'failed',
+      nodeOutcome: 'failure',
+      blockedByGrounding: false,
+    }
+  }
+  const unsafe = groundingStatus === 'unsafe_to_finalize'
+    || groundingStatus === 'unverified'
+    || (evt.finalizable === false && eventStatus !== 'clarify_required')
+  if (unsafe) {
+    return {
+      toolStatus: 'error',
+      nodeStatus: 'unsafe',
+      nodeOutcome: 'unsafe',
+      blockedByGrounding: true,
+    }
+  }
+  const partial = eventStatus === 'partial'
+    || nodeStatusValue === 'partial'
+    || groundingStatus === 'partial'
+    || groundingStatus === 'truncated'
+  if (partial) {
+    return {
+      toolStatus: 'error',
+      nodeStatus: 'partial',
+      nodeOutcome: 'partial',
+      blockedByGrounding: true,
+    }
+  }
+  const completed = evt.node_completed === true || eventStatus === 'completed'
+  return {
+    toolStatus: completed ? 'done' : 'running',
+    nodeStatus: completed ? 'done' : 'doing',
+    nodeOutcome: completed ? 'success' : 'unknown',
+    blockedByGrounding: false,
+  }
+}
+
+function buildSubagentEventToolCallId(input: {
+  runId?: unknown
+  subagentId?: unknown
+  toolCallId?: unknown
+  eventName: string
+  toolName?: unknown
+  preview?: unknown
+}) {
+  const runId = compactSubagentEventKey(input.runId || 'run', 24)
+  const subagentId = compactSubagentEventKey(input.subagentId || 'subagent', 24)
+  const toolCallId = compactSubagentEventKey(input.toolCallId || '', 32)
+  if (toolCallId !== 'none') return `subagent:${runId}:${subagentId}:${toolCallId}`
+  const toolName = compactSubagentEventKey(input.toolName || '', 20)
+  const preview = compactSubagentEventKey(input.preview || '', 40)
+  return `subagent:${runId}:${subagentId}:${input.eventName}:${toolName}:${preview}`
+}
+
+function appendedMultiAgentDelta(existing: string, next: string): string {
+  if (!existing || !next) return next
+  if (next.startsWith(existing)) return next.slice(existing.length)
+  const max = Math.min(existing.length, next.length)
+  for (let length = max; length >= 6; length -= 1) {
+    if (existing.endsWith(next.slice(0, length))) return next.slice(length)
+  }
+  return next
+}
+
+function needsReasoningSeparator(existing: string, next: string): boolean {
+  if (!existing || !next) return false
+  return /[A-Za-z0-9]$/.test(existing) && /^[A-Za-z0-9]/.test(next)
+}
+
+function mergeMultiAgentReasoningText(existing: unknown, next: unknown, maxLength = 2200): string {
+  const base = sanitizeMultiAgentText(typeof existing === 'string' ? existing : String(existing ?? ''))
+    .replace(/\s+/g, ' ')
+    .trim()
+  const incoming = sanitizeMultiAgentText(typeof next === 'string' ? next : String(next ?? ''))
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!incoming) return base
+  const delta = appendedMultiAgentDelta(base, incoming)
+  if (!delta) return base
+  const merged = `${base}${base && needsReasoningSeparator(base, delta) ? ' ' : ''}${delta}`.trim()
+  return merged.length > maxLength ? merged.slice(merged.length - maxLength) : merged
+}
+
+function mergeWorkflowLogText(existing: unknown, next: unknown, maxLength = 2200): string {
+  const base = sanitizeMultiAgentText(typeof existing === 'string' ? existing : String(existing ?? ''))
+    .split('\n')
+    .map(item => item.trim())
+    .filter(Boolean)
+  const incoming = sanitizeMultiAgentText(typeof next === 'string' ? next : String(next ?? ''))
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!incoming) return base.join('\n')
+  if (base[base.length - 1] === incoming || base.includes(incoming)) return base.join('\n')
+  const merged = [...base, incoming].join('\n')
+  return merged.length > maxLength ? merged.slice(merged.length - maxLength) : merged
+}
+
+function mergeWorkflowStreamText(existing: unknown, next: unknown, maxLength = 2400): string {
+  const base = sanitizeMultiAgentText(typeof existing === 'string' ? existing : String(existing ?? ''))
+    .replace(/\s+/g, ' ')
+    .trim()
+  const incoming = sanitizeMultiAgentText(typeof next === 'string' ? next : String(next ?? ''))
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!incoming) return base
+  const delta = appendedMultiAgentDelta(base, incoming)
+  if (!delta) return base
+  const merged = `${base}${base && needsReasoningSeparator(base, delta) ? ' ' : ''}${delta}`.trim()
+  return merged.length > maxLength ? merged.slice(merged.length - maxLength) : merged
+}
+
+function encodeWorkflowArchive(workflow: MultiAgentWorkflowMessageState): string {
+  return `${WORKFLOW_ARCHIVE_PREFIX}${JSON.stringify(workflow)}`
+}
+
+function decodeWorkflowArchive(value: unknown): MultiAgentWorkflowMessageState | null {
+  if (typeof value !== 'string') return null
+  if (!value.startsWith(WORKFLOW_ARCHIVE_PREFIX)) return null
+  try {
+    const parsed = JSON.parse(value.slice(WORKFLOW_ARCHIVE_PREFIX.length)) as Partial<MultiAgentWorkflowMessageState>
+    if (!parsed || typeof parsed !== 'object') return null
+    return {
+      title: sanitizeMultiAgentText(parsed.title || '协作详情') || '协作详情',
+      subtitle: sanitizeMultiAgentText(parsed.subtitle || '历史协作详情') || '历史协作详情',
+      objective: sanitizeMultiAgentText(parsed.objective || ''),
+      current: sanitizeMultiAgentText(parsed.current || ''),
+      status: parsed.status === 'done' || parsed.status === 'error' ? parsed.status : 'running',
+      reasoningText: sanitizeMultiAgentText(parsed.reasoningText || ''),
+      mainAgentStream: sanitizeMultiAgentText(parsed.mainAgentStream || parsed.reasoningText || ''),
+      subagentStreams: Array.isArray(parsed.subagentStreams)
+        ? parsed.subagentStreams.map((stream, index): MultiAgentWorkflowSubagentStreamState => ({
+            id: sanitizeMultiAgentText(stream?.id || `subagent_stream_${index + 1}`) || `subagent_stream_${index + 1}`,
+            nodeId: sanitizeMultiAgentText(stream?.nodeId || '') || undefined,
+            agentId: sanitizeMultiAgentText(stream?.agentId || '') || undefined,
+            agentName: sanitizeMultiAgentText(stream?.agentName || '子智能体') || '子智能体',
+            title: sanitizeMultiAgentText(stream?.title || '执行流') || '执行流',
+            text: sanitizeMultiAgentText(stream?.text || ''),
+            status: stream?.status === 'done' || stream?.status === 'error' ? stream.status : 'running',
+            toolName: sanitizeMultiAgentText(stream?.toolName || '') || undefined,
+            updatedAt: Number.isFinite(Number(stream?.updatedAt)) ? Number(stream?.updatedAt) : Date.now(),
+          }))
+        : [],
+      steps: Array.isArray(parsed.steps)
+        ? parsed.steps.map((step, index) => ({
+            id: sanitizeMultiAgentText(step?.id || `step_${index + 1}`) || `step_${index + 1}`,
+            title: sanitizeMultiAgentText(step?.title || `阶段 ${index + 1}`) || `阶段 ${index + 1}`,
+            detail: sanitizeMultiAgentText(step?.detail || ''),
+            status: step?.status === 'running' || step?.status === 'done' || step?.status === 'error' ? step.status : 'pending',
+          }))
+        : [],
+      events: Array.isArray(parsed.events)
+        ? parsed.events.map((event, index) => ({
+            id: sanitizeMultiAgentText(event?.id || `event_${index + 1}`) || `event_${index + 1}`,
+            title: sanitizeMultiAgentText(event?.title || `事件 ${index + 1}`) || `事件 ${index + 1}`,
+            text: sanitizeMultiAgentText(event?.text || ''),
+            status: event?.status === 'running' || event?.status === 'done' || event?.status === 'error' ? event.status : 'info',
+            timestamp: Number.isFinite(Number(event?.timestamp)) ? Number(event?.timestamp) : Date.now(),
+            agentName: sanitizeMultiAgentText(event?.agentName || '') || undefined,
+            toolName: sanitizeMultiAgentText(event?.toolName || '') || undefined,
+          }))
+        : [],
+    }
+  } catch {
+    return null
+  }
+}
+
+async function uploadFiles(attachments: Attachment[]): Promise<{ name: string; path: string }[]> {
+  if (attachments.length === 0) return []
+  const formData = new FormData()
+  for (const att of attachments) {
+    if (att.file) formData.append('file', att.file, att.name)
+  }
+  const token = localStorage.getItem('DiTing_api_key') || ''
+  const profileName = getActiveProfileName()
+  const headers: Record<string, string> = {}
+  if (token) headers.Authorization = `Bearer ${token}`
+  if (profileName) headers['X-DiTing-Profile'] = profileName
+  const res = await fetch('/upload', {
+    method: 'POST',
+    body: formData,
+    headers,
+  })
+  if (!res.ok) throw new Error(await responseErrorMessage(res, 'Upload failed'))
+  const data = await res.json() as { files: { name: string; path: string }[] }
+  return data.files
+}
+
+async function buildContentBlocks(
+  content: string,
+  attachments?: Attachment[],
+  uploadedFiles?: { name: string; path: string }[]
+): Promise<ContentBlock[]> {
+  const blocks: ContentBlock[] = []
+
+  // Add text block if content is not empty
+  if (content.trim()) {
+    blocks.push({ type: 'text', text: content.trim() })
+  }
+
+  // Add attachment blocks using uploaded file paths
+  if (attachments && attachments.length > 0 && uploadedFiles) {
+    for (let i = 0; i < uploadedFiles.length; i++) {
+      const uploaded = uploadedFiles[i]
+      const attachment = attachments[i]
+
+      // Check if it's an image
+      if (attachment?.type.startsWith('image/')) {
+        blocks.push({
+          type: 'image',
+          name: uploaded.name,
+          path: uploaded.path,
+          media_type: attachment.type,
+        })
+      } else {
+        // Other files
+        blocks.push({
+          type: 'file',
+          name: uploaded.name,
+          path: uploaded.path,
+          media_type: attachment?.type,
+        })
+      }
+    }
+  }
+
+  return blocks
+}
+
+function hasRuntimeToolPayload(value: unknown): boolean {
+  return value !== null && value !== undefined && value !== ''
+}
+
+function runtimeToolPayloadOrUndefined(value: unknown): unknown | undefined {
+  return hasRuntimeToolPayload(value) ? value : undefined
+}
+
+function runtimePayloadText(value: unknown): string {
+  if (!hasRuntimeToolPayload(value)) return ''
+  if (typeof value === 'string') return value
+  try {
+    const serialized = JSON.stringify(value)
+    if (serialized !== undefined) return serialized
+  } catch {
+    // Fall through to String(value) for non-serializable runtime payloads.
+  }
+  return String(value)
+}
+
+function runtimeToolOutputHasError(value: unknown): boolean {
+  return typeof value === 'string' && isToolOutputError(value)
+}
+
+function normalizeSubagentArtifacts(value: unknown): Array<{
+  artifactId?: string
+  filename: string
+  downloadUrl?: string
+  workspacePath?: string
+}> {
+  if (!Array.isArray(value)) return []
+  return value.flatMap((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return []
+    const raw = item as Record<string, unknown>
+    const artifactId = sanitizeMultiAgentText(String(raw.artifact_id ?? raw.artifactId ?? '')).trim() || undefined
+    const filename = sanitizeMultiAgentText(
+      String(raw.filename ?? raw.name ?? raw.download_name ?? raw.downloadName ?? ''),
+    ).trim()
+    const downloadUrl = sanitizeMultiAgentText(
+      String(raw.download_url ?? raw.downloadUrl ?? raw.download_path ?? raw.downloadPath ?? ''),
+    ).trim() || undefined
+    const workspacePath = sanitizeMultiAgentText(
+      String(raw.workspace_path ?? raw.workspacePath ?? raw.path ?? ''),
+    ).trim() || undefined
+    const effectiveName = filename
+      || (downloadUrl ? downloadUrl.split('/').pop() || '' : '')
+      || (workspacePath ? workspacePath.split('/').pop() || '' : '')
+      || artifactId
+      || ''
+    if (!effectiveName && !downloadUrl && !workspacePath) return []
+    return [{
+      artifactId,
+      filename: effectiveName || 'artifact',
+      downloadUrl,
+      workspacePath,
+    }]
+  })
+}
+
+function summarizeSubagentArtifacts(value: unknown): string {
+  const artifacts = normalizeSubagentArtifacts(value)
+  if (artifacts.length === 0) return ''
+  const names = artifacts.slice(0, 3).map(item => item.filename).filter(Boolean)
+  if (names.length === 0) return `已交付 ${artifacts.length} 个文件。`
+  return artifacts.length > names.length
+    ? `已交付 ${artifacts.length} 个文件：${names.join('、')} 等。`
+    : `已交付文件：${names.join('、')}。`
+}
+
+function readFinishReason(value: unknown): string | null | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const record = value as Record<string, unknown>
+  if (Object.prototype.hasOwnProperty.call(record, 'finishReason')) {
+    return (record as { finishReason?: string | null }).finishReason
+  }
+  if (Object.prototype.hasOwnProperty.call(record, 'finish_reason')) {
+    return (record as { finish_reason?: string | null }).finish_reason
+  }
+  return undefined
+}
+
+function readRunMarker(value: unknown): string | null | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const record = value as Record<string, unknown>
+  if (Object.prototype.hasOwnProperty.call(record, 'runMarker')) {
+    return typeof record.runMarker === 'string' || record.runMarker == null
+      ? record.runMarker as string | null
+      : undefined
+  }
+  if (Object.prototype.hasOwnProperty.call(record, 'run_marker')) {
+    return typeof record.run_marker === 'string' || record.run_marker == null
+      ? record.run_marker as string | null
+      : undefined
+  }
+  return undefined
+}
+
+function hasAssistantVisibleText(message: Message | null | undefined): boolean {
+  if (!message) return false
+  return message.content.trim() !== '' || (message.reasoning?.trim() ?? '') !== ''
+}
+
+function selectResumedInFlightAssistant(messages: Message[], activeRunMarker?: string | null): Message | null {
+  if (messages.length === 0) return null
+  const lastMessage = messages[messages.length - 1]
+  if (lastMessage?.role !== 'assistant') return null
+  const finishReason = readFinishReason(lastMessage)
+  const runMarker = readRunMarker(lastMessage)
+  const hasMatchingRunMarker = !!activeRunMarker && !!runMarker && runMarker === activeRunMarker
+  return finishReason === null || hasMatchingRunMarker ? lastMessage : null
+}
+
+function getReplayRunMarker(events?: Array<{ event: string; data: RunEvent }>): string | null {
+  if (!Array.isArray(events)) return null
+  for (let i = events.length - 1; i >= 0; i -= 1) {
+    const runMarker = readRunMarker(events[i]?.data)
+    if (typeof runMarker === 'string' && runMarker.trim() !== '') return runMarker
+  }
+  return null
+}
+
+function resolveResumedAssistantState(
+  messages: Message[],
+  options: {
+    previousActiveAssistantMessageId?: string | null
+    previousReasoningAssistantMessageId?: string | null
+    activeRunMarker?: string | null
+  },
+): {
+  activeAssistant: Message | null
+  reasoningAssistant: Message | null
+  runMarker: string | null
+  hadVisibleText: boolean
+} {
+  const activeAssistant = options.previousActiveAssistantMessageId
+    ? messages.find(m => m.role === 'assistant' && m.id === options.previousActiveAssistantMessageId) || null
+    : null
+  const selectedActiveAssistant = activeAssistant || selectResumedInFlightAssistant(messages, options.activeRunMarker)
+  const reasoningAssistant = options.previousReasoningAssistantMessageId
+    ? messages.find(m => m.role === 'assistant' && m.id === options.previousReasoningAssistantMessageId) || null
+    : null
+  const selectedReasoningAssistant = reasoningAssistant || (selectedActiveAssistant?.reasoning ? selectedActiveAssistant : null)
+  const selectedRunMarker = readRunMarker(selectedActiveAssistant) ?? options.activeRunMarker ?? null
+  return {
+    activeAssistant: selectedActiveAssistant,
+    reasoningAssistant: selectedReasoningAssistant,
+    runMarker: selectedRunMarker,
+    hadVisibleText: hasAssistantVisibleText(selectedActiveAssistant),
+  }
+}
+
+function mapDiTingMessages(msgs: DiTingMessage[]): Message[] {
+  // Filter out assistant messages with no display content unless they carry tool call metadata
+  // needed to name later tool result rows when resuming persisted history.
+  const filteredMsgs = msgs.filter(m => {
+    if (m.role === 'assistant') {
+      return (m.tool_calls?.length || 0) > 0 || runtimePayloadText((m as any).content).trim() !== ''
+    }
+    return true
+  })
+
+  // Build lookups from assistant messages with tool_calls
+  const toolNameMap = new Map<string, string>()
+  const toolArgsMap = new Map<string, unknown>()
+  for (const msg of filteredMsgs) {
+    if (msg.role === 'assistant' && msg.tool_calls) {
+      for (const tc of msg.tool_calls) {
+        if (tc.id) {
+          if (tc.function?.name) toolNameMap.set(tc.id, tc.function.name)
+          if (hasRuntimeToolPayload(tc.function?.arguments)) toolArgsMap.set(tc.id, tc.function.arguments)
+        }
+      }
+    }
+  }
+
+  const result: Message[] = []
+  for (const msg of filteredMsgs) {
+    // Skip assistant messages that only contain tool_calls (no meaningful content)
+    if (msg.role === 'assistant' && msg.tool_calls?.length && !runtimePayloadText((msg as any).content).trim()) {
+      // Emit a tool.started message for each tool call
+      for (const tc of msg.tool_calls) {
+        result.push({
+          id: String(msg.id) + '_' + tc.id,
+          role: 'tool',
+          content: '',
+          timestamp: Math.round(msg.timestamp * 1000),
+          toolName: tc.function?.name || undefined,
+          toolCallId: tc.id,
+          toolArgs: runtimeToolPayloadOrUndefined(tc.function?.arguments),
+          toolStatus: 'done',
+          finishReason: readFinishReason(msg),
+          runMarker: readRunMarker(msg),
+        })
+      }
+      continue
+    }
+
+    // Tool result messages
+    if (msg.role === 'tool') {
+      const tcId = msg.tool_call_id || ''
+      const toolName = msg.tool_name || toolNameMap.get(tcId) || undefined
+      const toolArgs = toolArgsMap.has(tcId) ? toolArgsMap.get(tcId) : undefined
+      // Extract a short preview from the content
+      let preview = ''
+      const contentText = runtimePayloadText((msg as any).content)
+      if (contentText) {
+        try {
+          const parsed = typeof (msg as any).content === 'string'
+            ? JSON.parse(contentText)
+            : (msg as any).content
+          preview = parsed?.url || parsed?.title || parsed?.preview || parsed?.summary || ''
+        } catch {
+          preview = contentText.slice(0, 80)
+        }
+      }
+      // Find and remove the matching placeholder from tool_calls above
+      const placeholderIdx = result.findIndex(
+        m => m.role === 'tool' && m.toolName === toolName && !m.toolResult && m.id.includes('_' + tcId)
+      )
+      if (placeholderIdx !== -1) {
+        result.splice(placeholderIdx, 1)
+      }
+      result.push({
+        id: String(msg.id),
+        role: 'tool',
+        content: '',
+        timestamp: Math.round(msg.timestamp * 1000),
+        toolName,
+        toolCallId: tcId || undefined,
+        toolArgs,
+        toolPreview: typeof preview === 'string' ? preview.slice(0, 100) || undefined : undefined,
+        toolResult: runtimeToolPayloadOrUndefined((msg as any).content),
+        toolStatus: 'done',
+        finishReason: readFinishReason(msg),
+        runMarker: readRunMarker(msg),
+      })
+      continue
+    }
+
+    // Normal user/assistant/command messages
+    const displayRole = msg.display_role || msg.role
+    const displayContent = msg.display_content ?? msg.content
+    const archivedWorkflow = decodeWorkflowArchive(displayContent)
+    if (archivedWorkflow) {
+      result.push({
+        id: String(msg.id),
+        role: 'system',
+        content: encodeWorkflowArchive(archivedWorkflow),
+        timestamp: Math.round(msg.timestamp * 1000),
+        systemType: 'workflow',
+        workflow: archivedWorkflow,
+        finishReason: readFinishReason(msg),
+        runMarker: readRunMarker(msg),
+      })
+      continue
+    }
+    result.push({
+      id: String(msg.id),
+      role: displayRole,
+      content: displayContent || '',
+      timestamp: Math.round(msg.timestamp * 1000),
+      reasoning: msg.reasoning ? msg.reasoning : undefined,
+      systemType: displayRole === 'command' ? 'command' : undefined,
+      finishReason: readFinishReason(msg),
+      runMarker: readRunMarker(msg),
+    })
+  }
+  return result
+}
+
+function sessionActivitySeconds(s: SessionSummary): number {
+  return Math.max(
+    s.started_at || 0,
+    s.ended_at || 0,
+    s.last_active || 0,
+  )
+}
+
+function lastVisibleMessage(messages?: Message[] | null): Message | null {
+  if (!messages?.length) return null
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const message = messages[i]
+    if (message.role !== 'user' && message.role !== 'assistant') continue
+    if (!String(message.content || '').trim()) continue
+    return message
+  }
+  return null
+}
+
+function lastVisibleMessageContent(messages?: Message[] | null): string | null {
+  const message = lastVisibleMessage(messages)
+  if (!message) return null
+  const content = String(message.content || '').replace(/\s+/g, ' ').trim()
+  return content.length > 280 ? `${content.slice(0, 277)}...` : content
+}
+
+function lastVisibleMessageRole(messages?: Message[] | null): string | null {
+  return lastVisibleMessage(messages)?.role || null
+}
+
+function mapDiTingSession(s: SessionSummary): Session {
+  const isCodingAgentSession = s.source === 'coding_agent' || s.agent === 'claude' || s.agent === 'codex'
+  const codingAgentId = s.agent === 'codex' ? 'codex' : s.agent === 'claude' ? 'claude-code' : undefined
+  const codingAgentMode = isCodingAgentSession
+    ? (s.agent_mode === 'global' || s.agent_mode === 'scoped'
+        ? s.agent_mode
+        : s.provider === 'global' ? 'global' : 'scoped')
+    : undefined
+  const activitySeconds = sessionActivitySeconds(s)
+  return {
+    id: s.id,
+    profile: s.profile || 'default',
+    title: s.title || '',
+    source: s.source || undefined,
+    agent: s.agent || undefined,
+    agentSessionId: s.agent_session_id || undefined,
+    agentNativeSessionId: s.agent_native_session_id || undefined,
+    codingAgentId,
+    codingAgentMode,
+    messages: [],
+    createdAt: Math.round(s.started_at * 1000),
+    updatedAt: Math.round(activitySeconds * 1000),
+    model: s.model,
+    provider: s.provider || (s as any).billing_provider || '',
+    messageCount: s.message_count,
+    messageTotal: s.message_count,
+    loadedMessageCount: 0,
+    hasMoreBefore: false,
+    inputTokens: s.input_tokens,
+    outputTokens: s.output_tokens,
+    endedAt: s.ended_at != null ? Math.round(s.ended_at * 1000) : null,
+    parentSessionId: s.parent_session_id || null,
+    forkPointMessageId: (s as any).fork_point_message_id != null ? String((s as any).fork_point_message_id) : null,
+    parentTitle: s.parent_title || null,
+    parentLastMessage: s.parent_last_message || null,
+    parentLastMessageRole: s.parent_last_message_role || null,
+    lastActiveAt: s.last_active != null ? Math.round(s.last_active * 1000) : undefined,
+    workspace: s.workspace || null,
+  }
+}
+
+const STORAGE_KEY_PREFIX = 'DiTing_active_session_'
+type ChatRuntimeMode = 'default' | 'global_agent'
+let activeRuntimeMode: ChatRuntimeMode = 'default'
+const LEGACY_STORAGE_KEY = 'DiTing_active_session'
+
+// 获取当前 profile 名称，用于隔离缓存。
+// 从 profiles store 的 activeProfileName（同步 localStorage）读取，
+// 避免异步加载导致 chat store 初始化时拿到 null。
+function getProfileName(): string {
+  try {
+    return useProfilesStore().activeProfileName || 'default'
+  } catch {
+    return 'default'
+  }
+}
+
+function runtimeStoragePrefix(): string {
+  return activeRuntimeMode === 'global_agent' ? `${STORAGE_KEY_PREFIX}global_agent_` : STORAGE_KEY_PREFIX
+}
+
+function storageKey(): string {
+  const userContext = getActiveUserContextId()
+  return userContext
+    ? `${runtimeStoragePrefix()}${getProfileName()}__${userContext}`
+    : runtimeStoragePrefix() + getProfileName()
+}
+function legacyStorageKey(): string | null {
+  return activeRuntimeMode === 'default' && getProfileName() === 'default' && !getActiveUserContextId()
+    ? LEGACY_STORAGE_KEY
+    : null
+}
+
+function isCodingAgentLikeSession(session?: Pick<Session, 'source' | 'agent' | 'codingAgentId'> | null): boolean {
+  return session?.source === 'coding_agent' ||
+    session?.codingAgentId === 'claude-code' ||
+    session?.codingAgentId === 'codex' ||
+    session?.agent === 'claude' ||
+    session?.agent === 'codex'
+}
+
+function clearCodingAgentRuntimeCredentials(session?: Session | null) {
+  if (!session || !isCodingAgentLikeSession(session)) return
+  session.baseUrl = undefined
+  session.apiKey = undefined
+}
+
+function isQuotaExceededError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false
+  const e = error as { name?: string, code?: number }
+  return e.name === 'QuotaExceededError' || e.code === 22 || e.code === 1014
+}
+
+function recoverStorageQuota() {
+  try {
+    // 清理所有会话相关的旧缓存（已完全废弃）
+    const prefixes = [
+      'DiTing_sessions_cache_v1_',
+      'DiTing_session_msgs_v1_',
+      'DiTing_session_pins_v1_',
+      'DiTing_human_only_v1_',
+    ]
+    const keysToRemove: string[] = []
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)
+      if (!key) continue
+      if (key === storageKey() || key === LEGACY_STORAGE_KEY) continue
+      if (prefixes.some(prefix => key.startsWith(prefix))) {
+        keysToRemove.push(key)
+      }
+    }
+    keysToRemove.forEach(key => removeItem(key))
+    if (keysToRemove.length > 0) {
+      console.log(`Recovered storage: cleared ${keysToRemove.length} old session cache entries`)
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function setItemBestEffort(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value)
+    return
+  } catch (error) {
+    if (!isQuotaExceededError(error)) return
+  }
+
+  recoverStorageQuota()
+
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    // quota exceeded or private mode — ignore, cache is best-effort
+  }
+}
+
+function getItemBestEffort(key: string): string | null {
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+function removeItem(key: string) {
+  try {
+    localStorage.removeItem(key)
+  } catch {
+    // ignore
+  }
+}
+
+function readWorkflowArchives(): MultiAgentWorkflowArchiveRecord[] {
+  const raw = getItemBestEffort(WORKFLOW_ARCHIVE_STORAGE_KEY)
+  if (!raw) return []
+  try {
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) return []
+    return parsed.flatMap((item): MultiAgentWorkflowArchiveRecord[] => {
+      const sessionId = sanitizeMultiAgentText(item?.sessionId || '')
+      const messageId = sanitizeMultiAgentText(item?.messageId || '')
+      const workflow = item?.workflow && typeof item.workflow === 'object'
+        ? decodeWorkflowArchive(encodeWorkflowArchive(item.workflow as MultiAgentWorkflowMessageState))
+        : null
+      if (!sessionId || !messageId || !workflow) return []
+      const createdAt = Number.isFinite(Number(item?.createdAt)) ? Number(item.createdAt) : Date.now()
+      const updatedAt = Number.isFinite(Number(item?.updatedAt)) ? Number(item.updatedAt) : createdAt
+      return [{
+        id: sanitizeMultiAgentText(item?.id || messageId) || messageId,
+        sessionId,
+        messageId,
+        createdAt,
+        updatedAt,
+        workflow,
+      }]
+    })
+  } catch {
+    return []
+  }
+}
+
+function writeWorkflowArchives(records: MultiAgentWorkflowArchiveRecord[]) {
+  const compact = [...records]
+    .sort((a, b) => b.updatedAt - a.updatedAt)
+    .slice(0, 80)
+  setItemBestEffort(WORKFLOW_ARCHIVE_STORAGE_KEY, JSON.stringify(compact))
+}
+
+function persistWorkflowArchive(record: MultiAgentWorkflowArchiveRecord) {
+  const records = readWorkflowArchives()
+  const index = records.findIndex(item => item.messageId === record.messageId)
+  if (index >= 0) {
+    records[index] = {
+      ...records[index],
+      ...record,
+      createdAt: records[index].createdAt || record.createdAt,
+      updatedAt: record.updatedAt,
+    }
+  } else {
+    records.push(record)
+  }
+  writeWorkflowArchives(records)
+}
+
+// Strip the circular `file: File` reference from attachments before caching —
+// File objects don't serialize and we only need name/type/size/url for display.
+
+export const useChatStore = defineStore('chat', () => {
+  const runtimeMode = ref<ChatRuntimeMode>(activeRuntimeMode)
+  const seenSessionCommandEvents = new WeakSet<RunEvent>()
+  const sessions = ref<Session[]>([])
+  const activeWorkflowMessageIds = ref<Map<string, string>>(new Map())
+  const activeSessionId = ref<string | null>(null)
+  const focusMessageId = ref<string | null>(null)
+  const streamStates = ref<Map<string, { abort: () => void }>>(new Map())
+  /** sessionId → server-reported isWorking status */
+  const serverWorking = ref<Set<string>>(new Set())
+  /** sessionIds with a terminal /fork command submitted but not settled yet */
+  const pendingForkCommands = ref<Set<string>>(new Set())
+  /** Sessions that completed while the user was viewing another session. */
+  const completedUnreadSessions = ref<Set<string>>(new Set())
+  const sessionProfileFilter = ref<string | null>(null)
+  /** sessionId → queued message count */
+  const queueLengths = ref<Map<string, number>>(new Map())
+  /** sessionId → queued user messages not yet visible in the transcript */
+  const queuedUserMessages = ref<Map<string, Message[]>>(new Map())
+  /** sessionId → queue ids that server reported as dequeued before the peer message arrived */
+  const dequeuedQueueIds = ref<Map<string, Set<string>>>(new Map())
+  const multiAgentRoutes = ref<Map<string, MultiAgentRouteState>>(new Map())
+  const multiAgentRouteHistories = ref<Map<string, MultiAgentRouteState[]>>(new Map())
+  const selectedMultiAgentRunIds = ref<Map<string, string>>(new Map())
+  const pendingApprovals = ref<Map<string, PendingApproval>>(new Map())
+  const activePendingApproval = computed(() => {
+    const sid = activeSessionId.value
+    return sid ? pendingApprovals.value.get(sid) || null : null
+  })
+
+  const pendingClarifies = ref<Map<string, PendingClarify>>(new Map())
+  const activePendingClarify = computed(() => {
+    const sid = activeSessionId.value
+    return sid ? pendingClarifies.value.get(sid) || null : null
+  })
+
+  // 自动播放语音开关
+  const autoPlaySpeechEnabled = ref(false)
+
+  function setAutoPlaySpeech(enabled: boolean) {
+    autoPlaySpeechEnabled.value = enabled
+  }
+  const isStreaming = computed(() => {
+    const sid = activeSessionId.value
+    if (sid == null) return false
+    return streamStates.value.has(sid) || serverWorking.value.has(sid)
+  })
+  const isForkPending = computed(() => {
+    const sid = activeSessionId.value
+    return sid != null && pendingForkCommands.value.has(sid)
+  })
+  const isLoadingSessions = ref(false)
+  const sessionsLoaded = ref(false)
+  const isLoadingMessages = ref(false)
+  const isRunActive = computed(() => isStreaming.value)
+
+  async function fetchRuntimeSessions(profile?: string | null): Promise<SessionSummary[]> {
+    const scopedProfile = profile || undefined
+    if (runtimeMode.value === 'global_agent') return fetchSessions('global_agent', undefined, scopedProfile)
+
+    const [localSessions, globalSessions] = await Promise.all([
+      fetchSessions(undefined, undefined, scopedProfile),
+      fetchSessions('global_agent', undefined, scopedProfile),
+    ])
+    const byId = new Map<string, SessionSummary>()
+    for (const session of [...localSessions, ...globalSessions]) byId.set(session.id, session)
+    return [...byId.values()].sort((a, b) =>
+      sessionActivitySeconds(b) - sessionActivitySeconds(a),
+    )
+  }
+
+  function runtimeTransport(): ChatRunTransport {
+    return runtimeMode.value === 'global_agent' ? 'global-agent' : 'chat-run'
+  }
+
+  function setRuntimeMode(mode: ChatRuntimeMode) {
+    if (runtimeMode.value === mode) return
+    activeRuntimeMode = mode
+    runtimeMode.value = mode
+    sessions.value = []
+    completedUnreadSessions.value = new Set()
+    queueLengths.value = new Map()
+    queuedUserMessages.value = new Map()
+    pendingApprovals.value = new Map()
+    pendingClarifies.value = new Map()
+    streamStates.value = new Map()
+    serverWorking.value = new Set()
+    pendingForkCommands.value = new Set()
+    sessionsLoaded.value = false
+    clearActiveSession()
+  }
+
+  // Compression state is scoped per session because sockets can stay joined to
+  // background sessions while another chat is active.
+  const compressionStates = ref<Map<string, CompressionState>>(new Map())
+  const compressionState = computed<CompressionState | null>(() => {
+    const sid = activeSessionId.value
+    return sid ? compressionStates.value.get(sid) || null : null
+  })
+
+  function setCompressionState(sessionId: string | null | undefined, state: CompressionState | null) {
+    if (!sessionId) return
+    const next = new Map(compressionStates.value)
+    if (state) next.set(sessionId, state)
+    else next.delete(sessionId)
+    compressionStates.value = next
+  }
+
+  const abortState = ref<{
+    aborting: boolean
+    synced: boolean | null
+    timedOut?: boolean
+    message?: string
+    error?: string
+  } | null>(null)
+  const isAborting = computed(() => abortState.value?.aborting === true)
+
+  function setAbortState(state: typeof abortState.value) {
+    abortState.value = state
+  }
+
+  const activeSession = ref<Session | null>(null)
+  const messages = computed<Message[]>(() => activeSession.value?.messages || [])
+
+  function isSessionLive(sessionId: string): boolean {
+    return streamStates.value.has(sessionId) || serverWorking.value.has(sessionId)
+  }
+
+  function isSessionCompletedUnread(sessionId: string): boolean {
+    return completedUnreadSessions.value.has(sessionId)
+  }
+
+  function clearSessionCompletedUnread(sessionId: string) {
+    if (!completedUnreadSessions.value.has(sessionId)) return
+    const next = new Set(completedUnreadSessions.value)
+    next.delete(sessionId)
+    completedUnreadSessions.value = next
+  }
+
+  function markSessionCompletedUnread(sessionId: string, hasQueue = false) {
+    if (hasQueue) {
+      return
+    }
+    if (activeSessionId.value === sessionId) {
+      clearSessionCompletedUnread(sessionId)
+      return
+    }
+    const next = new Set(completedUnreadSessions.value)
+    next.add(sessionId)
+    completedUnreadSessions.value = next
+  }
+
+  function pruneCompletedUnreadSessions(existingIds: Set<string>) {
+    const next = new Set([...completedUnreadSessions.value].filter(id => existingIds.has(id)))
+    if (next.size !== completedUnreadSessions.value.size) completedUnreadSessions.value = next
+  }
+
+  function clearActiveSession() {
+    const sid = activeSessionId.value
+    activeSessionId.value = null
+    activeSession.value = null
+    focusMessageId.value = null
+    setAbortState(null)
+    setCompressionState(sid, null)
+    removeItem(storageKey())
+  }
+
+  function ensureSessionLoaded(summary: SessionSummary): Session {
+    const existing = sessions.value.find(session => session.id === summary.id)
+    const mapped = mapDiTingSession(summary)
+    if (existing) {
+      Object.assign(existing, {
+        ...mapped,
+        messages: existing.messages,
+        contextTokens: existing.contextTokens,
+        loadedMessageCount: existing.loadedMessageCount,
+        hasMoreBefore: existing.hasMoreBefore,
+      })
+      return existing
+    }
+    sessions.value.unshift(mapped)
+    return mapped
+  }
+
+  async function loadSessions(profile?: string | null, preferredSessionId?: string | null) {
+    isLoadingSessions.value = true
+    try {
+      const list = await fetchRuntimeSessions(profile)
+      const fresh = list.map(mapDiTingSession)
+      // Preserve already-loaded messages for sessions that are still present,
+      // so we don't blow away the active session's messages on refresh.
+      const runtimeByIdBefore = new Map(sessions.value.map(s => [s.id, {
+        messages: s.messages,
+        contextTokens: s.contextTokens,
+      }]))
+      for (const s of fresh) {
+        const prev = runtimeByIdBefore.get(s.id)
+        if (prev?.messages?.length) s.messages = prev.messages
+        if (prev?.contextTokens != null) s.contextTokens = prev.contextTokens
+      }
+      sessions.value = fresh
+      pruneCompletedUnreadSessions(new Set(sessions.value.map(s => s.id)))
+
+      // Restore route-selected session first (tab-local source of truth),
+      // then current in-memory session, then persisted legacy/default choice,
+      // then fallback to the most recent session.
+      const currentId = activeSessionId.value
+      const legacyActiveKey = legacyStorageKey()
+      const storedId = getItemBestEffort(storageKey()) || (legacyActiveKey ? getItemBestEffort(LEGACY_STORAGE_KEY) : null)
+      const targetId = preferredSessionId && sessions.value.some(s => s.id === preferredSessionId)
+        ? preferredSessionId
+        : currentId && sessions.value.some(s => s.id === currentId)
+          ? currentId
+          : storedId && sessions.value.some(s => s.id === storedId)
+            ? storedId
+            : sessions.value[0]?.id
+      if (targetId) {
+        await switchSession(targetId)
+      } else {
+        clearActiveSession()
+      }
+    } catch (err) {
+      console.error('Failed to load sessions:', err)
+    } finally {
+      isLoadingSessions.value = false
+      sessionsLoaded.value = true
+    }
+  }
+
+  // Refresh ONLY the session list metadata (titles, ordering, new/removed
+  // sessions) without switching the active session or reloading its messages.
+  // Used for live sync so sessions created elsewhere (CLI, Telegram, another
+  // device) appear without a manual reload. Skips while streaming to avoid
+  // churn.
+  //
+  // CRITICAL: this MERGES IN-PLACE into the existing session objects instead of
+  // replacing the array with `mapDiTingSession` clones. `activeSession` is a ref
+  // bound to a specific object inside `sessions.value` (see switchSession), and
+  // streaming deltas mutate that same object via `sessions.value.find(...)`. If
+  // we swapped in fresh objects, `activeSession.value` would point at an orphan
+  // and live messages would stop appearing until a manual reload. Mutating the
+  // existing objects preserves referential identity so streaming keeps working.
+  async function refreshSessionListOnly(profile?: string | null): Promise<void> {
+    if (isStreaming.value) return
+    if (isLoadingSessions.value) return
+    try {
+      const list = await fetchRuntimeSessions(profile ?? sessionProfileFilter.value)
+      const incoming = list.map(mapDiTingSession)
+      const existingById = new Map(sessions.value.map(s => [s.id, s]))
+      const incomingIds = new Set(incoming.map(s => s.id))
+
+      // Build the next array reusing existing objects (identity-preserving) and
+      // inserting genuinely-new sessions as fresh objects.
+      const next: Session[] = []
+      for (const fresh of incoming) {
+        const existing = existingById.get(fresh.id)
+        if (existing) {
+          // Update scalar metadata in-place; never touch runtime/scroll state
+          // (messages, loadedMessageCount, hasMoreBefore, contextTokens).
+          existing.title = fresh.title
+          existing.source = fresh.source
+          existing.updatedAt = fresh.updatedAt
+          existing.lastActiveAt = fresh.lastActiveAt
+          existing.endedAt = fresh.endedAt
+          existing.model = fresh.model
+          existing.provider = fresh.provider
+          existing.messageCount = fresh.messageCount
+          existing.inputTokens = fresh.inputTokens
+          existing.outputTokens = fresh.outputTokens
+          existing.workspace = fresh.workspace
+          // messageTotal: keep the larger of server count vs what we've loaded,
+          // so we don't shrink below already-rendered messages mid-session.
+          if (fresh.messageTotal != null) {
+            existing.messageTotal = Math.max(fresh.messageTotal, existing.loadedMessageCount || 0)
+          }
+          next.push(existing)
+        } else {
+          next.push(fresh)
+        }
+      }
+
+      // Keep the active session even if the server no longer lists it (don't
+      // pull the rug out from under what the user is viewing).
+      const activeId = activeSessionId.value
+      if (activeId && !incomingIds.has(activeId)) {
+        const keep = existingById.get(activeId)
+        if (keep) next.push(keep)
+      }
+
+      sessions.value = next
+      pruneCompletedUnreadSessions(new Set(next.map(s => s.id)))
+
+      // Defensive: re-bind activeSession to the (same) object now in the array,
+      // by id, in case anything above changed array membership.
+      if (activeId) {
+        const again = sessions.value.find(s => s.id === activeId)
+        if (again && activeSession.value !== again) activeSession.value = again
+      }
+    } catch (err) {
+      console.error('Failed to refresh session list:', err)
+    }
+  }
+
+  // Re-pull active session from server. Used on tab-visible events.
+  async function refreshActiveSession(): Promise<boolean> {
+    const sid = activeSessionId.value
+    if (!sid) return false
+    try {
+      const target = sessions.value.find(s => s.id === sid)
+      if (!target) return false
+      const limit = Math.min(
+        Math.max(target.loadedMessageCount || LIVE_CHAT_MESSAGE_PAGE_SIZE, LIVE_CHAT_MESSAGE_PAGE_SIZE),
+        LIVE_CHAT_MAX_LOADED_MESSAGES,
+      )
+      const detail = await fetchSessionMessagesPage(sid, 0, limit, activeSession.value?.profile)
+      if (!detail) return false
+      const mapped = mapDiTingMessages(detail.messages || [])
+      target.messages = mapped
+      restoreWorkflowArchiveMessages(sid)
+      target.loadedMessageCount = detail.messages.length
+      target.messageTotal = detail.total
+      target.messageCount = detail.total
+      target.hasMoreBefore = detail.hasMore
+      if (detail.session.title) target.title = detail.session.title
+      target.parentSessionId = detail.session.parent_session_id || target.parentSessionId || null
+      target.forkPointMessageId = (detail.session as any).fork_point_message_id != null ? String((detail.session as any).fork_point_message_id) : target.forkPointMessageId || null
+      target.parentTitle = detail.session.parent_title || target.parentTitle || null
+      target.parentLastMessage = detail.session.parent_last_message || target.parentLastMessage || null
+      target.parentLastMessageRole = detail.session.parent_last_message_role || target.parentLastMessageRole || null
+      return true
+    } catch (err) {
+      console.error('Failed to refresh active session:', err)
+      return false
+    }
+  }
+
+
+  function createSession(options: {
+    profile?: string
+    model?: string
+    provider?: string
+    source?: 'api_server' | 'cli' | 'coding_agent' | 'global_agent' | 'workflow'
+    agent?: 'DiTing' | 'claude' | 'codex'
+    codingAgentId?: 'claude-code' | 'codex'
+    codingAgentMode?: 'global' | 'scoped'
+    workspace?: string | null
+    baseUrl?: string
+    apiKey?: string
+    apiMode?: ProviderApiMode
+  } = {}): Session {
+    const source = runtimeMode.value === 'global_agent' ? 'global_agent' : options.source || 'cli'
+    const codingAgentId = options.codingAgentId || (options.agent === 'codex' ? 'codex' : options.agent === 'claude' ? 'claude-code' : undefined)
+    const codingAgentMode = codingAgentId ? (options.codingAgentMode || 'scoped') : undefined
+    const session: Session = {
+      id: uid(),
+      profile: options.profile || useProfilesStore().activeProfileName || 'default',
+      title: '',
+      source,
+      agent: options.agent || (codingAgentId ? (codingAgentId === 'codex' ? 'codex' : 'claude') : 'DiTing'),
+      codingAgentId,
+      codingAgentMode,
+      messages: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      model: options.model || undefined,
+      provider: options.provider || '',
+      workspace: options.workspace || null,
+      baseUrl: options.baseUrl,
+      apiKey: options.apiKey,
+      apiMode: options.apiMode,
+    }
+    sessions.value.unshift(session)
+    return session
+  }
+
+  function newCliSession(): Session {
+    const now = new Date()
+    const ts = [
+      now.getFullYear(),
+      String(now.getMonth() + 1).padStart(2, '0'),
+      String(now.getDate()).padStart(2, '0'),
+      '_',
+      String(now.getHours()).padStart(2, '0'),
+      String(now.getMinutes()).padStart(2, '0'),
+      String(now.getSeconds()).padStart(2, '0'),
+    ].join('')
+    const hex = Math.random().toString(16).slice(2, 8)
+    const session: Session = {
+      id: `${ts}_${hex}`,
+      title: '',
+      source: runtimeMode.value === 'global_agent' ? 'global_agent' : 'cli',
+      agent: 'DiTing',
+      messages: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    }
+    sessions.value.unshift(session)
+    return session
+  }
+
+  async function switchSession(sessionId: string, focusId?: string | null) {
+    clearThinkingObservationFor(sessionId)
+    activeSessionId.value = sessionId
+    focusMessageId.value = focusId ?? null
+    setItemBestEffort(storageKey(), sessionId)
+    const legacyActiveKey = legacyStorageKey()
+    if (legacyActiveKey) removeItem(legacyActiveKey)
+    activeSession.value = sessions.value.find(s => s.id === sessionId) || null
+    clearSessionCompletedUnread(sessionId)
+
+    if (!activeSession.value) return
+
+    isLoadingMessages.value = true
+
+    try {
+      // Load messages via Socket.IO resume (server loads from DB if not in memory)
+      await new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('resume timeout')), 15_000)
+        resumeSession(sessionId, (data) => {
+          clearTimeout(timeout)
+          if (data?.error) {
+            reject(new Error(data.error))
+            return
+          }
+          if (data.session_id !== sessionId || activeSessionId.value !== sessionId) {
+            resolve()
+            return
+          }
+          const target = sessions.value.find(s => s.id === sessionId)
+          if (!target) {
+            resolve()
+            return
+          }
+          if (data.isWorking) {
+            serverWorking.value.add(sessionId)
+          } else {
+            serverWorking.value.delete(sessionId)
+          }
+          if (data.queueLength && data.queueLength > 0) {
+            queueLengths.value.set(sessionId, data.queueLength)
+          } else {
+            queueLengths.value.delete(sessionId)
+          }
+          if (Array.isArray((data as any).queueMessages)) {
+            replaceQueuedUserMessages(sessionId, normalizeQueuedUserMessages((data as any).queueMessages))
+          } else if (!data.queueLength) {
+            replaceQueuedUserMessages(sessionId, [])
+          }
+          if ((data as any).isAborting) {
+            setAbortState({ aborting: true, synced: null })
+          } else if (!data.isWorking) {
+            setAbortState(null)
+          }
+          if (!data.isWorking) setCompressionState(sessionId, null)
+          if (data.inputTokens != null) target.inputTokens = data.inputTokens
+          if (data.outputTokens != null) target.outputTokens = data.outputTokens
+          if ((data as any).contextTokens != null) target.contextTokens = (data as any).contextTokens
+          target.parentSessionId = (data as any).parentSessionId || target.parentSessionId || null
+          target.forkPointMessageId = (data as any).forkPointMessageId != null ? String((data as any).forkPointMessageId) : target.forkPointMessageId || null
+          target.parentTitle = (data as any).parentTitle || target.parentTitle || null
+          target.parentLastMessage = (data as any).parentLastMessage || target.parentLastMessage || null
+          target.parentLastMessageRole = (data as any).parentLastMessageRole || target.parentLastMessageRole || null
+          if (data.messages?.length) {
+            target.messages = mapDiTingMessages(data.messages as any[])
+            restoreWorkflowArchiveMessages(sessionId)
+            target.loadedMessageCount = data.messageLoadedCount ?? data.messages.length
+            target.messageTotal = data.messageTotal ?? target.messageCount ?? target.loadedMessageCount
+            target.messageCount = target.messageTotal
+            target.hasMoreBefore = data.hasMoreBefore ?? target.loadedMessageCount < target.messageTotal
+          }
+          if (!target.title) {
+            const firstUser = target.messages.find(m => m.role === 'user')
+            if (firstUser) {
+              const t = firstUser.content.slice(0, 40)
+              target.title = t + (firstUser.content.length > 40 ? '...' : '')
+            }
+          }
+          activeSession.value = target
+          // Process replayed events (compression state etc.)
+          if (data.events?.length) {
+            for (const evt of data.events) {
+              const e = evt.data as any
+              if (e.event === 'compression.started') {
+                setCompressionState(sessionId, {
+                  compressing: true,
+                  messageCount: e.message_count || 0,
+                  beforeTokens: e.token_count || 0,
+                  afterTokens: 0,
+                  compressed: null,
+                })
+              } else if (e.event === 'compression.completed') {
+                const afterTokens = e.contextTokens || e.afterTokens || 0
+                setCompressionState(sessionId, {
+                  compressing: false,
+                  messageCount: e.totalMessages || 0,
+                  beforeTokens: e.beforeTokens || 0,
+                  afterTokens,
+                  compressed: e.compressed ?? false,
+                  error: e.error,
+                })
+                if (e.contextTokens != null) target.contextTokens = e.contextTokens
+              } else if (e.event === 'abort.started') {
+                setAbortState({ aborting: true, synced: null })
+              } else if (e.event === 'abort.timeout') {
+                setAbortState({ aborting: true, synced: false, timedOut: true, message: (e as any).message })
+              } else if (e.event === 'abort.completed') {
+                setAbortState({ aborting: false, synced: e.synced ?? false })
+              } else if (e.event === 'approval.requested') {
+                setPendingApproval({ ...e, session_id: sessionId } as RunEvent)
+              } else if (e.event === 'approval.resolved') {
+                clearPendingApproval({ ...e, session_id: sessionId } as RunEvent)
+              } else if (e.event === 'clarify.requested') {
+                setPendingClarify({ ...e, session_id: sessionId } as RunEvent)
+              } else if (e.event === 'clarify.resolved') {
+                clearPendingClarify({ ...e, session_id: sessionId } as RunEvent)
+              } else if (e.event === 'run.failed') {
+                addAgentErrorMessage(sessionId, e.error)
+                serverWorking.value.delete(sessionId)
+                queueLengths.value.delete(sessionId)
+              } else if (e.event === 'agent.event' || e.event === 'run.reattach_failed') {
+                handleAgentEvent(e)
+              } else if (e.event === 'tool.started') {
+                const msgs = getSessionMsgs(sessionId)
+                const toolCallId = e.tool_call_id as string | undefined
+                const existingTool = toolCallId
+                  ? msgs.find(m => m.role === 'tool' && m.toolCallId === toolCallId)
+                  : null
+                if (existingTool) {
+                  updateMessage(sessionId, existingTool.id, {
+                    toolName: e.tool || e.name,
+                    toolArgs: hasRuntimeToolPayload((e as any).arguments) ? (e as any).arguments : existingTool.toolArgs,
+                    toolPreview: e.preview || existingTool.toolPreview,
+                    toolStatus: existingTool.toolStatus || 'running',
+                  })
+                } else {
+                  addMessage(sessionId, {
+                    id: uid(),
+                    role: 'tool',
+                    content: '',
+                    timestamp: Date.now(),
+                    toolName: e.tool || e.name,
+                    toolCallId,
+                    toolPreview: e.preview,
+                    toolArgs: runtimeToolPayloadOrUndefined((e as any).arguments),
+                    toolStatus: 'running',
+                  })
+                }
+              } else if (e.event === 'tool.completed') {
+                const msgs = getSessionMsgs(sessionId)
+                const toolCallId = e.tool_call_id as string | undefined
+                const toolMsgs = toolCallId
+                  ? msgs.filter(m => m.role === 'tool' && m.toolCallId === toolCallId)
+                  : msgs.filter(m => m.role === 'tool' && m.toolStatus === 'running')
+                if (toolMsgs.length > 0) {
+                  const output = runtimeToolPayloadOrUndefined((e as any).output)
+                  updateMessage(sessionId, toolMsgs[toolMsgs.length - 1].id, {
+                    toolStatus: e.error === true || runtimeToolOutputHasError(output) ? 'error' : 'done',
+                    toolDuration: e.duration,
+                    toolResult: output,
+                  })
+                }
+              } else if (String(e.event || '').startsWith('subagent.')) {
+                handleSubagentEvent(sessionId, e as RunEvent)
+              }
+            }
+          }
+          resolve()
+        }, activeSession.value?.profile, runtimeTransport())
+      })
+    } catch (err) {
+      console.error('Failed to load session messages via resume:', err)
+    } finally {
+      await loadSessionCollaborationHistory(sessionId)
+      isLoadingMessages.value = false
+    }
+
+    // Resume in-flight run event listeners if needed
+    if (activeSessionId.value === sessionId) {
+      resumeServerWorkingRun(sessionId)
+    }
+  }
+
+  async function loadOlderMessages(sessionId = activeSessionId.value): Promise<boolean> {
+    if (!sessionId) return false
+    const target = sessions.value.find(s => s.id === sessionId)
+    if (!target || target.isLoadingOlderMessages || !target.hasMoreBefore) return false
+    const offset = target.loadedMessageCount || 0
+    if (offset >= LIVE_CHAT_MAX_LOADED_MESSAGES) return false
+    const limit = Math.min(LIVE_CHAT_MESSAGE_PAGE_SIZE, LIVE_CHAT_MAX_LOADED_MESSAGES - offset)
+    target.isLoadingOlderMessages = true
+    try {
+      const page = await fetchSessionMessagesPage(sessionId, offset, limit, target.profile)
+      if (!page || page.messages.length === 0) {
+        target.hasMoreBefore = false
+        return false
+      }
+
+      const existingIds = new Set(target.messages.map(message => message.id))
+      const olderMessages = mapDiTingMessages(page.messages).filter(message => !existingIds.has(message.id))
+      target.messages = [...olderMessages, ...target.messages]
+      restoreWorkflowArchiveMessages(sessionId)
+      target.loadedMessageCount = offset + page.messages.length
+      target.messageTotal = page.total
+      target.messageCount = page.total
+      target.hasMoreBefore = page.hasMore
+      return olderMessages.length > 0
+    } catch (err) {
+      console.error('Failed to load older session messages:', err)
+      return false
+    } finally {
+      target.isLoadingOlderMessages = false
+    }
+  }
+
+  function newChat(options: {
+    profile?: string
+    model?: string
+    provider?: string
+    source?: 'api_server' | 'cli' | 'coding_agent' | 'global_agent' | 'workflow'
+    agent?: 'DiTing' | 'claude' | 'codex'
+    codingAgentId?: 'claude-code' | 'codex'
+    codingAgentMode?: 'global' | 'scoped'
+    workspace?: string | null
+    baseUrl?: string
+    apiKey?: string
+    apiMode?: ProviderApiMode
+  } = {}): Session {
+    const appStore = useAppStore()
+    const storageSource = runtimeMode.value === 'global_agent' ? 'global_agent' : options.source || 'cli'
+    const codingAgentId = options.codingAgentId || (options.agent === 'codex' ? 'codex' : options.agent === 'claude' ? 'claude-code' : undefined)
+    const isGlobalCodingAgent = Boolean(codingAgentId) && options.codingAgentMode === 'global'
+    const session = createSession({
+      profile: options.profile,
+      model: isGlobalCodingAgent ? undefined : options.model || appStore.selectedModel || undefined,
+      provider: isGlobalCodingAgent ? '' : options.provider || appStore.selectedProvider || '',
+      source: storageSource,
+      agent: options.agent,
+      codingAgentId,
+      codingAgentMode: options.codingAgentMode,
+      workspace: options.workspace,
+      baseUrl: options.baseUrl,
+      apiKey: options.apiKey,
+      apiMode: options.apiMode,
+    })
+    void switchSession(session.id)
+    return session
+  }
+
+  async function switchSessionModel(modelId: string, provider?: string, sessionId?: string, apiMode?: ProviderApiMode): Promise<boolean> {
+    const targetId = sessionId || activeSession.value?.id
+    if (!targetId) return false
+    const target = sessions.value.find(s => s.id === targetId)
+    const activeTarget = activeSession.value?.id === targetId ? activeSession.value : null
+    const previousProvider = String(target?.provider ?? activeTarget?.provider ?? '')
+    const nextProvider = provider || ''
+    const shouldClearRuntimeCredentials = previousProvider !== nextProvider && (
+      isCodingAgentLikeSession(target) || isCodingAgentLikeSession(activeTarget)
+    )
+    const ok = await setSessionModel(targetId, modelId, provider || '', apiMode)
+    if (!ok) return false
+    if (target) {
+      target.model = modelId
+      target.provider = provider || ''
+      if (apiMode) target.apiMode = apiMode
+      if (shouldClearRuntimeCredentials) clearCodingAgentRuntimeCredentials(target)
+    }
+    if (activeTarget) {
+      activeTarget.model = modelId
+      activeTarget.provider = provider || ''
+      if (apiMode) activeTarget.apiMode = apiMode
+      if (shouldClearRuntimeCredentials) clearCodingAgentRuntimeCredentials(activeTarget)
+    }
+    return true
+  }
+
+  async function deleteSession(sessionId: string): Promise<boolean> {
+    const target = sessions.value.find(s => s.id === sessionId)
+    const ok = await deleteSessionApi(sessionId, target?.profile)
+    if (!ok) return false
+    sessions.value = sessions.value.filter(s => s.id !== sessionId)
+    if (activeSessionId.value === sessionId) {
+      if (sessions.value.length > 0) {
+        await switchSession(sessions.value[0].id)
+      } else {
+        const session = createSession()
+        switchSession(session.id)
+      }
+    }
+    return true
+  }
+
+  function getSessionMsgs(sessionId: string): Message[] {
+    const s = sessions.value.find(s => s.id === sessionId)
+    return s?.messages || []
+  }
+
+  function addMessage(sessionId: string, msg: Message) {
+    const s = sessions.value.find(s => s.id === sessionId)
+    if (s) s.messages.push(msg)
+  }
+
+  function addOrUpdateSession(session: Session) {
+    const existingIndex = sessions.value.findIndex(s => s.id === session.id)
+    if (existingIndex !== -1) {
+      // Update existing session
+      sessions.value[existingIndex] = session
+    } else {
+      // Add new session
+      sessions.value.push(session)
+    }
+  }
+
+  function updateMessage(sessionId: string, id: string, update: Partial<Message>) {
+    const s = sessions.value.find(s => s.id === sessionId)
+    if (!s) return
+    const idx = s.messages.findIndex(m => m.id === id)
+    if (idx !== -1) {
+      s.messages[idx] = { ...s.messages[idx], ...update }
+    }
+  }
+
+  function settleRunningTools(sessionId: string, status: 'done' | 'error') {
+    const msgs = getSessionMsgs(sessionId)
+    msgs.forEach((m, i) => {
+      if (m.role === 'tool' && m.toolStatus === 'running') {
+        msgs[i] = { ...m, toolStatus: status }
+      }
+    })
+  }
+
+  function clearAgentEventMessages(sessionId: string) {
+    const s = sessions.value.find(s => s.id === sessionId)
+    if (!s) return
+    s.messages = s.messages.filter(m => m.commandAction !== 'agent.event')
+  }
+
+  function createWorkflowMessageId(sessionId: string) {
+    return `multi-agent-workflow:${sessionId}:${uid()}`
+  }
+
+  function workflowMessageId(sessionId: string) {
+    return activeWorkflowMessageIds.value.get(sessionId) || `multi-agent-workflow:${sessionId}`
+  }
+
+  function defaultWorkflowSteps(): MultiAgentWorkflowStepState[] {
+    return [
+      {
+        id: 'understand',
+        title: '理解需求',
+        detail: '主智能体正在提取任务目标、约束和交付物。',
+        status: 'running',
+      },
+      {
+        id: 'route',
+        title: '规划路径',
+        detail: '等待路由模型生成执行策略。',
+        status: 'pending',
+      },
+      {
+        id: 'match',
+        title: '匹配智能体',
+        detail: '等待确认是否需要调用子智能体。',
+        status: 'pending',
+      },
+      {
+        id: 'execute',
+        title: '执行节点',
+        detail: '等待实际执行节点启动。',
+        status: 'pending',
+      },
+      {
+        id: 'respond',
+        title: '汇总回复',
+        detail: '等待阶段成果返回后汇总。',
+        status: 'pending',
+      },
+    ]
+  }
+
+  function createWorkflowState(objective: string): MultiAgentWorkflowMessageState {
+    const normalizedObjective = summarizeMultiAgentObjectiveText(objective)
+    return {
+      title: '协作详情',
+      subtitle: '主智能体正在生成执行路径',
+      objective: normalizedObjective,
+      current: '主智能体已接收需求，正在识别目标与执行路径。',
+      status: 'running',
+      reasoningText: '',
+      mainAgentStream: '主智能体已接收需求，正在识别目标与执行路径。',
+      subagentStreams: [],
+      steps: defaultWorkflowSteps(),
+      events: [],
+    }
+  }
+
+  function persistWorkflowMessage(sessionId: string, message: Message) {
+    if (!message.workflow) return
+    persistWorkflowArchive({
+      id: message.id,
+      sessionId,
+      messageId: message.id,
+      createdAt: message.timestamp,
+      updatedAt: Date.now(),
+      workflow: message.workflow,
+    })
+  }
+
+  function persistWorkflowMessages(sessionId: string) {
+    getSessionMsgs(sessionId)
+      .filter(message => message.systemType === 'workflow' && !!message.workflow)
+      .forEach(message => persistWorkflowMessage(sessionId, message))
+  }
+
+  function syncActiveWorkflowMessageId(sessionId: string) {
+    const session = sessions.value.find(item => item.id === sessionId)
+    if (!session) return
+    const latestRunningWorkflow = [...session.messages]
+      .reverse()
+      .find(message => message.systemType === 'workflow' && message.workflow?.status === 'running')
+    if (!latestRunningWorkflow) return
+    const nextMap = new Map(activeWorkflowMessageIds.value)
+    nextMap.set(sessionId, latestRunningWorkflow.id)
+    activeWorkflowMessageIds.value = nextMap
+  }
+
+  function restoreWorkflowArchiveMessages(sessionId: string) {
+    const session = sessions.value.find(item => item.id === sessionId)
+    if (!session) return
+    const existingIds = new Set(session.messages.map(message => message.id))
+    const archived = readWorkflowArchives()
+      .filter(record => record.sessionId === sessionId && !existingIds.has(record.messageId))
+      .map<Message>(record => ({
+        id: record.messageId,
+        role: 'system',
+        content: encodeWorkflowArchive(record.workflow),
+        timestamp: record.createdAt,
+        systemType: 'workflow',
+        workflow: record.workflow,
+      }))
+    if (archived.length) {
+      session.messages = [...session.messages, ...archived].sort((a, b) => a.timestamp - b.timestamp)
+    }
+    syncActiveWorkflowMessageId(sessionId)
+  }
+
+  function startMultiAgentWorkflowMessage(sessionId: string, objective = '') {
+    persistWorkflowMessages(sessionId)
+    const id = createWorkflowMessageId(sessionId)
+    const nextMap = new Map(activeWorkflowMessageIds.value)
+    nextMap.set(sessionId, id)
+    activeWorkflowMessageIds.value = nextMap
+    const workflow = createWorkflowState(objective)
+    addMessage(sessionId, {
+      id,
+      role: 'system',
+      content: encodeWorkflowArchive(workflow),
+      timestamp: Date.now(),
+      systemType: 'workflow',
+      workflow,
+    })
+    const message = getSessionMsgs(sessionId).find(item => item.id === id)
+    if (message) persistWorkflowMessage(sessionId, message)
+  }
+
+  function ensureMultiAgentWorkflowMessage(sessionId: string, objective = '') {
+    const id = workflowMessageId(sessionId)
+    const msgs = getSessionMsgs(sessionId)
+    const existing = msgs.find(message => message.id === id)
+    if (existing) {
+      if (!existing.workflow) {
+        const workflow = createWorkflowState(objective || existing.content)
+        updateMessage(sessionId, id, {
+          content: encodeWorkflowArchive(workflow),
+          workflow,
+          systemType: 'workflow',
+        })
+        const updated = getSessionMsgs(sessionId).find(message => message.id === id)
+        if (updated) persistWorkflowMessage(sessionId, updated)
+      }
+      return
+    }
+    const workflow = createWorkflowState(objective)
+    addMessage(sessionId, {
+      id,
+      role: 'system',
+      content: encodeWorkflowArchive(workflow),
+      timestamp: Date.now(),
+      systemType: 'workflow',
+      workflow,
+    })
+    const created = getSessionMsgs(sessionId).find(message => message.id === id)
+    if (created) persistWorkflowMessage(sessionId, created)
+  }
+
+  function patchWorkflow(sessionId: string, updater: (workflow: MultiAgentWorkflowMessageState) => MultiAgentWorkflowMessageState) {
+    ensureMultiAgentWorkflowMessage(sessionId)
+    const id = workflowMessageId(sessionId)
+    const message = getSessionMsgs(sessionId).find(item => item.id === id)
+    const current = message?.workflow || createWorkflowState('')
+    const workflow = updater(current)
+    updateMessage(sessionId, id, {
+      content: encodeWorkflowArchive(workflow),
+      workflow,
+    })
+    const updated = getSessionMsgs(sessionId).find(item => item.id === id)
+    if (updated) persistWorkflowMessage(sessionId, updated)
+  }
+
+  function patchWorkflowStep(
+    sessionId: string,
+    stepId: string,
+    patch: Partial<MultiAgentWorkflowStepState>,
+  ) {
+    patchWorkflow(sessionId, workflow => ({
+      ...workflow,
+      steps: workflow.steps.map(step => step.id === stepId ? { ...step, ...patch } : step),
+    }))
+  }
+
+  function appendWorkflowStepDetail(
+    sessionId: string,
+    stepId: string,
+    text: unknown,
+    status: MultiAgentWorkflowStepState['status'] = 'running',
+  ) {
+    patchWorkflow(sessionId, workflow => ({
+      ...workflow,
+      steps: workflow.steps.map(step => {
+        if (step.id !== stepId) return step
+        const mergedDetail = mergeMultiAgentReasoningText(step.detail, text, 320)
+        return {
+          ...step,
+          detail: latestMultiAgentReasoningText(mergedDetail) || step.detail,
+          status,
+        }
+      }),
+    }))
+  }
+
+  function appendWorkflowReasoning(sessionId: string, text: unknown) {
+    const mergedPreview = mergeMultiAgentReasoningText('', text, 320)
+    if (!mergedPreview) return
+    patchWorkflow(sessionId, workflow => {
+      const reasoningText = mergeMultiAgentReasoningText(workflow.reasoningText, text, 2200)
+      const mainAgentStream = mergeWorkflowStreamText(workflow.mainAgentStream || workflow.reasoningText, text, 2400)
+      return {
+        ...workflow,
+        current: latestMultiAgentReasoningText(reasoningText) || workflow.current,
+        reasoningText,
+        mainAgentStream: mainAgentStream || workflow.mainAgentStream,
+      }
+    })
+  }
+
+  function upsertWorkflowSubagentStream(
+    sessionId: string,
+    stream: {
+      id: string
+      nodeId?: string
+      agentId?: string
+      agentName?: string
+      title?: string
+      text?: unknown
+      status: MultiAgentWorkflowSubagentStreamState['status']
+      toolName?: string
+    },
+  ) {
+    patchWorkflow(sessionId, workflow => {
+      const index = workflow.subagentStreams.findIndex(item => item.id === stream.id)
+      const existing = index >= 0 ? workflow.subagentStreams[index]! : null
+      const mergedText = mergeWorkflowLogText(existing?.text || '', stream.text || '', 2400)
+      const nextStream: MultiAgentWorkflowSubagentStreamState = {
+        id: stream.id,
+        nodeId: stream.nodeId || existing?.nodeId,
+        agentId: stream.agentId || existing?.agentId,
+        agentName: sanitizeMultiAgentText(stream.agentName || existing?.agentName || '子智能体') || '子智能体',
+        title: sanitizeMultiAgentText(stream.title || existing?.title || '执行流') || '执行流',
+        text: mergedText || existing?.text || '',
+        status: stream.status,
+        toolName: sanitizeMultiAgentText(stream.toolName || existing?.toolName || '') || undefined,
+        updatedAt: Date.now(),
+      }
+      const subagentStreams = [...workflow.subagentStreams]
+      if (index >= 0) subagentStreams[index] = nextStream
+      else subagentStreams.push(nextStream)
+      return {
+        ...workflow,
+        subagentStreams: subagentStreams
+          .sort((left, right) => right.updatedAt - left.updatedAt)
+          .slice(0, 6),
+      }
+    })
+  }
+
+  function upsertWorkflowEvent(sessionId: string, event: MultiAgentWorkflowEventState) {
+    patchWorkflow(sessionId, workflow => {
+      const index = workflow.events.findIndex(item => item.id === event.id)
+      const events = [...workflow.events]
+      if (index >= 0) {
+        events[index] = {
+          ...events[index],
+          ...event,
+        }
+      } else {
+        events.push(event)
+      }
+      return {
+        ...workflow,
+        events: events.slice(-16),
+      }
+    })
+  }
+
+  function setWorkflowTerminalState(sessionId: string, outcome: 'completed' | 'failed') {
+    patchWorkflow(sessionId, workflow => ({
+      ...workflow,
+      subtitle: outcome === 'completed' ? '已完成' : '执行失败',
+      current: outcome === 'completed'
+        ? '最终回复已返回到对话区。'
+        : '任务执行中断，请查看失败节点或工具错误。',
+      status: outcome === 'completed' ? 'done' : 'error',
+      subagentStreams: workflow.subagentStreams.map(stream => ({
+        ...stream,
+        status: stream.status === 'running'
+          ? (outcome === 'completed' ? 'done' : 'error')
+          : stream.status,
+      })),
+      steps: workflow.steps.map(step => ({
+        ...step,
+        status: outcome === 'completed'
+          ? 'done'
+          : step.status === 'running'
+            ? 'error'
+            : step.status,
+      })),
+    }))
+  }
+
+  function updateWorkflowToolEvent(sessionId: string, args: {
+    id?: string
+    name?: unknown
+    preview?: unknown
+    status: 'running' | 'done' | 'error'
+    output?: unknown
+  }) {
+    if (!multiAgentRoutes.value.get(sessionId)) return
+    const toolName = sanitizeMultiAgentText(args.name || 'tool') || 'tool'
+    const preview = sanitizeMultiAgentText(args.preview || args.output || '')
+    const title = args.status === 'running'
+      ? `调用工具：${toolName}`
+      : args.status === 'done'
+        ? `工具完成：${toolName}`
+        : `工具失败：${toolName}`
+    patchWorkflow(sessionId, workflow => ({
+      ...workflow,
+      subtitle: '工具执行中',
+      current: preview || title,
+      status: args.status === 'error' ? 'error' : 'running',
+    }))
+    patchWorkflowStep(sessionId, 'execute', {
+      title: '执行工具',
+      detail: preview || title,
+      status: args.status === 'error' ? 'error' : args.status === 'done' ? 'done' : 'running',
+    })
+    upsertWorkflowEvent(sessionId, {
+      id: `tool:${args.id || toolName}`,
+      title,
+      text: preview || title,
+      status: args.status,
+      timestamp: Date.now(),
+      toolName,
+    })
+  }
+
+  function setMultiAgentRouteState(sessionId: string, route: MultiAgentRouteState | null) {
+    const next = new Map(multiAgentRoutes.value)
+    if (route) next.set(sessionId, route)
+    else next.delete(sessionId)
+    multiAgentRoutes.value = next
+
+    if (route) {
+      const history = (multiAgentRouteHistories.value.get(sessionId) || []).filter((item) => {
+        if (!route.runId || route.runId.startsWith('pending:')) return true
+        return !(item.runId.startsWith('pending:') && item.startedAt === route.startedAt)
+      })
+      const existingIndex = history.findIndex(item => item.runId === route.runId)
+      const nextHistory = [...history]
+      if (existingIndex >= 0) nextHistory[existingIndex] = route
+      else if (route.runId) nextHistory.unshift(route)
+      const historyMap = new Map(multiAgentRouteHistories.value)
+      historyMap.set(sessionId, nextHistory.slice(0, 20))
+      multiAgentRouteHistories.value = historyMap
+      if (route.runId) {
+        const selectedMap = new Map(selectedMultiAgentRunIds.value)
+        selectedMap.set(sessionId, route.runId)
+        selectedMultiAgentRunIds.value = selectedMap
+      }
+    }
+  }
+
+  function setSessionCollaborationHistory(sessionId: string, routes: MultiAgentRouteState[]) {
+    const historyMap = new Map(multiAgentRouteHistories.value)
+    historyMap.set(sessionId, routes)
+    multiAgentRouteHistories.value = historyMap
+    const selected = selectedMultiAgentRunIds.value.get(sessionId)
+    if (selected && routes.some(route => route.runId === selected)) return
+    const nextSelected = new Map(selectedMultiAgentRunIds.value)
+    if (routes[0]?.runId) nextSelected.set(sessionId, routes[0].runId)
+    else nextSelected.delete(sessionId)
+    selectedMultiAgentRunIds.value = nextSelected
+  }
+
+  async function loadSessionCollaborationHistory(sessionId: string) {
+    try {
+      const records = await fetchSessionCollaborationRuns(sessionId, 20)
+      const routes = records
+        .map(collaborationRunToRouteState)
+        .filter((route): route is MultiAgentRouteState => Boolean(route))
+      setSessionCollaborationHistory(sessionId, routes)
+    } catch (err) {
+      console.error('Failed to load collaboration history:', err)
+    }
+  }
+
+  function selectMultiAgentRun(sessionId: string, runId: string | null) {
+    const next = new Map(selectedMultiAgentRunIds.value)
+    if (runId) next.set(sessionId, runId)
+    else next.delete(sessionId)
+    selectedMultiAgentRunIds.value = next
+  }
+
+  function mutateMultiAgentRouteState(
+    sessionId: string,
+    updater: (current: MultiAgentRouteState) => MultiAgentRouteState,
+  ) {
+    const current = multiAgentRoutes.value.get(sessionId)
+    if (!current) return
+    setMultiAgentRouteState(sessionId, updater(current))
+  }
+
+  function resetMultiAgentRouteState(sessionId: string, objective: string, mode: 'delegate_subagent' | 'DiTing_native' = 'DiTing_native') {
+    const now = Date.now()
+    setMultiAgentRouteState(sessionId, {
+      runId: `pending:${sessionId}:${now}`,
+      sessionId,
+      mode,
+      intent: '',
+      category: '协作分析',
+      reason: '主智能体正在分析用户需求。',
+      text: '主智能体正在生成任务规划，请稍候。',
+      objective: summarizeMultiAgentObjectiveText(objective),
+      status: 'running',
+      currentNodeId: 'understand',
+      selectedAgentId: '',
+      selectedAgentName: '',
+      todo: [],
+      constraints: [],
+      planNodes: [
+        {
+          id: 'understand',
+          title: '理解需求与约束',
+          phase: '分析',
+          status: 'doing',
+          outcome: 'unknown',
+          dependsOn: [],
+          executor: { type: 'DiTing', name: '主智能体' },
+          summary: '主智能体正在读取消息、提取目标与约束。',
+        },
+        {
+          id: 'route',
+          title: '确认执行路径',
+          phase: '路由',
+          status: 'todo',
+          outcome: 'unknown',
+          dependsOn: ['understand'],
+          executor: { type: 'DiTing', name: '主智能体' },
+          summary: '等待主智能体完成意图分析与任务拆解。',
+        },
+        {
+          id: 'respond',
+          title: '汇总阶段成果并回复用户',
+          phase: '汇总',
+          status: 'todo',
+          outcome: 'unknown',
+          dependsOn: ['route'],
+          executor: { type: 'DiTing', name: '主智能体' },
+          summary: '等待前置节点完成后生成最终回复。',
+        },
+      ],
+      planDependencies: [
+        { from: 'understand', to: 'route', type: 'blocks' },
+        { from: 'route', to: 'respond', type: 'blocks' },
+      ],
+      activity: [
+        {
+          id: `route:reset:${sessionId}:${now}`,
+          kind: 'route',
+          title: '主智能体开始规划',
+          text: '已清空上一轮协作状态，正在生成新的任务路径。',
+          status: 'running',
+          timestamp: now,
+        },
+      ],
+      thinkingSteps: [
+        {
+          id: 'understand',
+          title: '理解用户需求',
+          detail: '正在接收消息并提炼任务目标。',
+          status: 'running',
+        },
+        {
+          id: 'route',
+          title: '生成路由决策',
+          detail: '等待主智能体判断执行模式与候选智能体。',
+          status: 'pending',
+        },
+        {
+          id: 'match',
+          title: '确认执行路径',
+          detail: '等待主智能体确认主执行方与下一步动作。',
+          status: 'pending',
+        },
+      ],
+      startedAt: now,
+      endedAt: null,
+    })
+  }
+
+  function appendMultiAgentActivity(
+    sessionId: string,
+    event: MultiAgentExecutionEventState,
+  ) {
+    mutateMultiAgentRouteState(sessionId, current => ({
+      ...current,
+      activity: [...current.activity, event].slice(-24),
+    }))
+  }
+
+  function upsertMultiAgentActivity(
+    sessionId: string,
+    event: MultiAgentExecutionEventState,
+  ) {
+    mutateMultiAgentRouteState(sessionId, current => {
+      const index = current.activity.findIndex(item => item.id === event.id)
+      const activity = [...current.activity]
+      if (index >= 0) {
+        activity[index] = {
+          ...activity[index],
+          ...event,
+        }
+      } else {
+        activity.push(event)
+      }
+      return {
+        ...current,
+        activity: activity.slice(-24),
+      }
+    })
+  }
+
+  function patchMultiAgentThinkingSteps(
+    sessionId: string,
+    patcher: (steps: MultiAgentThinkingStepState[]) => MultiAgentThinkingStepState[],
+  ) {
+    mutateMultiAgentRouteState(sessionId, current => ({
+      ...current,
+      thinkingSteps: patcher([...current.thinkingSteps]),
+    }))
+  }
+
+  function appendMultiAgentThinkingDetail(
+    sessionId: string,
+    stepId: string,
+    text: unknown,
+    status: MultiAgentThinkingStepState['status'] = 'running',
+  ) {
+    patchMultiAgentThinkingSteps(sessionId, steps => steps.map(step => {
+      if (step.id !== stepId) return step
+      const mergedDetail = mergeMultiAgentReasoningText(step.detail, text, 320)
+      return {
+        ...step,
+        detail: latestMultiAgentReasoningText(mergedDetail) || step.detail,
+        status,
+      }
+    }))
+  }
+
+  function resolveMultiAgentReasoningStepId(route: MultiAgentRouteState): string {
+    const runningStep = route.thinkingSteps.find(step => step.status === 'running')
+    if (runningStep) return runningStep.id
+    if (route.currentNodeId === 'understand' || route.currentNodeId === 'route' || route.currentNodeId === 'match') {
+      return route.currentNodeId
+    }
+    return 'route'
+  }
+
+  function handleMultiAgentReasoningChunk(sessionId: string, stepId: string, text: unknown) {
+    const currentRoute = multiAgentRoutes.value.get(sessionId)
+    const currentStep = currentRoute?.thinkingSteps.find(step => step.id === stepId) || null
+    const mergedDetail = latestMultiAgentReasoningText(
+      mergeMultiAgentReasoningText(currentStep?.detail || '', text, 320),
+    )
+    if (!mergedDetail) return
+    appendWorkflowReasoning(sessionId, text)
+    appendWorkflowStepDetail(sessionId, stepId, text, 'running')
+    appendMultiAgentThinkingDetail(sessionId, stepId, text, 'running')
+    upsertMultiAgentActivity(sessionId, {
+      id: `route:reasoning:${stepId}`,
+      kind: 'route',
+      title: '主智能体思考',
+      text: mergedDetail,
+      status: 'running',
+      timestamp: Date.now(),
+    })
+  }
+
+  function patchMultiAgentPlanNodes(
+    sessionId: string,
+    nodeIds: string[],
+    patch: Partial<MultiAgentPlanNodeState>,
+  ) {
+    const current = multiAgentRoutes.value.get(sessionId)
+    if (!current) return
+    const idSet = new Set(nodeIds.filter(Boolean))
+    if (idSet.size === 0) return
+    const nodes = current.planNodes.map((node) => {
+      if (!idSet.has(node.id)) return node
+      return {
+        ...node,
+        ...patch,
+        outcome: patch.outcome !== undefined
+          ? patch.outcome
+          : patch.status !== undefined
+            ? normalizeMultiAgentNodeOutcome(undefined, patch.status)
+            : node.outcome,
+        executor: patch.executor
+          ? {
+              ...node.executor,
+              ...patch.executor,
+            }
+          : node.executor,
+      }
+    })
+    setMultiAgentRouteState(sessionId, {
+      ...current,
+      planNodes: nodes,
+    })
+  }
+
+  function hasStartedExecutableMultiAgentNodes(route: MultiAgentRouteState | null | undefined) {
+    if (!route) return false
+    return route.planNodes.some(node =>
+      !RESERVED_MULTI_AGENT_NODE_IDS.has(node.id)
+        && (node.status === 'doing' || isTerminalMultiAgentNodeStatus(node.status)),
+    )
+  }
+
+  function nextRunnableMultiAgentNode(
+    route: MultiAgentRouteState,
+    options: {
+      excludeNodeIds?: string[]
+      includeRespond?: boolean
+    } = {},
+  ) {
+    const excluded = new Set(options.excludeNodeIds || [])
+    return route.planNodes.find(node => {
+      if (excluded.has(node.id)) return false
+      if (!options.includeRespond && RESERVED_MULTI_AGENT_NODE_IDS.has(node.id)) return false
+      if (isTerminalMultiAgentNodeStatus(node.status) || node.status === 'doing') return false
+      const dependenciesReady = (node.dependsOn || []).every(dependsOn => {
+        const dependency = route.planNodes.find(item => item.id === dependsOn)
+        return !dependency || dependency.status === 'done'
+      })
+      if (!dependenciesReady) return false
+      return true
+    }) || null
+  }
+
+  function normalizeRunningMultiAgentNodes(
+    nodes: MultiAgentPlanNodeState[],
+    runningNodeId: string | null,
+  ): MultiAgentPlanNodeState[] {
+    let fallbackRunningUsed = false
+    return nodes.map((node) => {
+      if (RESERVED_MULTI_AGENT_NODE_IDS.has(node.id)) return node
+      if (runningNodeId) {
+        if (node.id === runningNodeId) return { ...node, status: 'doing', outcome: 'unknown' }
+        if (node.status === 'doing') return { ...node, status: 'todo', outcome: 'unknown' }
+        return node
+      }
+      if (node.status !== 'doing') return node
+      if (!fallbackRunningUsed) {
+        fallbackRunningUsed = true
+        return { ...node, outcome: 'unknown' }
+      }
+      return { ...node, status: 'todo', outcome: 'unknown' }
+    })
+  }
+
+  function setMultiAgentNodeStatus(
+    sessionId: string,
+    nodeId: string,
+    patch: Partial<MultiAgentPlanNodeState>,
+  ) {
+    if (!nodeId) return
+    patchMultiAgentPlanNodes(sessionId, [nodeId], patch)
+  }
+
+  function completeDependentDiTingNodes(sessionId: string, targetNodeIds: string[], summary: string) {
+    const current = multiAgentRoutes.value.get(sessionId)
+    if (!current || targetNodeIds.length === 0) return
+    const dependencyIds = new Set<string>()
+    current.planNodes
+      .filter(node => targetNodeIds.includes(node.id))
+      .forEach((node) => {
+        ;(node.dependsOn || []).forEach(dependsOn => {
+          if (!isReservedMultiAgentNodeId(dependsOn)) dependencyIds.add(dependsOn)
+        })
+      })
+    if (dependencyIds.size === 0) return
+    patchMultiAgentPlanNodes(sessionId, [...dependencyIds], {
+      status: 'done',
+      outcome: 'success',
+      summary: summary || '前置步骤已完成。',
+    })
+  }
+
+  function collectBlockedDependentPlanNodeIds(route: MultiAgentRouteState, sourceNodeIds: string[]) {
+    const sourceSet = new Set(sourceNodeIds.filter(Boolean))
+    if (sourceSet.size === 0) return []
+    const queue = [...sourceSet]
+    const blocked = new Set<string>()
+
+    while (queue.length > 0) {
+      const currentNodeId = queue.shift() || ''
+      if (!currentNodeId) continue
+      route.planDependencies.forEach((dependency) => {
+        if (dependency.type !== 'blocks' || dependency.from !== currentNodeId) return
+        const nextNodeId = dependency.to
+        if (!nextNodeId || sourceSet.has(nextNodeId) || blocked.has(nextNodeId) || nextNodeId === 'understand' || nextNodeId === 'route') return
+        blocked.add(nextNodeId)
+        queue.push(nextNodeId)
+      })
+    }
+
+    return route.planNodes
+      .filter(node => blocked.has(node.id))
+      .map(node => node.id)
+  }
+
+  function blockDependentMultiAgentNodes(
+    sessionId: string,
+    sourceNodeIds: string[],
+    reason: string,
+    explicitBlockedNodeIds: string[] = [],
+  ) {
+    const current = multiAgentRoutes.value.get(sessionId)
+    if (!current) return []
+    const sourceSet = new Set(sourceNodeIds.filter(Boolean))
+    const blockedNodeIds = explicitBlockedNodeIds.length > 0
+      ? explicitBlockedNodeIds.filter(nodeId => current.planNodes.some(node => node.id === nodeId) && !sourceSet.has(nodeId))
+      : collectBlockedDependentPlanNodeIds(current, sourceNodeIds)
+    if (blockedNodeIds.length === 0) return []
+    const blockedIdSet = new Set(blockedNodeIds)
+    const pausedSummary = reason
+      ? `前置节点失败或不可最终化：${reason}。当前节点没有合法输入，已暂停并等待重新规划。`
+      : '前置节点失败或不可最终化，当前节点没有合法输入，已暂停并等待重新规划。'
+    const invalidatedSummary = reason
+      ? `前置节点失败或不可最终化：${reason}。当前节点的旧执行结果已失效，等待重新规划。`
+      : '前置节点失败或不可最终化，当前节点的旧执行结果已失效，等待重新规划。'
+    setMultiAgentRouteState(sessionId, {
+      ...current,
+      planNodes: current.planNodes.map(node => blockedIdSet.has(node.id)
+        ? {
+            ...node,
+            status: node.status === 'failed'
+              ? 'failed'
+              : node.status === 'done' || node.status === 'doing' || node.status === 'partial' || node.status === 'unsafe'
+                ? 'invalidated'
+                : 'waiting_replan',
+            outcome: 'failure',
+            summary: node.status === 'failed'
+              ? (node.summary || pausedSummary)
+              : node.status === 'done' || node.status === 'doing' || node.status === 'partial' || node.status === 'unsafe'
+                ? invalidatedSummary
+                : pausedSummary,
+          }
+        : node),
+    })
+    return blockedNodeIds
+  }
+
+  function isMultiAgentPlanNodeExecutable(route: MultiAgentRouteState, nodeId: string) {
+    const node = route.planNodes.find(item => item.id === nodeId)
+    if (!node || RESERVED_MULTI_AGENT_NODE_IDS.has(node.id)) return false
+    if (isTerminalMultiAgentNodeStatus(node.status)) return false
+    if (node.status === 'doing') return true
+    return (node.dependsOn || []).every(dependsOn => {
+      const dependency = route.planNodes.find(item => item.id === dependsOn)
+      return !dependency || dependency.status === 'done'
+    })
+  }
+
+  function resolveSubagentPlanNodeIds(sessionId: string, subagentId: string, explicitNodeIds: string[] = []) {
+    const current = multiAgentRoutes.value.get(sessionId)
+    if (!current) return explicitNodeIds.filter(Boolean).slice(0, 1)
+    const explicit = explicitNodeIds.filter(id => current.planNodes.some(node => node.id === id))
+    const readyExplicit = explicit.find(id => isMultiAgentPlanNodeExecutable(current, id))
+    if (readyExplicit) return [readyExplicit]
+    const unfinishedExplicit = explicit.find((id) => {
+      const node = current.planNodes.find(item => item.id === id)
+      return Boolean(node) && !isTerminalMultiAgentNodeStatus(node!.status)
+    })
+    if (unfinishedExplicit) return [unfinishedExplicit]
+    const matched = current.planNodes.filter(node =>
+      node.id !== 'route'
+      && node.id !== 'respond'
+      && node.executor.type === 'subagent'
+      && node.executor.id === subagentId,
+    )
+    if (matched.length === 0) return []
+    const readyMatched = matched.find(node => isMultiAgentPlanNodeExecutable(current, node.id))
+    if (readyMatched) return [readyMatched.id]
+    const unfinished = matched.find(node => !isTerminalMultiAgentNodeStatus(node.status))
+    return unfinished ? [unfinished.id] : []
+  }
+
+  function resolveRespondDependsOn(sessionId: string, fallbackNodeIds: string[] = []) {
+    const current = multiAgentRoutes.value.get(sessionId)
+    if (!current) return fallbackNodeIds.length > 0 ? fallbackNodeIds : ['execute']
+    const existingRespond = current.planNodes.find(node => node.id === 'respond')
+    if (existingRespond?.dependsOn?.length) return existingRespond.dependsOn
+    const plannedNodeIds = current.planNodes
+      .filter(node => !RESERVED_MULTI_AGENT_NODE_IDS.has(node.id))
+      .map(node => node.id)
+    if (plannedNodeIds.length > 0) return plannedNodeIds
+    return fallbackNodeIds.length > 0 ? fallbackNodeIds : ['execute']
+  }
+
+  function beginDiTingPlannedExecution(sessionId: string) {
+    const current = multiAgentRoutes.value.get(sessionId)
+    if (!current || current.mode !== 'DiTing_native') return
+    const nextNode = nextRunnableMultiAgentNode(current)
+    if (!nextNode) return
+    updateMultiAgentExecutionState(sessionId, {
+      nodeId: 'understand',
+      currentNodeStatus: 'done',
+    })
+    updateMultiAgentExecutionState(sessionId, {
+      nodeId: 'route',
+      currentNodeStatus: 'done',
+    })
+    updateMultiAgentExecutionState(sessionId, {
+      status: 'running',
+      currentNodeId: nextNode.id,
+      nodeId: nextNode.id,
+      currentNodeSummary: nextNode.summary || `主智能体开始执行：${nextNode.title}`,
+      currentNodeStatus: 'doing',
+    })
+    appendMultiAgentActivity(sessionId, {
+      id: `route:execute:${sessionId}:${Date.now()}`,
+      kind: 'route',
+      title: '进入执行阶段',
+      text: `当前开始执行：${nextNode.title}`,
+      status: 'running',
+      timestamp: Date.now(),
+      agentId: nextNode.executor.id,
+      agentName: nextNode.executor.name,
+    })
+  }
+
+  function updateMultiAgentExecutionState(sessionId: string, patch: {
+    status?: MultiAgentRouteState['status']
+    currentNodeId?: string | null
+    nodeId?: string | null
+    currentNodeSummary?: string
+    currentNodeStatus?: MultiAgentPlanNodeState['status']
+  }) {
+    const current = multiAgentRoutes.value.get(sessionId)
+    if (!current) return
+    const requestedCurrentNodeId = patch.currentNodeId !== undefined ? patch.currentNodeId : current.currentNodeId
+    const targetNodeId = patch.nodeId !== undefined
+      ? patch.nodeId
+      : patch.currentNodeId !== undefined
+        ? patch.currentNodeId
+        : current.currentNodeId
+    const nodes = current.planNodes.map(node => {
+      if (!targetNodeId || node.id !== targetNodeId) return node
+      return {
+        ...node,
+        status: patch.currentNodeStatus || node.status,
+        outcome: patch.currentNodeStatus
+          ? normalizeMultiAgentNodeOutcome(undefined, patch.currentNodeStatus)
+          : node.outcome,
+        summary: patch.currentNodeSummary || node.summary,
+      }
+    })
+    const nextCurrentNodeId = requestedCurrentNodeId !== undefined ? requestedCurrentNodeId : current.currentNodeId
+    const runningNodeId = targetNodeId && !isReservedMultiAgentNodeId(targetNodeId) && patch.currentNodeStatus === 'doing'
+      ? targetNodeId
+      : null
+    const normalizedNodes = normalizeRunningMultiAgentNodes(nodes, runningNodeId)
+    const normalizedCurrentNodeId = nextCurrentNodeId && isReservedMultiAgentNodeId(nextCurrentNodeId)
+      ? nextCurrentNodeId
+      : (nextCurrentNodeId && normalizedNodes.some(node => node.id === nextCurrentNodeId)
+          ? nextCurrentNodeId
+          : (() => {
+              const nextNode = normalizedNodes.find(node => !isReservedMultiAgentNodeId(node.id) && node.status === 'doing')
+              if (nextNode) return nextNode.id
+              if (current.status === 'completed') return 'respond'
+              return current.currentNodeId
+            })())
+    setMultiAgentRouteState(sessionId, {
+      ...current,
+      status: patch.status || current.status,
+      currentNodeId: normalizedCurrentNodeId,
+      planNodes: normalizedNodes,
+      activity: current.activity,
+    })
+  }
+
+  function upsertMultiAgentPlanNode(
+    sessionId: string,
+    node: MultiAgentPlanNodeState,
+  ) {
+    const current = multiAgentRoutes.value.get(sessionId)
+    if (!current) return
+    const nextNodes = current.planNodes.some(item => item.id === node.id)
+      ? current.planNodes.map((item) => {
+          if (item.id !== node.id) return item
+          return {
+            ...item,
+            ...node,
+            outcome: node.outcome !== undefined
+              ? node.outcome
+              : normalizeMultiAgentNodeOutcome(undefined, node.status),
+            executor: {
+              ...item.executor,
+              ...node.executor,
+            },
+          }
+        })
+      : [...current.planNodes, {
+          ...node,
+          outcome: node.outcome !== undefined
+            ? node.outcome
+            : normalizeMultiAgentNodeOutcome(undefined, node.status),
+        }]
+    setMultiAgentRouteState(sessionId, {
+      ...current,
+      planNodes: nextNodes,
+    })
+  }
+
+  function finalizeMultiAgentRouteState(sessionId: string, outcome: 'completed' | 'failed') {
+    const current = multiAgentRoutes.value.get(sessionId)
+    if (!current) return
+
+    const currentNodeId = current.currentNodeId
+    const finalNodes: MultiAgentPlanNodeState[] = current.planNodes.map((node): MultiAgentPlanNodeState => {
+      if (outcome === 'completed') {
+        if (node.id === 'understand' || node.id === 'route' || node.id === 'respond') {
+          return {
+            ...node,
+            status: 'done',
+            outcome: 'success',
+            summary: node.id === 'respond'
+              ? '主智能体已汇总阶段成果并回复用户。'
+              : node.summary,
+          }
+        }
+        if (
+          node.status !== 'blocked'
+          && node.status !== 'partial'
+          && node.status !== 'unsafe'
+          && node.status !== 'failed'
+          && node.status !== 'waiting_replan'
+          && node.status !== 'invalidated'
+          && node.status !== 'skipped'
+        ) {
+          return {
+            ...node,
+            status: 'done',
+            outcome: 'success',
+          }
+        }
+        return {
+          ...node,
+          status: node.status,
+          outcome: node.outcome,
+          summary: node.summary,
+        }
+      }
+      if (node.status === 'waiting_replan') {
+        return {
+          ...node,
+          status: 'skipped',
+          outcome: 'failure',
+          summary: node.summary || '本轮恢复未完成，当前节点已跳过。',
+        }
+      }
+      if (node.id === 'respond' && node.status === 'doing') {
+        return {
+          ...node,
+          status: 'skipped',
+          outcome: 'failure',
+          summary: node.summary || '由于前置节点失败，本轮不再进入最终汇总。',
+        }
+      }
+      if (node.id === currentNodeId) {
+        if (
+          node.status === 'partial'
+          || node.status === 'unsafe'
+          || node.status === 'failed'
+          || node.status === 'invalidated'
+          || node.status === 'skipped'
+        ) return node
+        return {
+          ...node,
+          status: 'failed',
+          outcome: 'failure',
+        }
+      }
+      if (node.id === 'respond') {
+        return {
+          ...node,
+          status: node.status === 'doing' ? 'skipped' : node.status,
+          outcome: node.status === 'doing' ? 'failure' : node.outcome,
+          summary: node.summary,
+        }
+      }
+      if (node.id === 'execute' && node.status === 'doing') {
+        return {
+          ...node,
+          status: 'failed',
+          outcome: 'failure',
+        }
+      }
+      if (node.status === 'doing') {
+        return {
+          ...node,
+          status: 'invalidated',
+          outcome: 'failure',
+          summary: node.summary || '本轮执行已终止，当前节点结果已失效。',
+        }
+      }
+      return node
+    })
+
+    setMultiAgentRouteState(sessionId, {
+      ...current,
+      status: outcome,
+      currentNodeId: outcome === 'completed' ? 'respond' : current.currentNodeId,
+      planNodes: finalNodes,
+      thinkingSteps: current.thinkingSteps.map(step => ({
+        ...step,
+        status: outcome === 'completed'
+          ? 'done'
+          : step.status === 'running'
+            ? 'done'
+            : step.status,
+      })),
+      activity: current.activity,
+      endedAt: current.endedAt || Date.now(),
+    })
+
+    appendMultiAgentActivity(sessionId, {
+      id: `route:final:${sessionId}:${Date.now()}`,
+      kind: 'route',
+      title: outcome === 'completed' ? '主智能体完成汇总' : '执行失败',
+      text: outcome === 'completed'
+        ? '本轮任务已结束，最终回复已返回到对话区。'
+        : '任务执行中断，请先处理失败节点或工具异常。',
+      status: outcome === 'completed' ? 'done' : 'error',
+      timestamp: Date.now(),
+    })
+    setWorkflowTerminalState(sessionId, outcome)
+  }
+
+  function handleSubagentEvent(sessionId: string, evt: RunEvent) {
+    const eventName = String(evt.event || '')
+    if (!eventName.startsWith('subagent.')) return
+    const collaborationRunId = typeof (evt as any).collaboration_run_id === 'string' && (evt as any).collaboration_run_id
+      ? String((evt as any).collaboration_run_id)
+      : ''
+    const currentRouteForEvent = multiAgentRoutes.value.get(sessionId)
+    if (
+      collaborationRunId
+      && currentRouteForEvent?.runId
+      && !currentRouteForEvent.runId.startsWith('pending:')
+      && currentRouteForEvent.runId !== collaborationRunId
+    ) {
+      return
+    }
+    if (collaborationRunId) {
+      mutateMultiAgentRouteState(sessionId, route => ({
+        ...route,
+        runId: collaborationRunId,
+      }))
+    }
+
+    const subagentId = String((evt as any).subagent_id || `${(evt as any).task_index ?? 0}`)
+    const explicitPlanNodeIds = Array.isArray((evt as any).plan_node_ids)
+      ? ((evt as any).plan_node_ids as unknown[]).map(item => String(item || '').trim()).filter(Boolean)
+      : []
+    const planNodeIds = resolveSubagentPlanNodeIds(sessionId, subagentId, explicitPlanNodeIds)
+    const taskIndex = Number((evt as any).task_index ?? 0)
+    const taskCount = Number((evt as any).task_count ?? 1)
+    const label = `${taskIndex + 1}/${Math.max(1, taskCount || 1)}`
+    const rawToolName = sanitizeMultiAgentText((evt as any).tool || (evt as any).tool_name || (evt as any).name || '')
+    const toolName = normalizeSubagentToolName(rawToolName)
+    const goal = sanitizeMultiAgentText((evt as any).goal || '')
+    const text = sanitizeMultiAgentText(evt.text || evt.preview || '')
+    const summary = sanitizeMultiAgentText((evt as any).summary || '')
+    const outputText = sanitizeMultiAgentText((evt as any).output || (evt as any).visible_output || '')
+    const artifactSummary = summarizeSubagentArtifacts((evt as any).artifacts)
+    const groundingStatus = sanitizeMultiAgentText((evt as any).grounding_status || '')
+    const duration = Number((evt as any).duration_seconds ?? (evt as any).duration)
+    const agentName = sanitizeMultiAgentText((evt as any).subagent_name || (evt as any).agent_name || '')
+    const rawToolCallId = sanitizeMultiAgentText((evt as any).tool_call_id || '')
+    const toolEventKind = sanitizeMultiAgentText((evt as any).tool_event_kind || '')
+    const targetNodeId = planNodeIds[0] || 'execute'
+    const respondDependsOn = resolveRespondDependsOn(sessionId, explicitPlanNodeIds.length > 0 ? explicitPlanNodeIds : planNodeIds)
+    const targetNodeTitle = multiAgentRoutes.value.get(sessionId)?.planNodes.find(node => node.id === targetNodeId)?.title
+      || goal
+      || `执行节点 ${label}`
+    const subagentStreamId = `subagent-stream:${subagentId || agentName || 'subagent'}:${targetNodeId}`
+    const explicitBlockedNodeIds = Array.isArray((evt as any).blocked_plan_node_ids)
+      ? ((evt as any).blocked_plan_node_ids as unknown[]).map(item => String(item || '').trim()).filter(Boolean)
+      : []
+    const dependencyGateReason = sanitizeMultiAgentText((evt as any).dependency_gate_reason || (evt as any).reason || summary || text || outputText || '')
+
+    const completionState = resolveSubagentCompletionVisualState(evt as unknown as Record<string, unknown>)
+    let preview = text || summary || goal
+    if (eventName === 'subagent.task_sent') {
+      preview = text || summary || goal || `主智能体已向 ${agentName || '子智能体'} 下发当前节点任务`
+    } else if (eventName === 'subagent.task_accepted') {
+      preview = text || summary || goal || `${agentName || '子智能体'} 已接单`
+    } else if (eventName === 'subagent.start') {
+      preview = goal ? `开始执行：${goal}` : `子任务 ${label} 已启动`
+    } else if (eventName === 'subagent.tool') {
+      const verb = toolEventKind === 'tool_call_start'
+        ? '准备调用'
+        : toolEventKind === 'tool_call_end'
+          ? '确认参数'
+          : toolEventKind === 'tool_execution_end'
+            ? '完成工具'
+            : toolEventKind === 'tool_execution_update'
+              ? '工具输出'
+              : '调用工具'
+      preview = `${toolName ? `${verb} ${toolName}` : `子任务 ${label} 调用工具`}${text ? `：${text}` : ''}`
+    } else if (eventName === 'subagent.progress') {
+      preview = text || `子任务 ${label} 执行中`
+    } else if (eventName === 'subagent.clarify_required') {
+      preview = outputText || summary || sanitizeMultiAgentText((evt as any).question || '') || `子任务 ${label} 等待补充信息`
+    } else if (eventName === 'subagent.artifact_published') {
+      preview = artifactSummary || text || summary || '节点结果已发布 artifact'
+    } else if (eventName === 'subagent.result_received') {
+      preview = summary || outputText || artifactSummary || text || '主智能体已收到节点回执'
+    } else if (eventName === 'subagent.result_rejected') {
+      preview = summary || outputText || artifactSummary || text || '当前节点结果未通过最终汇总校验'
+    } else if (eventName === 'subagent.finalization_blocked') {
+      preview = sanitizeMultiAgentText((evt as any).reason || '') || summary || outputText || artifactSummary || text || '当前节点结果不足以进入最终汇总'
+    } else if (eventName === 'subagent.complete') {
+      const status = String((evt as any).status || 'completed')
+      preview = status === 'completed' && completionState.toolStatus === 'done'
+        ? (outputText || summary || artifactSummary || text || goal || `子任务 ${label} 已完成`)
+        : (summary || outputText || artifactSummary || text || `子任务 ${label} 未能安全完成`)
+    }
+
+    const toolCallId = buildSubagentEventToolCallId({
+      runId: evt.run_id,
+      subagentId,
+      toolCallId: rawToolCallId,
+      eventName,
+      toolName: toolName || agentName || 'delegate',
+      preview,
+    })
+
+    const msgs = getSessionMsgs(sessionId)
+    const existing = msgs.find(m => m.role === 'tool' && m.toolCallId === toolCallId)
+    const toolStatus = eventName === 'subagent.clarify_required'
+      ? 'done'
+      : eventName === 'subagent.complete'
+        ? completionState.toolStatus
+        : eventName === 'subagent.result_rejected' || eventName === 'subagent.finalization_blocked'
+          ? 'error'
+          : eventName === 'subagent.result_received' || eventName === 'subagent.artifact_published'
+            ? 'done'
+            : 'running'
+    const nodeDisplayText = outputText || summary || artifactSummary || goal || preview || text
+
+    if (eventName === 'subagent.start' && planNodeIds.length > 0) {
+      completeDependentDiTingNodes(sessionId, planNodeIds, '已完成前置校验，进入子智能体执行阶段。')
+    }
+
+    if (planNodeIds.length > 0) {
+      patchMultiAgentPlanNodes(sessionId, planNodeIds, {
+        status: eventName === 'subagent.clarify_required'
+          ? 'doing'
+          : eventName === 'subagent.complete'
+            ? completionState.nodeStatus
+            : eventName === 'subagent.result_rejected'
+              ? (groundingStatus === 'unsafe_to_finalize' || groundingStatus === 'unverified' ? 'unsafe' : 'partial')
+              : eventName === 'subagent.finalization_blocked'
+                ? (groundingStatus === 'unsafe_to_finalize' || groundingStatus === 'unverified' ? 'unsafe' : 'partial')
+                : toolStatus === 'done'
+                  ? 'doing'
+                  : 'doing',
+        outcome: eventName === 'subagent.complete'
+          ? completionState.nodeOutcome
+          : eventName === 'subagent.result_rejected'
+            ? (groundingStatus === 'unsafe_to_finalize' || groundingStatus === 'unverified' ? 'unsafe' : 'partial')
+            : eventName === 'subagent.finalization_blocked'
+              ? (groundingStatus === 'unsafe_to_finalize' || groundingStatus === 'unverified' ? 'unsafe' : 'partial')
+              : 'unknown',
+        executor: {
+          type: 'subagent',
+          id: subagentId,
+          name: agentName || '子智能体',
+        },
+        summary: nodeDisplayText,
+      })
+    } else {
+      upsertMultiAgentPlanNode(sessionId, {
+        id: 'execute',
+        title: `执行子任务：${agentName || '子智能体'}`,
+        phase: '执行',
+        status: eventName === 'subagent.clarify_required'
+          ? 'doing'
+          : eventName === 'subagent.complete'
+            ? completionState.nodeStatus
+            : eventName === 'subagent.result_rejected' || eventName === 'subagent.finalization_blocked'
+              ? (groundingStatus === 'unsafe_to_finalize' || groundingStatus === 'unverified' ? 'unsafe' : 'partial')
+              : 'doing',
+        outcome: eventName === 'subagent.clarify_required'
+          ? 'unknown'
+          : eventName === 'subagent.complete'
+            ? completionState.nodeOutcome
+            : eventName === 'subagent.result_rejected' || eventName === 'subagent.finalization_blocked'
+              ? (groundingStatus === 'unsafe_to_finalize' || groundingStatus === 'unverified' ? 'unsafe' : 'partial')
+              : 'unknown',
+        dependsOn: ['route'],
+        executor: {
+          type: 'subagent',
+          id: subagentId,
+          name: agentName || '子智能体',
+        },
+        summary: nodeDisplayText,
+      })
+    }
+    const blockedDependentNodeIds = (
+      eventName === 'subagent.complete' && completionState.nodeStatus !== 'done'
+    ) || eventName === 'subagent.result_rejected' || eventName === 'subagent.finalization_blocked'
+      ? blockDependentMultiAgentNodes(sessionId, planNodeIds.length > 0 ? planNodeIds : [targetNodeId], dependencyGateReason, explicitBlockedNodeIds)
+      : []
+    const existingRespondNode = multiAgentRoutes.value.get(sessionId)?.planNodes.find(node => node.id === 'respond')
+    upsertMultiAgentPlanNode(sessionId, {
+      id: 'respond',
+      title: '汇总阶段成果并回复用户',
+      phase: '汇总',
+      status: existingRespondNode?.status || 'todo',
+      outcome: existingRespondNode?.outcome || 'unknown',
+      dependsOn: respondDependsOn,
+      executor: {
+        type: 'DiTing',
+        name: '主智能体',
+      },
+      summary: existingRespondNode?.summary || '等待执行节点完成后组织最终回复。',
+    })
+    const update: Partial<Message> = {
+      toolName: 'delegate_task',
+      toolCallId,
+      toolPreview: preview.slice(0, 220),
+      toolStatus,
+      toolArgs: hasRuntimeToolPayload((evt as any).arguments)
+        ? (evt as any).arguments
+        : undefined,
+      toolDuration: Number.isFinite(duration) ? duration : undefined,
+      toolResult: eventName === 'subagent.complete'
+        || eventName === 'subagent.clarify_required'
+        || eventName === 'subagent.artifact_published'
+        || eventName === 'subagent.result_received'
+        || eventName === 'subagent.result_rejected'
+        || eventName === 'subagent.finalization_blocked'
+        ? JSON.stringify({
+            status: (evt as any).status || (eventName === 'subagent.clarify_required' ? 'clarify_required' : 'completed'),
+            summary: summary || outputText || text,
+            output: outputText || undefined,
+          question: (evt as any).question,
+          reason: (evt as any).reason,
+          required_fields: (evt as any).required_fields,
+          artifacts: normalizeSubagentArtifacts((evt as any).artifacts),
+          grounding_status: (evt as any).grounding_status,
+          output_completeness: (evt as any).output_completeness,
+          finalizable: (evt as any).finalizable,
+          structured_output: (evt as any).structured_output,
+          node_completed: (evt as any).node_completed,
+          node_status: (evt as any).node_status,
+          api_calls: (evt as any).api_calls,
+            input_tokens: (evt as any).input_tokens,
+            output_tokens: (evt as any).output_tokens,
+          }, null, 2)
+        : hasRuntimeToolPayload((evt as any).result)
+          ? (evt as any).result
+        : undefined,
+    }
+
+    appendMultiAgentActivity(sessionId, {
+      id: `${toolCallId}:${eventName}:${Date.now()}`,
+      kind: eventName as MultiAgentExecutionEventState['kind'],
+      title: eventName === 'subagent.task_sent'
+        ? '主智能体下发任务'
+        : eventName === 'subagent.task_accepted'
+          ? '子智能体接单'
+          : eventName === 'subagent.start'
+            ? '子智能体启动'
+            : eventName === 'subagent.tool'
+              ? `工具调用${toolName ? `：${toolName}` : ''}`
+              : eventName === 'subagent.clarify_required'
+                ? '等待用户补充'
+                : eventName === 'subagent.progress'
+                  ? '执行进展'
+                  : eventName === 'subagent.artifact_published'
+                    ? '发布 artifact'
+                    : eventName === 'subagent.result_received'
+                      ? '收到节点回执'
+                      : eventName === 'subagent.result_rejected'
+                        ? '拒绝直接汇总'
+                        : eventName === 'subagent.finalization_blocked'
+                          ? '阻断最终汇总'
+                          : (completionState.nodeStatus === 'failed'
+                              ? '子智能体失败'
+                              : completionState.nodeStatus === 'partial'
+                                ? '子智能体部分完成'
+                                : completionState.nodeStatus === 'unsafe'
+                                  ? '结果不可直接汇总'
+                                  : '子智能体完成'),
+      text: nodeDisplayText,
+      status: eventName === 'subagent.complete'
+        ? (completionState.nodeStatus === 'failed' ? 'error' : completionState.nodeStatus === 'done' ? 'done' : 'info')
+        : eventName === 'subagent.result_rejected' || eventName === 'subagent.finalization_blocked'
+          ? 'info'
+        : eventName === 'subagent.clarify_required'
+          ? 'info'
+        : 'running',
+      timestamp: Date.now(),
+      agentId: subagentId,
+      agentName: agentName || undefined,
+      toolName: toolName || undefined,
+      output: eventName === 'subagent.complete' || eventName === 'subagent.clarify_required' ? nodeDisplayText : undefined,
+    })
+
+    if (
+      eventName === 'subagent.task_sent'
+      || eventName === 'subagent.task_accepted'
+      || eventName === 'subagent.tool'
+      || eventName === 'subagent.progress'
+      || eventName === 'subagent.artifact_published'
+      || eventName === 'subagent.result_received'
+      || eventName === 'subagent.result_rejected'
+      || eventName === 'subagent.finalization_blocked'
+      || eventName === 'subagent.clarify_required'
+    ) {
+      upsertWorkflowSubagentStream(sessionId, {
+        id: subagentStreamId,
+        nodeId: targetNodeId,
+        agentId: subagentId || undefined,
+        agentName: agentName || '子智能体',
+        title: targetNodeTitle,
+        text: nodeDisplayText,
+        status: eventName === 'subagent.clarify_required'
+          ? 'done'
+          : eventName === 'subagent.result_rejected' || eventName === 'subagent.finalization_blocked'
+            ? 'error'
+            : eventName === 'subagent.result_received' || eventName === 'subagent.artifact_published'
+              ? 'done'
+              : 'running',
+        toolName: toolName || undefined,
+      })
+      const title = eventName === 'subagent.task_sent'
+        ? '主智能体下发任务'
+        : eventName === 'subagent.task_accepted'
+          ? '子智能体接单'
+          : eventName === 'subagent.tool'
+            ? `工具调用${toolName ? `：${toolName}` : ''}`
+            : eventName === 'subagent.clarify_required'
+              ? '等待用户补充'
+              : eventName === 'subagent.artifact_published'
+                ? '发布 artifact'
+                : eventName === 'subagent.result_received'
+                  ? '收到节点回执'
+                  : eventName === 'subagent.result_rejected'
+                    ? '拒绝直接汇总'
+                    : eventName === 'subagent.finalization_blocked'
+                      ? '阻断最终汇总'
+                      : '子智能体进展'
+      patchWorkflow(sessionId, workflow => ({
+        ...workflow,
+        subtitle: eventName === 'subagent.clarify_required'
+          ? (agentName ? `${agentName} 等待补充` : '等待补充信息')
+          : eventName === 'subagent.result_rejected' || eventName === 'subagent.finalization_blocked'
+            ? '当前节点结果不足以进入最终汇总'
+            : blockedDependentNodeIds.length > 0
+              ? '前置节点失败，后续节点已暂停'
+              : (agentName ? `${agentName} 执行中` : '子智能体执行中'),
+        current: nodeDisplayText,
+        status: eventName === 'subagent.result_rejected' || eventName === 'subagent.finalization_blocked' ? 'error' : 'running',
+      }))
+      patchWorkflowStep(sessionId, 'execute', {
+        title: agentName ? `执行：${agentName}` : '执行子智能体',
+        detail: nodeDisplayText,
+        status: eventName === 'subagent.result_rejected' || eventName === 'subagent.finalization_blocked' ? 'error' : 'running',
+      })
+      upsertWorkflowEvent(sessionId, {
+        id: eventName === 'subagent.tool'
+          ? `${toolCallId}:tool:${toolName || 'tool'}`
+          : eventName === 'subagent.task_sent'
+            ? `${toolCallId}:task-sent`
+          : eventName === 'subagent.task_accepted'
+            ? `${toolCallId}:task-accepted`
+          : eventName === 'subagent.clarify_required'
+            ? `${toolCallId}:clarify`
+          : eventName === 'subagent.artifact_published'
+            ? `${toolCallId}:artifact`
+          : eventName === 'subagent.result_received'
+            ? `${toolCallId}:result-received`
+          : eventName === 'subagent.result_rejected'
+            ? `${toolCallId}:result-rejected`
+          : eventName === 'subagent.finalization_blocked'
+            ? `${toolCallId}:finalization-blocked`
+          : `${toolCallId}:progress`,
+        title,
+        text: nodeDisplayText,
+        status: eventName === 'subagent.clarify_required'
+          ? 'info'
+          : eventName === 'subagent.result_rejected' || eventName === 'subagent.finalization_blocked'
+            ? 'error'
+            : eventName === 'subagent.result_received' || eventName === 'subagent.artifact_published'
+              ? 'done'
+              : 'running',
+        timestamp: Date.now(),
+        agentName: agentName || undefined,
+        toolName: toolName || undefined,
+      })
+    }
+
+    const routeAfterNodePatch = multiAgentRoutes.value.get(sessionId)
+    const nextNodeAfterComplete = eventName === 'subagent.complete' && completionState.nodeStatus === 'done' && routeAfterNodePatch
+      ? nextRunnableMultiAgentNode(routeAfterNodePatch, { excludeNodeIds: [targetNodeId] })
+      : null
+
+    if (eventName === 'subagent.start') {
+      upsertWorkflowSubagentStream(sessionId, {
+        id: subagentStreamId,
+        nodeId: targetNodeId,
+        agentId: subagentId || undefined,
+        agentName: agentName || '子智能体',
+        title: targetNodeTitle,
+        text: goal || preview,
+        status: 'running',
+      })
+      recordSubAgentInvocationStart({
+        sessionId,
+        runId: evt.run_id,
+        agentId: subagentId,
+        agentName,
+        task: goal || preview,
+      })
+      patchWorkflow(sessionId, workflow => ({
+        ...workflow,
+        subtitle: agentName ? `${agentName} 执行中` : '子智能体执行中',
+        current: goal || preview,
+        status: 'running',
+      }))
+      patchWorkflowStep(sessionId, 'execute', {
+        title: agentName ? `执行：${agentName}` : '执行子智能体',
+        detail: goal || preview,
+        status: 'running',
+      })
+      upsertWorkflowEvent(sessionId, {
+        id: `subagent:${evt.run_id || 'run'}:start`,
+        title: '子智能体已启动',
+        text: goal || preview,
+        status: 'running',
+        timestamp: Date.now(),
+        agentName: agentName || undefined,
+      })
+      setMultiAgentNodeStatus(sessionId, 'understand', { status: 'done' })
+      setMultiAgentNodeStatus(sessionId, 'route', { status: 'done' })
+      updateMultiAgentExecutionState(sessionId, {
+        status: 'running',
+        currentNodeId: targetNodeId,
+        nodeId: targetNodeId,
+        currentNodeSummary: goal || preview,
+        currentNodeStatus: 'doing',
+      })
+    }
+
+    if (eventName === 'subagent.clarify_required') {
+      patchWorkflowStep(sessionId, 'respond', {
+        detail: '当前节点等待用户补充信息，主智能体暂不汇总最终结果。',
+        status: 'pending',
+      })
+      patchWorkflow(sessionId, workflow => ({
+        ...workflow,
+        subtitle: agentName ? `${agentName} 等待补充` : '等待补充信息',
+        current: nodeDisplayText,
+        status: 'running',
+      }))
+      updateMultiAgentExecutionState(sessionId, {
+        currentNodeId: targetNodeId,
+        nodeId: targetNodeId,
+        status: 'running',
+        currentNodeSummary: nodeDisplayText,
+        currentNodeStatus: 'doing',
+      })
+    }
+
+    if (eventName === 'subagent.complete') {
+      upsertWorkflowSubagentStream(sessionId, {
+        id: subagentStreamId,
+        nodeId: targetNodeId,
+        agentId: subagentId || undefined,
+        agentName: agentName || '子智能体',
+        title: targetNodeTitle,
+        text: nodeDisplayText,
+        status: completionState.nodeStatus === 'done' ? 'done' : 'error',
+        toolName: toolName || undefined,
+      })
+      recordSubAgentInvocationComplete({
+        sessionId,
+        runId: evt.run_id,
+        agentId: subagentId,
+        agentName,
+        status: completionState.nodeStatus === 'done' ? 'completed' : 'failed',
+        summary: nodeDisplayText,
+        durationSeconds: Number.isFinite(duration) ? duration : undefined,
+      })
+      patchWorkflowStep(sessionId, 'execute', {
+        detail: completionState.nodeStatus === 'done' && nextNodeAfterComplete
+          ? `已完成当前节点，等待主智能体安排下一节点：${nextNodeAfterComplete.title}`
+          : nodeDisplayText,
+        status: completionState.nodeStatus === 'done'
+          ? (nextNodeAfterComplete ? 'running' : 'done')
+          : completionState.nodeStatus === 'partial' || completionState.nodeStatus === 'unsafe'
+            ? 'error'
+            : 'error',
+      })
+      patchWorkflowStep(sessionId, 'respond', {
+        detail: completionState.nodeStatus === 'done'
+          ? (nextNodeAfterComplete
+              ? `仍有剩余节点待执行：${nextNodeAfterComplete.title}`
+              : '子智能体已返回阶段成果，等待主智能体汇总。')
+          : completionState.blockedByGrounding
+            ? (blockedDependentNodeIds.length > 0
+                ? `当前节点结果不完整或不可验证，已暂停 ${blockedDependentNodeIds.length} 个后续依赖节点，主智能体将阻断最终汇总并尝试恢复。`
+                : '当前节点结果不完整或不可验证，主智能体将阻断最终汇总并尝试恢复。')
+            : (blockedDependentNodeIds.length > 0
+                ? `子智能体执行失败，已暂停 ${blockedDependentNodeIds.length} 个后续依赖节点，等待错误处理。`
+                : '子智能体执行失败，等待错误处理。'),
+        status: completionState.nodeStatus === 'done'
+          ? (nextNodeAfterComplete ? 'pending' : 'running')
+          : 'error',
+      })
+      upsertWorkflowEvent(sessionId, {
+        id: `subagent:${evt.run_id || 'run'}:complete`,
+        title: completionState.nodeStatus === 'done'
+          ? '子智能体完成'
+          : completionState.nodeStatus === 'partial'
+            ? '子智能体部分完成'
+            : completionState.nodeStatus === 'unsafe'
+              ? '结果不可直接汇总'
+              : '子智能体失败',
+        text: nodeDisplayText,
+        status: completionState.nodeStatus === 'done' ? 'done' : 'error',
+        timestamp: Date.now(),
+        agentName: agentName || undefined,
+      })
+      patchWorkflow(sessionId, workflow => ({
+        ...workflow,
+        subtitle: completionState.nodeStatus === 'done'
+          ? (nextNodeAfterComplete ? '准备调度下一节点' : '阶段成果已返回')
+          : completionState.blockedByGrounding
+            ? '最终汇总已被阻断'
+            : '子智能体失败',
+        current: completionState.nodeStatus === 'done' && nextNodeAfterComplete
+          ? `当前节点已完成，下一节点：${nextNodeAfterComplete.title}`
+          : (blockedDependentNodeIds.length > 0
+              ? `${nodeDisplayText}；已暂停 ${blockedDependentNodeIds.length} 个后续依赖节点。`
+              : nodeDisplayText),
+        status: completionState.nodeStatus === 'done' ? 'running' : 'error',
+      }))
+      setMultiAgentNodeStatus(sessionId, 'route', {
+        summary: '任务路径已确认，执行控制权已交给当前节点。',
+      })
+    }
+
+    if (existing) {
+      updateMessage(sessionId, existing.id, update)
+    } else {
+      addMessage(sessionId, {
+        id: uid(),
+        role: 'tool',
+        content: '',
+        timestamp: Date.now(),
+        ...update,
+      })
+    }
+
+    if (eventName === 'subagent.complete' && completionState.nodeStatus === 'done') {
+      updateMultiAgentExecutionState(sessionId, {
+        status: 'running',
+        nodeId: targetNodeId,
+        currentNodeSummary: nodeDisplayText,
+        currentNodeStatus: 'done',
+      })
+      if (nextNodeAfterComplete) {
+        updateMultiAgentExecutionState(sessionId, {
+          currentNodeId: nextNodeAfterComplete.id,
+          nodeId: nextNodeAfterComplete.id,
+          currentNodeSummary: `上一节点已完成，等待开始：${nextNodeAfterComplete.title}`,
+          currentNodeStatus: nextNodeAfterComplete.status,
+        })
+        appendMultiAgentActivity(sessionId, {
+          id: `${toolCallId}:queue:${Date.now()}`,
+          kind: 'subagent.complete',
+          title: '节点完成，等待下一节点',
+          text: `已完成：${nodeDisplayText}；下一节点：${nextNodeAfterComplete.title}`,
+          status: 'done',
+          timestamp: Date.now(),
+          agentId: subagentId,
+          agentName: agentName || undefined,
+        })
+      } else {
+        updateMultiAgentExecutionState(sessionId, {
+          currentNodeId: 'respond',
+          nodeId: 'respond',
+          currentNodeSummary: '子智能体已返回阶段成果，主智能体正在组织最终回复。',
+          currentNodeStatus: 'doing',
+        })
+      }
+      return
+    }
+
+    if (eventName === 'subagent.clarify_required') {
+      return
+    }
+
+    if (eventName === 'subagent.result_rejected' || eventName === 'subagent.finalization_blocked') {
+      updateMultiAgentExecutionState(sessionId, {
+        currentNodeId: targetNodeId,
+        nodeId: targetNodeId,
+        status: 'running',
+        currentNodeSummary: nodeDisplayText,
+        currentNodeStatus: groundingStatus === 'unsafe_to_finalize' || groundingStatus === 'unverified' ? 'unsafe' : 'partial',
+      })
+      return
+    }
+
+    updateMultiAgentExecutionState(sessionId, {
+      currentNodeId: targetNodeId,
+      nodeId: targetNodeId,
+      status: 'running',
+      currentNodeSummary: nodeDisplayText,
+      currentNodeStatus: eventName === 'subagent.complete'
+        ? completionState.nodeStatus
+        : 'doing',
+    })
+  }
+
+  function addAgentErrorMessage(sessionId: string, error?: unknown) {
+    const message = errorMessageText(error)
+    const content = message ? `Error: ${message}` : 'Run failed'
+    const msgs = getSessionMsgs(sessionId)
+    const last = msgs[msgs.length - 1]
+    if (last?.isStreaming) {
+      // If the streaming message already has substantial content (the assistant
+      // produced a meaningful reply before the error), don't overwrite it —
+      // just close the stream and append a separate error message. Only
+      // overwrite when the message is still empty or trivially short, meaning
+      // the run failed before producing useful output.
+      const hasSubstantialContent = (last.content || '').trim().length > 100
+      if (hasSubstantialContent) {
+        updateMessage(sessionId, last.id, { isStreaming: false })
+        // fall through to append a separate error message
+      } else {
+        updateMessage(sessionId, last.id, {
+          role: 'assistant',
+          content,
+          isStreaming: false,
+          systemType: 'error',
+        })
+        return
+      }
+    }
+    if (last?.role === 'assistant' && last.systemType === 'error' && last.content === content) return
+    addMessage(sessionId, {
+      id: uid(),
+      role: 'assistant',
+      content,
+      timestamp: Date.now(),
+      systemType: 'error',
+    })
+  }
+
+  function handleSessionCommandEvent(evt: RunEvent) {
+    if (seenSessionCommandEvents.has(evt)) return
+    seenSessionCommandEvents.add(evt)
+
+    const sid = evt.session_id
+    if (!sid) return
+    const target = sessions.value.find(s => s.id === sid)
+    const action = (evt as any).action as string | undefined
+    const command = String((evt as any).command || '').toLowerCase()
+    if ((evt as any).started === true && (evt as any).terminal === false) {
+      serverWorking.value.add(sid)
+    }
+    if ((evt as any).terminal === true) {
+      streamStates.value.delete(sid)
+      serverWorking.value.delete(sid)
+      pendingForkCommands.value.delete(sid)
+    }
+
+    if (action === 'clear' && command === 'clear') {
+      if (target) target.messages = []
+      queuedUserMessages.value.delete(sid)
+      queueLengths.value.delete(sid)
+      if ((evt as any).clearHistory) {
+        const message = String((evt as any).message || '')
+        if (message) {
+          addMessage(sid, {
+            id: uid(),
+            role: 'command',
+            content: message,
+            timestamp: Date.now(),
+            systemType: (evt as any).ok === false ? 'error' : 'command',
+            commandAction: action,
+            commandData: { ...(evt as any) },
+          })
+        }
+      }
+      return
+    }
+
+    if (action === 'title' && target && typeof (evt as any).title === 'string') {
+      target.title = (evt as any).title
+      target.updatedAt = Date.now()
+    }
+
+    if (action === 'usage' && target) {
+      target.inputTokens = (evt as any).inputTokens
+      target.outputTokens = (evt as any).outputTokens
+      if ((evt as any).contextTokens != null) target.contextTokens = (evt as any).contextTokens
+    }
+
+    if (action === 'destroy') {
+      streamStates.value.delete(sid)
+      serverWorking.value.delete(sid)
+      queueLengths.value.delete(sid)
+      queuedUserMessages.value.delete(sid)
+      setAbortState(null)
+      const msgs = getSessionMsgs(sid)
+      msgs.forEach(m => {
+        if (m.isStreaming) updateMessage(sid, m.id, { isStreaming: false })
+        if (m.role === 'tool' && m.toolStatus === 'running') m.toolStatus = 'error'
+      })
+    }
+
+    if (action === 'branch' && (evt as any).ok !== false) {
+      const branch = ((evt as any).branchSession || {}) as Record<string, unknown>
+      const newSessionId = String((evt as any).newSessionId || branch.id || '').trim()
+      if (newSessionId) {
+        const existing = sessions.value.find(s => s.id === newSessionId)
+        if (!existing) {
+          sessions.value.unshift({
+            id: newSessionId,
+            profile: typeof branch.profile === 'string' ? branch.profile : undefined,
+            title: String((evt as any).newSessionTitle || branch.title || 'Branch'),
+            source: typeof branch.source === 'string' ? branch.source : 'cli',
+            messages: [],
+            createdAt: typeof branch.createdAt === 'number' ? branch.createdAt : Date.now(),
+            updatedAt: typeof branch.updatedAt === 'number' ? branch.updatedAt : Date.now(),
+            model: typeof branch.model === 'string' ? branch.model : undefined,
+            provider: typeof branch.provider === 'string' ? branch.provider : undefined,
+            messageCount: typeof branch.messageCount === 'number' ? branch.messageCount : undefined,
+            messageTotal: typeof branch.messageCount === 'number' ? branch.messageCount : undefined,
+            loadedMessageCount: 0,
+            hasMoreBefore: false,
+            parentSessionId: typeof branch.parentSessionId === 'string'
+              ? branch.parentSessionId
+              : typeof (evt as any).parentSessionId === 'string' ? (evt as any).parentSessionId : sid,
+            forkPointMessageId: branch.forkPointMessageId != null ? String(branch.forkPointMessageId) : null,
+            parentTitle: typeof branch.parentTitle === 'string' ? branch.parentTitle : target?.title || null,
+            parentLastMessage: typeof branch.parentLastMessage === 'string' ? branch.parentLastMessage : lastVisibleMessageContent(target?.messages),
+            parentLastMessageRole: typeof branch.parentLastMessageRole === 'string' ? branch.parentLastMessageRole : lastVisibleMessageRole(target?.messages),
+            workspace: typeof branch.workspace === 'string' ? branch.workspace : null,
+          })
+        }
+        void switchSession(newSessionId)
+      }
+    }
+
+    const message = String((evt as any).message || '')
+    if (message) {
+      addMessage(sid, {
+        id: uid(),
+        role: 'command',
+        content: message,
+        timestamp: Date.now(),
+        systemType: (evt as any).ok === false ? 'error' : 'command',
+        commandAction: action,
+        commandData: { ...(evt as any) },
+      })
+    }
+  }
+
+  function handleAssistantMessageEvent(evt: RunEvent) {
+    const sessionId = String(evt.session_id || '').trim()
+    if (!sessionId) return
+    const content = typeof (evt as any).content === 'string'
+      ? (evt as any).content
+      : typeof evt.output === 'string'
+        ? evt.output
+        : ''
+    const normalizedContent = content.trim()
+    if (!normalizedContent) return
+    const messageId = String((evt as any).message_id || `assistant-message:${sessionId}:${evt.run_id || Date.now()}`)
+    const timestampValue = Number((evt as any).timestamp ?? Date.now())
+    const timestamp = Number.isFinite(timestampValue) && timestampValue > 0 ? timestampValue : Date.now()
+    const existing = getSessionMsgs(sessionId).find(message => message.id === messageId)
+    if (existing) {
+      updateMessage(sessionId, existing.id, {
+        role: 'assistant',
+        content,
+        timestamp,
+        isStreaming: false,
+        finishReason: 'stop',
+      })
+      return
+    }
+    addMessage(sessionId, {
+      id: messageId,
+      role: 'assistant',
+      content,
+      timestamp,
+      isStreaming: false,
+      finishReason: 'stop',
+      runMarker: typeof evt.run_id === 'string' ? evt.run_id : undefined,
+    })
+  }
+
+  function handleAgentEvent(evt: RunEvent) {
+    const sid = evt.session_id
+    if (!sid) return
+    const collaborationRunId = typeof (evt as any).collaboration_run_id === 'string' && (evt as any).collaboration_run_id
+      ? String((evt as any).collaboration_run_id)
+      : ''
+    if (collaborationRunId) {
+      mutateMultiAgentRouteState(sid, route => ({
+        ...route,
+        runId: collaborationRunId,
+      }))
+    }
+    if ((evt as any).source === 'coding_agent' && (evt as any).kind === 'status') return
+    if ((evt as any).kind === 'multi_agent_progress') {
+      const stage = String((evt as any).stage || '').trim()
+      const text = sanitizeMultiAgentText((evt as any).text || (evt as any).message || '')
+      const status = String((evt as any).status || 'running') === 'done' ? 'done' : 'running'
+      const current = multiAgentRoutes.value.get(sid)
+      if (current) {
+        if (stage === 'understand') {
+          patchWorkflow(sid, workflow => ({
+            ...workflow,
+            subtitle: '理解需求中',
+            current: text || '主智能体正在分析用户需求。',
+            status: 'running',
+          }))
+          patchWorkflowStep(sid, 'understand', {
+            detail: text || '正在理解任务目标。',
+            status,
+          })
+          patchMultiAgentThinkingSteps(sid, steps => steps.map(step =>
+            step.id === 'understand'
+              ? { ...step, status, detail: text || '正在理解任务目标。' }
+              : step
+          ))
+          mutateMultiAgentRouteState(sid, route => ({
+            ...route,
+            reason: text || route.reason,
+          }))
+          updateMultiAgentExecutionState(sid, {
+            status: 'running',
+            currentNodeId: 'understand',
+            nodeId: 'understand',
+            currentNodeSummary: text || '主智能体正在分析用户需求。',
+            currentNodeStatus: 'doing',
+          })
+        } else if (stage === 'route') {
+          patchWorkflow(sid, workflow => ({
+            ...workflow,
+            subtitle: '规划路径中',
+            current: text || '主智能体正在生成任务规划。',
+            status: 'running',
+          }))
+          patchWorkflowStep(sid, 'understand', {
+            detail: '已完成需求理解。',
+            status: 'done',
+          })
+          patchWorkflowStep(sid, 'route', {
+            detail: text || '正在生成路由决策。',
+            status,
+          })
+          setMultiAgentNodeStatus(sid, 'understand', {
+            status: 'done',
+            summary: '已提取任务目标、约束和预期输出。',
+          })
+          patchMultiAgentThinkingSteps(sid, steps => steps.map(step => {
+            if (step.id === 'understand') return { ...step, status: 'done', detail: '已完成需求理解。' }
+            if (step.id === 'route') return { ...step, status, detail: text || '正在生成路由决策。' }
+            return step
+          }))
+          mutateMultiAgentRouteState(sid, route => ({
+            ...route,
+            text: text || route.text,
+          }))
+          updateMultiAgentExecutionState(sid, {
+            status: 'running',
+            currentNodeId: 'route',
+            nodeId: 'route',
+            currentNodeSummary: text || '主智能体正在生成任务规划。',
+            currentNodeStatus: 'doing',
+          })
+        } else if (stage === 'match_agents') {
+          patchWorkflow(sid, workflow => ({
+            ...workflow,
+            subtitle: status === 'done' ? '执行路径已确认' : '匹配智能体中',
+            current: text || '主智能体正在确认主执行方。',
+            status: 'running',
+          }))
+          patchWorkflowStep(sid, 'route', {
+            detail: '已生成路由决策。',
+            status: 'done',
+          })
+          patchWorkflowStep(sid, 'match', {
+            detail: text || '正在确认执行路径。',
+            status,
+          })
+          patchMultiAgentThinkingSteps(sid, steps => steps.map(step => {
+            if (step.id === 'route') return { ...step, status: 'done', detail: '已生成路由决策。' }
+            if (step.id === 'match') return { ...step, status, detail: text || '正在确认执行路径。' }
+            return step
+          }))
+          mutateMultiAgentRouteState(sid, route => ({
+            ...route,
+            reason: text || route.reason,
+          }))
+          updateMultiAgentExecutionState(sid, {
+            status: 'running',
+            currentNodeId: 'route',
+            nodeId: 'route',
+            currentNodeSummary: text || '主智能体正在确认主执行方。',
+            currentNodeStatus: status === 'done' ? 'done' : 'doing',
+          })
+        }
+      }
+      upsertMultiAgentActivity(sid, {
+        id: `route:progress:${stage || 'unknown'}`,
+        kind: 'route',
+        title:
+          stage === 'understand' ? '理解需求'
+            : stage === 'match_agents' ? '确认路径'
+              : '生成路由',
+        text: text || (
+          stage === 'understand' ? '正在提炼任务目标。'
+            : stage === 'match_agents' ? '正在选择执行路径。'
+              : '正在生成路由决策。'
+        ),
+        status,
+        timestamp: Date.now(),
+      })
+      return
+    }
+    if ((evt as any).kind === 'multi_agent_reasoning') {
+      const stage = String((evt as any).stage || 'route').trim()
+      const text = sanitizeMultiAgentText((evt as any).text || '')
+      if (!text) return
+      const stepId = stage === 'match_agents' ? 'match' : stage === 'understand' ? 'understand' : 'route'
+      handleMultiAgentReasoningChunk(sid, stepId, text)
+      return
+    }
+    if ((evt as any).kind === 'multi_agent_route') {
+      const mode = String((evt as any).mode || 'DiTing_native') as 'delegate_subagent' | 'DiTing_native'
+      const selectedAgent = ((evt as any).selected_agent || {}) as { id?: string; name?: string }
+      const todo = Array.isArray((evt as any).todo)
+        ? ((evt as any).todo as unknown[]).map(item => sanitizeMultiAgentText(item)).filter(Boolean)
+        : []
+      const constraints = Array.isArray((evt as any).constraints)
+        ? ((evt as any).constraints as unknown[]).map(item => sanitizeMultiAgentText(item)).filter(Boolean)
+        : []
+      const intent = sanitizeMultiAgentText((evt as any).intent || '')
+      const rawPlan = Array.isArray((evt as any).plan?.nodes) ? (evt as any).plan.nodes as Array<Record<string, any>> : []
+      const rawPlanDependencies = Array.isArray((evt as any).plan?.dependencies)
+        ? (evt as any).plan.dependencies as Array<Record<string, any>>
+        : []
+      const existing = multiAgentRoutes.value.get(sid)
+      const incomingRunId = typeof (evt as any).collaboration_run_id === 'string' && (evt as any).collaboration_run_id
+        ? String((evt as any).collaboration_run_id)
+        : (existing?.runId || '')
+      const routeText = sanitizeMultiAgentText((evt as any).text || (evt as any).reason || '')
+      let normalizedDependencies: MultiAgentPlanDependencyState[] = []
+      let planNodes: MultiAgentPlanNodeState[] = []
+
+      {
+        const planNodeIds = rawPlan.map((node, index) => String(node.id || `node_${index + 1}`))
+        const validNodeIds = new Set(planNodeIds)
+        normalizedDependencies = rawPlanDependencies
+          .map((dependency): MultiAgentPlanDependencyState | null => {
+            const from = String(dependency.from || '').trim()
+            const to = String(dependency.to || '').trim()
+            if (!from || !to || from === to || !validNodeIds.has(from) || !validNodeIds.has(to)) return null
+            return {
+              from,
+              to,
+              type: dependency.type === 'informs' ? 'informs' : 'blocks',
+            }
+          })
+          .filter((item): item is MultiAgentPlanDependencyState => Boolean(item))
+        if (normalizedDependencies.length === 0) {
+          const taskNodeIds = planNodeIds.filter(id => !RESERVED_MULTI_AGENT_NODE_IDS.has(id))
+          taskNodeIds.slice(1).forEach((nodeId, index) => {
+            normalizedDependencies.push({
+              from: taskNodeIds[index]!,
+              to: nodeId,
+              type: 'blocks',
+            })
+          })
+        }
+        const dependsOnMap = new Map<string, string[]>()
+        normalizedDependencies.forEach((dependency) => {
+          const currentDeps = dependsOnMap.get(dependency.to) || []
+          if (!currentDeps.includes(dependency.from)) currentDeps.push(dependency.from)
+          dependsOnMap.set(dependency.to, currentDeps)
+        })
+        planNodes = rawPlan.map((node, index) => ({
+          id: planNodeIds[index],
+          title: sanitizeMultiAgentText(node.title || `节点 ${index + 1}`) || `节点 ${index + 1}`,
+          phase: sanitizeMultiAgentText(node.phase || '执行') || '执行',
+          status: normalizeMultiAgentNodeStatus(
+            node.status,
+            planNodeIds[index] === 'understand'
+              ? 'done'
+              : planNodeIds[index] === 'route'
+                ? 'doing'
+              : 'todo',
+          ),
+          outcome: normalizeMultiAgentNodeOutcome(
+            node.outcome,
+            normalizeMultiAgentNodeStatus(
+              node.status,
+              planNodeIds[index] === 'understand'
+                ? 'done'
+                : planNodeIds[index] === 'route'
+                  ? 'doing'
+                  : 'todo',
+            ),
+          ),
+          dependsOn: dependsOnMap.get(planNodeIds[index]) || [],
+          executor: {
+            type: node.executor?.type === 'subagent' ? 'subagent' : 'DiTing',
+            id: typeof node.executor?.id === 'string' ? node.executor.id : undefined,
+            name: sanitizeMultiAgentText(node.executor?.name || '主智能体') || '主智能体',
+          },
+          summary: sanitizeMultiAgentText(node.summary || ''),
+        }))
+      }
+      const executableCount = planNodes.filter(node => !RESERVED_MULTI_AGENT_NODE_IDS.has(node.id)).length
+      const validPlanNodeIds = planNodes.map(node => node.id)
+      const requestedCurrentNodeId = sanitizeMultiAgentText((evt as any).plan?.currentNodeId || '')
+      const runningNodeId = planNodes.find(node => node.status === 'doing')?.id || ''
+      const currentNodeId = runningNodeId
+        || (requestedCurrentNodeId && validPlanNodeIds.includes(requestedCurrentNodeId) ? requestedCurrentNodeId : '')
+        || (executableCount > 0 ? 'route' : 'respond')
+      const normalizedNodes: MultiAgentPlanNodeState[] = planNodes.map(node =>
+        normalizeMultiAgentNodeStatus(node.status) === node.status
+          ? node
+          : { ...node, status: normalizeMultiAgentNodeStatus(node.status) },
+      )
+      const isContinuationRouteUpdate = Boolean(
+        existing
+        && incomingRunId
+        && existing.runId === incomingRunId
+        && hasStartedExecutableMultiAgentNodes(existing),
+      )
+      const collaborationRunId = typeof (evt as any).collaboration_run_id === 'string' && (evt as any).collaboration_run_id
+        ? String((evt as any).collaboration_run_id)
+        : (existing?.runId || `pending:${sid}:${Date.now()}`)
+      const shouldResetWorkflowStreams = !isContinuationRouteUpdate
+        && (!existing || existing.runId !== collaborationRunId)
+      const objective = sanitizeMultiAgentText((evt as any).plan?.objective || (evt as any).reason || '')
+      patchWorkflow(sid, workflow => ({
+        ...workflow,
+        subtitle: selectedAgent.name
+          ? `已匹配 ${sanitizeMultiAgentText(selectedAgent.name)}`
+          : isContinuationRouteUpdate
+            ? '主智能体已完成重规划'
+          : '执行路径已生成',
+        objective: objective || workflow.objective,
+        current: routeText || (isContinuationRouteUpdate ? '主智能体正在沿现有执行清单继续推进。' : '主智能体已生成任务路径。'),
+        mainAgentStream: shouldResetWorkflowStreams
+          ? (routeText || workflow.mainAgentStream || workflow.current)
+          : mergeWorkflowStreamText(
+              workflow.mainAgentStream || workflow.reasoningText || workflow.current,
+              routeText || workflow.current,
+              2400,
+            ),
+        subagentStreams: shouldResetWorkflowStreams ? [] : workflow.subagentStreams,
+        status: 'running',
+        steps: workflow.steps.map(step => {
+          if (step.id === 'understand') return { ...step, status: 'done', detail: '已提取任务目标。' }
+          if (step.id === 'route') return {
+            ...step,
+            status: 'done',
+            detail: isContinuationRouteUpdate
+              ? '主智能体已完成二次规划，保留当前执行清单并继续推进。'
+              : (todo.length > 0 ? `已生成 ${todo.length} 条任务清单。` : '已完成路由判断。'),
+          }
+          if (step.id === 'match') return {
+            ...step,
+            status: 'done',
+            detail: selectedAgent.name
+              ? `已匹配到 ${sanitizeMultiAgentText(selectedAgent.name)}。`
+              : constraints[0] || '由主智能体主链路继续执行。',
+          }
+          if (step.id === 'execute') return {
+            ...step,
+            status: executableCount > 0 ? 'pending' : 'done',
+            detail: isContinuationRouteUpdate
+              ? '延续既有执行节点，不重建当前 Todo List。'
+              : (executableCount > 0 ? `等待执行 ${executableCount} 个节点。` : '本轮无需额外执行节点。'),
+          }
+          return step
+        }),
+      }))
+      upsertWorkflowEvent(sid, {
+        id: 'route:planned',
+        title: isContinuationRouteUpdate ? '主智能体已重规划' : '任务路径已生成',
+        text: isContinuationRouteUpdate
+          ? (routeText || '已完成二次规划，继续沿现有执行清单推进。')
+          : executableCount > 0
+            ? `已生成 ${executableCount} 个执行节点${selectedAgent.name ? `，主执行方为 ${sanitizeMultiAgentText(selectedAgent.name)}` : ''}。`
+          : (routeText || '本轮无需拆分执行节点。'),
+        status: executableCount > 0 ? 'running' : 'done',
+        timestamp: Date.now(),
+        agentName: sanitizeMultiAgentText(selectedAgent.name || '') || undefined,
+      })
+      const activity: MultiAgentExecutionEventState[] = [
+        ...(existing?.activity || []),
+        {
+          id: `route:understand:${sid}:${Date.now()}`,
+          kind: 'route' as const,
+          title: '需求已理解',
+          text: objective || '已抽取本轮任务目标与约束。',
+          status: 'done' as const,
+          timestamp: Date.now(),
+        },
+        {
+          id: `route:planned:${sid}:${Date.now() + 1}`,
+          kind: 'route' as const,
+          title: '任务路径已生成',
+          text: isContinuationRouteUpdate
+            ? (routeText || '主智能体已完成二次规划，当前继续沿已有节点推进。')
+            : executableCount > 0
+              ? `已生成 ${executableCount} 个执行节点${selectedAgent.name ? `，优先委派给 ${sanitizeMultiAgentText(selectedAgent.name)}` : ''}。`
+            : (routeText || '本轮无需拆分子节点，直接进入回复阶段。'),
+          status: (executableCount > 0 ? 'running' : 'done') as MultiAgentExecutionEventState['status'],
+          timestamp: Date.now() + 1,
+          agentId: String(selectedAgent.id || '') || undefined,
+          agentName: sanitizeMultiAgentText(selectedAgent.name || '') || undefined,
+        },
+      ].slice(-24)
+      const thinkingSteps: MultiAgentThinkingStepState[] = [
+        {
+          id: 'understand',
+          title: '理解用户需求',
+          detail: '已提取本轮任务目标。',
+          status: 'done',
+        },
+        {
+          id: 'route',
+          title: '生成路由决策',
+          detail: intent
+            ? `已识别意图：${intent}。${todo.length > 0 ? `待办 ${todo.length} 项。` : ''}`
+            : (todo.length > 0 ? `已生成 ${todo.length} 条下一步动作。` : '已完成路由判断。'),
+          status: 'done',
+        },
+        {
+          id: 'match',
+          title: '匹配执行智能体',
+          detail: selectedAgent.name
+            ? `已匹配到 ${sanitizeMultiAgentText(selectedAgent.name)}。`
+            : constraints[0] || '未匹配到高置信度子智能体，改由主智能体继续执行。',
+          status: 'done',
+        },
+      ]
+      if (isContinuationRouteUpdate && existing) {
+        setMultiAgentRouteState(sid, {
+          ...existing,
+          runId: collaborationRunId,
+          mode,
+          intent: intent || existing.intent,
+          category: sanitizeMultiAgentText((evt as any).category || existing.category || '通用任务') || existing.category || '通用任务',
+          reason: sanitizeMultiAgentText((evt as any).reason || '') || existing.reason,
+          text: routeText || existing.text,
+          objective: objective || existing.objective || '',
+          status: 'running',
+          selectedAgentId: String(selectedAgent.id || existing.selectedAgentId || ''),
+          selectedAgentName: sanitizeMultiAgentText(selectedAgent.name || '') || existing.selectedAgentName,
+          activity,
+          thinkingSteps,
+          endedAt: null,
+        })
+        return
+      }
+      setMultiAgentRouteState(sid, {
+        runId: collaborationRunId,
+        sessionId: sid,
+        mode,
+        intent,
+        category: sanitizeMultiAgentText((evt as any).category || '通用任务') || '通用任务',
+        reason: sanitizeMultiAgentText((evt as any).reason || ''),
+        text: routeText,
+        objective: objective || existing?.objective || '',
+        status: String((evt as any).plan?.status || 'running') as MultiAgentRouteState['status'],
+        currentNodeId,
+        selectedAgentId: String(selectedAgent.id || ''),
+        selectedAgentName: sanitizeMultiAgentText(selectedAgent.name || ''),
+        todo,
+        constraints,
+        planNodes: normalizedNodes,
+        planDependencies: normalizedDependencies,
+        activity,
+        thinkingSteps,
+        startedAt: existing?.startedAt || Date.now(),
+        endedAt: null,
+      })
+      return
+    }
+    const text = sanitizeMultiAgentText((evt as any).text || (evt as any).message || '')
+    if (!text) return
+  }
+
+  function enqueueUserMessage(sessionId: string, message: Message) {
+    const queue = queuedUserMessages.value.get(sessionId) || []
+    if (queue.some(item => item.id === message.id)) return
+    const nextMap = new Map(queuedUserMessages.value)
+    nextMap.set(sessionId, [...queue, { ...message, queued: true }])
+    queuedUserMessages.value = nextMap
+  }
+
+  function updateQueuedUserMessage(sessionId: string, messageId: string, patch: Partial<Message>) {
+    const queue = queuedUserMessages.value.get(sessionId)
+    if (!queue?.length) return
+    const next = queue.map(message => message.id === messageId
+      ? { ...message, ...patch, queued: true }
+      : message)
+    const nextMap = new Map(queuedUserMessages.value)
+    nextMap.set(sessionId, next)
+    queuedUserMessages.value = nextMap
+  }
+
+  function dropQueuedUserMessage(sessionId: string, messageId: string): boolean {
+    const queue = queuedUserMessages.value.get(sessionId)
+    if (!queue?.length) return false
+    const next = queue.filter(message => message.id !== messageId)
+    if (next.length === queue.length) return false
+    const nextMap = new Map(queuedUserMessages.value)
+    if (next.length > 0) {
+      nextMap.set(sessionId, next)
+      queueLengths.value.set(sessionId, next.length)
+    } else {
+      nextMap.delete(sessionId)
+      queueLengths.value.delete(sessionId)
+    }
+    queuedUserMessages.value = nextMap
+    return true
+  }
+
+  function removeQueuedMessage(sessionId: string, messageId: string) {
+    if (!dropQueuedUserMessage(sessionId, messageId)) return
+    getChatRunSocket(runtimeTransport())?.emit('cancel_queued_run', {
+      session_id: sessionId,
+      queue_id: messageId,
+    })
+  }
+
+  function normalizeQueuedUserMessages(rawMessages: unknown): Message[] {
+    if (!Array.isArray(rawMessages)) return []
+    return rawMessages.flatMap((raw) => {
+      const peer = raw as NonNullable<RunEvent['queued_messages']>[number]
+      const content = typeof peer?.content === 'string' ? peer.content : ''
+      const messageId = peer?.id != null ? String(peer.id) : ''
+      if (!messageId || !content.trim()) return []
+      const timestamp = typeof peer?.timestamp === 'number' && Number.isFinite(peer.timestamp)
+        ? Math.round(peer.timestamp * 1000)
+        : Date.now()
+      const role = peer?.role === 'command' ? 'command' : 'user'
+      return [{
+        id: messageId,
+        role,
+        content,
+        timestamp,
+        queued: true,
+        systemType: role === 'command' ? 'command' as const : undefined,
+      }]
+    })
+  }
+
+  function replaceQueuedUserMessages(sessionId: string, messages: Message[]) {
+    const existingById = new Map((queuedUserMessages.value.get(sessionId) || []).map(message => [message.id, message]))
+    const merged = messages.map(message => ({
+      ...(existingById.get(message.id) || {}),
+      ...message,
+      attachments: existingById.get(message.id)?.attachments || message.attachments,
+      queued: true,
+    }))
+    const nextMap = new Map(queuedUserMessages.value)
+    if (merged.length > 0) {
+      nextMap.set(sessionId, merged)
+    } else {
+      nextMap.delete(sessionId)
+    }
+    queuedUserMessages.value = nextMap
+  }
+
+  function markDequeuedQueueId(sessionId: string, messageId: string) {
+    const nextMap = new Map(dequeuedQueueIds.value)
+    const ids = new Set(nextMap.get(sessionId) || [])
+    ids.add(messageId)
+    nextMap.set(sessionId, ids)
+    dequeuedQueueIds.value = nextMap
+  }
+
+  function consumeDequeuedQueueId(sessionId: string, messageId: string): boolean {
+    const ids = dequeuedQueueIds.value.get(sessionId)
+    if (!ids?.has(messageId)) return false
+    const nextIds = new Set(ids)
+    nextIds.delete(messageId)
+    const nextMap = new Map(dequeuedQueueIds.value)
+    if (nextIds.size > 0) nextMap.set(sessionId, nextIds)
+    else nextMap.delete(sessionId)
+    dequeuedQueueIds.value = nextMap
+    return true
+  }
+
+  function handleRunQueuedEvent(sessionId: string, evt: RunEvent) {
+    const queueLength = Number((evt as any).queue_length || 0)
+    if (queueLength > 0) {
+      queueLengths.value.set(sessionId, queueLength)
+    } else {
+      queueLengths.value.delete(sessionId)
+    }
+
+    const dequeuedId = (evt as any).dequeued_queue_id != null
+      ? String((evt as any).dequeued_queue_id)
+      : ''
+    if (dequeuedId) {
+      const existingQueue = queuedUserMessages.value.get(sessionId) || []
+      const dequeued = existingQueue.find(message => message.id === dequeuedId)
+      if (Array.isArray((evt as any).queued_messages)) {
+        const queued = normalizeQueuedUserMessages((evt as any).queued_messages)
+        replaceQueuedUserMessages(sessionId, queued)
+      } else {
+        const nextQueue = existingQueue.filter(message => message.id !== dequeuedId)
+        replaceQueuedUserMessages(sessionId, nextQueue)
+      }
+      if (dequeued && !getSessionMsgs(sessionId).some(message => message.id === dequeued.id)) {
+        addMessage(sessionId, { ...dequeued, queued: false })
+        updateSessionTitle(sessionId)
+      } else if (!dequeued) {
+        markDequeuedQueueId(sessionId, dequeuedId)
+      }
+      return
+    }
+
+    if (Array.isArray((evt as any).queued_messages)) {
+      const queued = normalizeQueuedUserMessages((evt as any).queued_messages)
+      replaceQueuedUserMessages(sessionId, queued)
+      return
+    }
+
+    const peer = evt.message
+    const content = typeof peer?.content === 'string' ? peer.content : ''
+    const messageId = peer?.id != null ? String(peer.id) : ''
+    if (!messageId || !content.trim()) return
+
+    if ((queuedUserMessages.value.get(sessionId) || []).some(msg => msg.id === messageId)) return
+
+    const timestamp = typeof peer?.timestamp === 'number' && Number.isFinite(peer.timestamp)
+      ? Math.round(peer.timestamp * 1000)
+      : Date.now()
+    const msgs = getSessionMsgs(sessionId)
+    const existingIndex = msgs.findIndex(msg => msg.id === messageId && msg.role === 'user')
+    const existing = existingIndex >= 0 ? msgs[existingIndex] : null
+    if (existingIndex >= 0) {
+      msgs.splice(existingIndex, 1)
+    }
+
+    enqueueUserMessage(sessionId, {
+      ...(existing || {}),
+      id: messageId,
+      role: peer?.role === 'command' ? 'command' : 'user',
+      content,
+      timestamp: existing?.timestamp || timestamp,
+      attachments: existing?.attachments,
+      queued: true,
+      systemType: peer?.role === 'command' ? 'command' : existing?.systemType,
+    })
+  }
+
+  function setPendingApproval(evt: RunEvent) {
+    const sid = evt.session_id
+    const approvalId = (evt as any).approval_id as string | undefined
+    if (!sid || !approvalId) return
+    const description = String((evt as any).description || '')
+    const normalizedDescription = description.trim().toLowerCase().replace(/\s+/g, ' ')
+    const isMemoryWrite = !Boolean((evt as any).allow_permanent) && (
+      normalizedDescription === 'save to memory' ||
+      normalizedDescription.startsWith('save to memory:') ||
+      normalizedDescription.startsWith('save to memory?')
+    )
+    const rawChoices = Array.isArray((evt as any).choices) ? (evt as any).choices : ['once', 'session', 'deny']
+    const choices = rawChoices
+      .filter((choice: unknown): choice is PendingApproval['choices'][number] =>
+        choice === 'once' || choice === 'session' || choice === 'always' || choice === 'deny')
+    pendingApprovals.value.set(sid, {
+      sessionId: sid,
+      approvalId,
+      command: String((evt as any).command || ''),
+      description,
+      choices: isMemoryWrite ? ['once', 'deny'] : choices.length ? choices : ['once', 'session', 'deny'],
+      allowPermanent: Boolean((evt as any).allow_permanent),
+      isMemoryWrite,
+      requestedAt: Date.now(),
+    })
+    pendingApprovals.value = new Map(pendingApprovals.value)
+
+    const commandText = summarizeMultiAgentObjectiveText(String((evt as any).command || ''), 120)
+    const detail = sanitizeMultiAgentText(description || '')
+    const waitText = detail
+      ? `${detail}${commandText ? ` 命令：${commandText}` : ''}`
+      : (commandText ? `等待终端权限确认：${commandText}` : '等待终端权限确认。')
+
+    patchWorkflow(sid, workflow => ({
+      ...workflow,
+      subtitle: '等待权限确认',
+      current: waitText,
+      status: 'running',
+    }))
+    patchWorkflowStep(sid, 'execute', {
+      detail: waitText,
+      status: 'running',
+    })
+    upsertWorkflowEvent(sid, {
+      id: `approval:${approvalId}`,
+      title: '等待终端权限确认',
+      text: waitText,
+      status: 'running',
+      timestamp: Date.now(),
+    })
+    appendMultiAgentActivity(sid, {
+      id: `approval:${approvalId}:requested`,
+      kind: 'route',
+      title: '等待终端权限确认',
+      text: waitText,
+      status: 'running',
+      timestamp: Date.now(),
+    })
+
+    const currentRoute = multiAgentRoutes.value.get(sid)
+    const activeNodeId = currentRoute?.currentNodeId || 'route'
+    updateMultiAgentExecutionState(sid, {
+      status: 'running',
+      currentNodeId: activeNodeId,
+      nodeId: activeNodeId,
+      currentNodeSummary: waitText,
+      currentNodeStatus: activeNodeId === 'respond' ? 'doing' : 'doing',
+    })
+  }
+
+  function clearPendingApproval(evt: RunEvent) {
+    const sid = evt.session_id
+    if (!sid) return
+    const current = pendingApprovals.value.get(sid)
+    if (!current) return
+    const approvalId = (evt as any).approval_id
+    if (approvalId && current.approvalId !== approvalId) return
+    const resolved = (evt as any).resolved !== false
+    const choice = typeof (evt as any).choice === 'string' ? String((evt as any).choice) : ''
+    const resultText = resolved
+      ? `终端权限已确认${choice ? `（${choice}）` : ''}，继续执行。`
+      : `终端权限未通过${choice ? `（${choice}）` : ''}。`
+    pendingApprovals.value.delete(sid)
+    pendingApprovals.value = new Map(pendingApprovals.value)
+
+    patchWorkflow(sid, workflow => ({
+      ...workflow,
+      subtitle: resolved ? '继续执行中' : '权限校验失败',
+      current: resultText,
+      status: resolved ? 'running' : 'error',
+    }))
+    patchWorkflowStep(sid, 'execute', {
+      detail: resultText,
+      status: resolved ? 'running' : 'error',
+    })
+    upsertWorkflowEvent(sid, {
+      id: `approval:${current.approvalId}`,
+      title: resolved ? '终端权限已确认' : '终端权限未通过',
+      text: resultText,
+      status: resolved ? 'done' : 'error',
+      timestamp: Date.now(),
+    })
+    appendMultiAgentActivity(sid, {
+      id: `approval:${current.approvalId}:resolved`,
+      kind: 'route',
+      title: resolved ? '终端权限已确认' : '终端权限未通过',
+      text: resultText,
+      status: resolved ? 'done' : 'error',
+      timestamp: Date.now(),
+    })
+
+    const currentRoute = multiAgentRoutes.value.get(sid)
+    const activeNodeId = currentRoute?.currentNodeId || 'route'
+    updateMultiAgentExecutionState(sid, {
+      status: resolved ? 'running' : 'failed',
+      currentNodeId: activeNodeId,
+      nodeId: activeNodeId,
+      currentNodeSummary: resultText,
+      currentNodeStatus: resolved ? 'doing' : 'blocked',
+    })
+  }
+
+  function setPendingClarify(evt: RunEvent) {
+    const sid = evt.session_id
+    const clarifyId = (evt as any).clarify_id as string | undefined
+    if (!sid || !clarifyId) return
+    pendingClarifies.value.set(sid, {
+      sessionId: sid,
+      clarifyId,
+      question: String((evt as any).question || ''),
+      choices: Array.isArray((evt as any).choices) ? (evt as any).choices : null,
+      timeoutMs: Number((evt as any).timeout_ms) || 300000,
+      requestedAt: Date.now(),
+    })
+    pendingClarifies.value = new Map(pendingClarifies.value)
+  }
+
+  function clearPendingClarify(evt: RunEvent) {
+    const sid = evt.session_id
+    if (!sid) return
+    const current = pendingClarifies.value.get(sid)
+    if (!current) return
+    const clarifyId = (evt as any).clarify_id
+    if (clarifyId && current.clarifyId !== clarifyId) return
+    pendingClarifies.value.delete(sid)
+    pendingClarifies.value = new Map(pendingClarifies.value)
+  }
+
+  function clearPendingInteractions(sessionId: string) {
+    let changed = false
+    if (pendingApprovals.value.has(sessionId)) {
+      pendingApprovals.value.delete(sessionId)
+      changed = true
+    }
+    if (pendingClarifies.value.has(sessionId)) {
+      pendingClarifies.value.delete(sessionId)
+      changed = true
+    }
+    if (changed) {
+      pendingApprovals.value = new Map(pendingApprovals.value)
+      pendingClarifies.value = new Map(pendingClarifies.value)
+    }
+  }
+
+  function respondToClarify(response: string) {
+    const pending = activePendingClarify.value
+    if (!pending) return
+    respondClarify(pending.sessionId, pending.clarifyId, response, runtimeTransport())
+    pendingClarifies.value.delete(pending.sessionId)
+    pendingClarifies.value = new Map(pendingClarifies.value)
+  }
+
+
+  function respondApproval(choice: PendingApproval['choices'][number]) {
+    const pending = activePendingApproval.value
+    if (!pending) return
+    respondToolApproval(pending.sessionId, pending.approvalId, choice, runtimeTransport())
+    pendingApprovals.value.delete(pending.sessionId)
+    pendingApprovals.value = new Map(pendingApprovals.value)
+  }
+
+  function updateSessionTitle(sessionId: string) {
+    const target = sessions.value.find(s => s.id === sessionId)
+    if (!target) return
+    if (!target.title) {
+      const firstUser = target.messages.find(m => m.role === 'user')
+      if (firstUser) {
+        const title = firstUser.attachments?.length
+          ? firstUser.attachments.map(a => a.name).join(', ')
+          : firstUser.content
+        target.title = title.slice(0, 40) + (title.length > 40 ? '...' : '')
+      }
+    }
+    target.updatedAt = Date.now()
+  }
+
+  function applyGeneratedSessionTitle(evt: RunEvent) {
+    const sid = evt.session_id
+    const title = typeof (evt as any).title === 'string' ? (evt as any).title.trim() : ''
+    if (!sid || !title) return
+    const target = sessions.value.find(s => s.id === sid)
+    if (target) {
+      target.title = title
+      target.updatedAt = Date.now()
+    }
+    if (activeSession.value?.id === sid) {
+      activeSession.value.title = title
+    }
+  }
+
+  function primeCompletionBellIfEnabled() {
+    if (useSettingsStore().display.bell_on_complete) {
+      primeCompletionSound()
+    }
+  }
+
+  function playCompletionBellIfEnabled() {
+    if (useSettingsStore().display.bell_on_complete) {
+      void playCompletionSound()
+    }
+  }
+
+  function truncateNotificationText(value: string, maxLength: number): string {
+    const normalized = value.replace(/\s+/g, ' ').trim()
+    if (normalized.length <= maxLength) return normalized
+    return `${normalized.slice(0, Math.max(0, maxLength - 3)).trimEnd()}...`
+  }
+
+  function completionNotificationAgent(session: Session): { icon: string } {
+    const codingAgentId = session.codingAgentId || (session.agent === 'codex' ? 'codex' : session.agent === 'claude' ? 'claude-code' : undefined)
+    if (codingAgentId === 'codex') {
+      return { icon: '/coding-agents/codex-openai.png' }
+    }
+    if (codingAgentId === 'claude-code') {
+      return { icon: '/coding-agents/claude-code.svg' }
+    }
+    return { icon: '/coding-agents/assistant-badge.svg' }
+  }
+
+  function completionNotificationBody(session: Session, message?: Message): string {
+    const preview = message?.content || session.title || 'Message complete.'
+    return truncateNotificationText(preview, 140)
+  }
+
+  function showCompletionNotificationIfEnabled(sessionId: string, messageId?: string | null) {
+    const settingsStore = useSettingsStore()
+    if (!settingsStore.display.notify_on_complete) return
+
+    const session = sessions.value.find(s => s.id === sessionId)
+    if (!session) return
+    const message = messageId
+      ? session.messages.find(m => m.id === messageId)
+      : [...session.messages].reverse().find(m => m.role === 'assistant')
+
+    const agent = completionNotificationAgent(session)
+    void showCompletionNotification({
+      title: truncateNotificationText(session.title || '主智能体', 80),
+      body: completionNotificationBody(session, message),
+      icon: agent.icon,
+      tag: `DiTing-complete-${sessionId}-${message?.id || Date.now()}`,
+    })
+  }
+
+  async function sendMessage(
+    content: string,
+    attachments?: Attachment[],
+    multiAgent?: MultiAgentRunOptions,
+  ) {
+    if ((!content.trim() && !(attachments && attachments.length > 0))) return
+
+    primeCompletionBellIfEnabled()
+
+    const trimmedContent = content.trim()
+
+    if (!activeSession.value) {
+      const session = createSession()
+      switchSession(session.id)
+    }
+
+    // Capture session ID at send time — all callbacks use this, not activeSessionId
+    const sid = activeSessionId.value!
+    const shouldSendInitialSessionConfig = activeSession.value
+      ? activeSession.value.messageCount == null || activeSession.value.messageCount === 0
+      : false
+    const isCodingAgentSession = isCodingAgentLikeSession(activeSession.value)
+    const isBridgeSlashCommand = !isCodingAgentSession && isKnownBridgeSessionCommand(trimmedContent)
+    const isBridgeCompressCommand = isBridgeSlashCommand && /^\/compress(?:\s|$)/i.test(trimmedContent)
+    const isBridgePlanCommand = isBridgeSlashCommand && /^\/plan(?:\s|$)/i.test(trimmedContent)
+    const isBridgeSkillCommand = isBridgeSlashCommand && /^\/skill(?:\s|$)/i.test(trimmedContent)
+    const isBridgeGoalCommand = isBridgeSlashCommand && /^\/goal(?:\s|$)/i.test(trimmedContent)
+    const isBridgeForkCommand = isBridgeSlashCommand && /^\/fork(?:\s|$)/i.test(trimmedContent)
+    const shouldOptimisticallyShowRunStatus = !isCodingAgentSession && !isBridgeForkCommand
+    const wasLiveBeforeSend = isSessionLive(sid)
+    if (isBridgeForkCommand) {
+      if (pendingForkCommands.value.has(sid)) return
+      pendingForkCommands.value = new Set(pendingForkCommands.value).add(sid)
+    }
+    const shouldQueue = wasLiveBeforeSend && (!isBridgeSlashCommand || isBridgePlanCommand || isBridgeSkillCommand)
+
+    const userMsg: Message = {
+      id: uid(),
+      role: isBridgeSlashCommand ? 'command' : 'user',
+      content: trimmedContent,
+      timestamp: Date.now(),
+      attachments: attachments && attachments.length > 0 ? attachments : undefined,
+      queued: shouldQueue,
+      systemType: isBridgeSlashCommand ? 'command' : undefined,
+    }
+
+    if (multiAgent?.enabled) {
+      resetMultiAgentRouteState(sid, trimmedContent)
+    } else {
+      setMultiAgentRouteState(sid, null)
+    }
+
+    if (shouldQueue) {
+      enqueueUserMessage(sid, userMsg)
+      if (multiAgent?.enabled) {
+        startMultiAgentWorkflowMessage(sid, trimmedContent)
+      }
+    } else {
+      addMessage(sid, userMsg)
+      if (multiAgent?.enabled) {
+        startMultiAgentWorkflowMessage(sid, trimmedContent)
+      }
+      updateSessionTitle(sid)
+      if (shouldOptimisticallyShowRunStatus) serverWorking.value.add(sid)
+    }
+
+    let runSubmitted = false
+    try {
+
+      // Build input in Anthropic format
+      let input: string | ContentBlock[]
+      if (attachments && attachments.length > 0) {
+        // Has attachments: upload first, then build content blocks
+        const uploaded = await uploadFiles(attachments)
+
+        // Update attachment URLs on the user message for display
+        const urlMap = new Map(uploaded.map(f => {
+          return [f.name, getDownloadUrl(f.path, f.name)]
+        }))
+        if (shouldQueue && userMsg.attachments) {
+          userMsg.attachments = userMsg.attachments.map(a => {
+            const dl = urlMap.get(a.name)
+            return dl ? { ...a, url: dl } : a
+          })
+          updateQueuedUserMessage(sid, userMsg.id, { attachments: userMsg.attachments })
+        } else {
+          const msgs = getSessionMsgs(sid)
+          const lastUser = msgs.findLast(m => m.id === userMsg.id)
+          if (lastUser?.attachments) {
+            lastUser.attachments = lastUser.attachments.map(a => {
+              const dl = urlMap.get(a.name)
+              return dl ? { ...a, url: dl } : a
+            })
+          }
+        }
+
+        // Build content blocks with uploaded file paths
+        input = await buildContentBlocks(content, attachments, uploaded)
+      } else {
+        // No attachments: use plain text format
+        input = trimmedContent
+      }
+
+      const appStore = useAppStore()
+      await appStore.waitForModelsForRun()
+      const sessionModel = activeSession.value?.model || appStore.selectedModel
+      const sessionProvider = activeSession.value?.provider || appStore.selectedProvider
+      const sessionProfile = activeSession.value?.profile || useProfilesStore().activeProfileName || undefined
+      const profileModelGroups = sessionProfile
+        ? appStore.profileModelGroups.find(entry => entry.profile === sessionProfile)?.groups
+        : undefined
+      const runModelGroups = profileModelGroups?.length ? profileModelGroups : appStore.modelGroups
+      const providerGroup = runModelGroups.find(group => group.provider === sessionProvider)
+      const storedSource = activeSession.value?.source
+      const sessionSource: StartRunRequest['source'] = storedSource === 'global_agent'
+        ? 'global_agent'
+        : storedSource === 'workflow'
+          ? 'workflow'
+        : isCodingAgentSession
+          ? 'coding_agent'
+          : storedSource === 'api_server'
+            ? 'api_server'
+            : 'cli'
+      const isCodingAgentExecution = sessionSource === 'coding_agent' || (sessionSource === 'workflow' && isCodingAgentSession)
+      const codingAgentId: 'claude-code' | 'codex' =
+        activeSession.value?.codingAgentId ||
+        (activeSession.value?.agent === 'codex' ? 'codex' : 'claude-code')
+      const codingAgentMode = activeSession.value?.codingAgentMode || 'scoped'
+      const codingAgentApiMode = isCodingAgentExecution && codingAgentMode !== 'global'
+        ? normalizeCodingAgentApiMode(
+            activeSession.value?.apiMode || providerGroup?.api_mode,
+            inferCodingAgentApiMode(
+              sessionProvider || providerGroup?.provider,
+              activeSession.value?.baseUrl || providerGroup?.base_url,
+            ),
+          )
+        : undefined
+      const runPayload: StartRunRequest = {
+        input,
+        session_id: sid,
+        profile: sessionProfile,
+        model: isCodingAgentExecution
+          ? (codingAgentMode === 'global' ? undefined : sessionModel || undefined)
+          : shouldSendInitialSessionConfig ? sessionModel || undefined : undefined,
+        provider: isCodingAgentExecution
+          ? (codingAgentMode === 'global' ? undefined : sessionProvider || undefined)
+          : shouldSendInitialSessionConfig ? sessionProvider || undefined : undefined,
+        model_groups: runModelGroups.map(group => ({
+          provider: group.provider,
+          models: group.models,
+        })),
+        queue_id: userMsg.id,
+        workspace: activeSession.value?.workspace || undefined,
+        source: sessionSource,
+        ...(runtimeMode.value === 'global_agent' ? { session_source: 'global_agent' as const } : {}),
+        ...(sessionSource === 'workflow' ? { session_source: 'workflow' as const } : {}),
+        ...(isCodingAgentExecution
+          ? {
+              coding_agent_id: codingAgentId,
+              mode: codingAgentMode,
+              baseUrl: codingAgentMode === 'global' ? undefined : activeSession.value?.baseUrl || providerGroup?.base_url || undefined,
+              apiKey: codingAgentMode === 'global' ? undefined : activeSession.value?.apiKey || providerGroup?.api_key || undefined,
+              apiMode: codingAgentApiMode,
+            }
+          : {}),
+        multi_agent_mode: Boolean(multiAgent?.enabled),
+        sub_agent_candidates: multiAgent?.enabled
+          ? (multiAgent?.candidates || []).map(candidate => ({
+              id: candidate.id,
+              name: candidate.name,
+              description: candidate.description || '',
+              baseUrl: candidate.baseUrl || '',
+              chatPath: candidate.chatPath || '',
+              enabled: candidate.enabled !== false,
+              skills: candidate.skills || [],
+              tools: candidate.tools || [],
+            }))
+          : undefined,
+        // Per-session reasoning effort override. Coding Agent runners do not
+        // consume this setting yet, so keep their payloads explicit.
+        reasoning_effort: isCodingAgentExecution ? undefined : activeSession.value?.reasoningEffort || undefined,
+      }
+      if (shouldSendInitialSessionConfig && activeSession.value) {
+        activeSession.value.messageCount = Math.max(activeSession.value.messageCount || 0, 1)
+      }
+
+      // Helper to clean up this session's stream state
+      const cleanup = () => {
+        streamStates.value.delete(sid)
+        serverWorking.value.delete(sid)
+      }
+
+      // Per-active-run flags used to detect silently-swallowed errors at run.completed.
+      // DiTing-agent occasionally emits run.completed with empty output and no
+      // usage when the agent layer caught an upstream error (e.g. invalid API
+      // key). We need to distinguish: (a) run with assistant text produced,
+      // (b) run with only tool activity, (c) run with truly nothing visible.
+      // Reset on every run.started because one handler may span multiple queued runs.
+      let runProducedAssistantText = false
+      let runProducedAssistantContent = false
+      let runHadToolActivity = false
+      let activeAssistantMessageId: string | null = null
+      let reasoningAssistantMessageId: string | null = null
+      let activeRunMarker: string | null = null
+
+      const closeStreamingAssistant = () => {
+        const msgs = getSessionMsgs(sid)
+        msgs.forEach(m => {
+          if (m.role === 'assistant' && m.isStreaming) {
+            updateMessage(sid, m.id, { isStreaming: false })
+          }
+        })
+        activeAssistantMessageId = null
+        reasoningAssistantMessageId = null
+        activeRunMarker = null
+      }
+
+      const applyReconnectResume = (data: ResumeSessionPayload) => {
+        if (data.session_id !== sid) return
+        const target = sessions.value.find(s => s.id === sid)
+        if (!target) return
+
+        if (data.isWorking) serverWorking.value.add(sid)
+        else serverWorking.value.delete(sid)
+
+        if (data.queueLength && data.queueLength > 0) {
+          queueLengths.value.set(sid, data.queueLength)
+        } else {
+          queueLengths.value.delete(sid)
+        }
+
+        if (Array.isArray(data.queueMessages)) {
+          replaceQueuedUserMessages(sid, normalizeQueuedUserMessages(data.queueMessages))
+        } else if (!data.queueLength) {
+          replaceQueuedUserMessages(sid, [])
+        }
+
+        if (data.isAborting) {
+          setAbortState({ aborting: true, synced: null })
+        } else if (!data.isWorking) {
+          setAbortState(null)
+        }
+        if (!data.isWorking) setCompressionState(sid, null)
+
+        if (data.inputTokens != null) target.inputTokens = data.inputTokens
+        if (data.outputTokens != null) target.outputTokens = data.outputTokens
+        if (data.contextTokens != null) target.contextTokens = data.contextTokens
+
+        if (Array.isArray(data.messages)) {
+          const previousActiveAssistantMessageId = activeAssistantMessageId
+          const previousReasoningAssistantMessageId = reasoningAssistantMessageId
+          const replayRunMarker = getReplayRunMarker(data.events) ?? activeRunMarker
+          target.messages = mapDiTingMessages(data.messages as any[])
+          restoreWorkflowArchiveMessages(sid)
+          target.loadedMessageCount = data.messageLoadedCount ?? data.messages.length
+          target.messageTotal = data.messageTotal ?? target.messageCount ?? target.loadedMessageCount
+          target.messageCount = target.messageTotal
+          target.hasMoreBefore = data.hasMoreBefore ?? target.loadedMessageCount < target.messageTotal
+
+          const resumedAssistantState = data.isWorking
+            ? resolveResumedAssistantState(target.messages, {
+                previousActiveAssistantMessageId,
+                previousReasoningAssistantMessageId,
+                activeRunMarker: replayRunMarker,
+              })
+            : {
+                activeAssistant: null,
+                reasoningAssistant: null,
+                runMarker: null,
+                hadVisibleText: false,
+              }
+
+          const resumedActiveAssistant = resumedAssistantState.activeAssistant
+          const resumedReasoningAssistant = resumedAssistantState.reasoningAssistant
+          activeRunMarker = resumedAssistantState.runMarker
+
+          if (resumedActiveAssistant) {
+            resumedActiveAssistant.isStreaming = true
+            activeAssistantMessageId = resumedActiveAssistant.id
+            if (resumedAssistantState.hadVisibleText) runProducedAssistantText = true
+          } else {
+            activeAssistantMessageId = null
+          }
+
+          if (resumedReasoningAssistant) {
+            reasoningAssistantMessageId = resumedReasoningAssistant.id
+            if (resumedReasoningAssistant.reasoning) noteReasoningStart(resumedReasoningAssistant.id)
+          } else {
+            reasoningAssistantMessageId = null
+          }
+        }
+
+        if (data.events?.length) {
+          for (const evt of data.events) {
+            const e = evt.data as RunEvent
+            switch (e.event) {
+              case 'compression.started':
+                setCompressionState(sid, {
+                  compressing: true,
+                  messageCount: (e as any).message_count || 0,
+                  beforeTokens: (e as any).token_count || 0,
+                  afterTokens: 0,
+                  compressed: null,
+                })
+                break
+              case 'compression.completed': {
+                const afterTokens = (e as any).contextTokens || (e as any).afterTokens || 0
+                setCompressionState(sid, {
+                  compressing: false,
+                  messageCount: (e as any).totalMessages || 0,
+                  beforeTokens: (e as any).beforeTokens || 0,
+                  afterTokens,
+                  compressed: (e as any).compressed ?? false,
+                  error: (e as any).error,
+                })
+                if ((e as any).contextTokens != null) target.contextTokens = (e as any).contextTokens
+                break
+              }
+              case 'abort.started':
+                setAbortState({ aborting: true, synced: null })
+                break
+              case 'abort.timeout':
+                setAbortState({ aborting: true, synced: false, timedOut: true, message: (e as any).message })
+                break
+              case 'abort.completed':
+                setAbortState({ aborting: false, synced: (e as any).synced ?? false })
+                break
+              case 'approval.requested':
+                setPendingApproval({ ...e, session_id: sid })
+                break
+              case 'approval.resolved':
+                clearPendingApproval({ ...e, session_id: sid })
+                break
+              case 'clarify.requested':
+                setPendingClarify({ ...e, session_id: sid })
+                break
+              case 'clarify.resolved':
+                clearPendingClarify({ ...e, session_id: sid })
+                break
+              case 'run.failed':
+                addAgentErrorMessage(sid, e.error)
+                break
+              case 'agent.event':
+                handleAgentEvent(e)
+                break
+            }
+          }
+        }
+
+        if (activeSessionId.value === sid) activeSession.value = target
+        if (!data.isWorking && !(data.queueLength && data.queueLength > 0)) {
+          clearAgentEventMessages(sid)
+          cleanup()
+          activeAssistantMessageId = null
+          updateSessionTitle(sid)
+        }
+      }
+
+      // Send run via Socket.IO and listen to streamed events — all closures capture `sid`
+      const ctrl = startRunViaSocket(
+        runPayload,
+        // onEvent
+        (evt: RunEvent) => {
+          const eventRunMarker = readRunMarker(evt)
+          if (eventRunMarker) activeRunMarker = eventRunMarker
+          switch (evt.event) {
+            case 'run.started':
+              clearSessionCompletedUnread(sid)
+              serverWorking.value.add(sid)
+              clearAgentEventMessages(sid)
+              setAbortState(null)
+              setCompressionState(sid, null)
+              runProducedAssistantText = false
+              runProducedAssistantContent = false
+              runHadToolActivity = false
+              closeStreamingAssistant()
+              activeRunMarker = readRunMarker(evt) ?? null
+              if ((evt as any).queue_length > 0) {
+                queueLengths.value.set(sid, (evt as any).queue_length)
+              } else {
+                queueLengths.value.delete(sid)
+              }
+              break
+
+            case 'run.queued': {
+              handleRunQueuedEvent(sid, evt)
+              break
+            }
+
+            case 'session.command': {
+              handleSessionCommandEvent(evt)
+              break
+            }
+
+            case 'agent.event': {
+              handleAgentEvent(evt)
+              break
+            }
+
+            case 'run.reattach_failed': {
+              handleAgentEvent(evt)
+              break
+            }
+
+            case 'compression.started': {
+              setCompressionState(sid, {
+                compressing: true,
+                messageCount: (evt as any).message_count || 0,
+                beforeTokens: (evt as any).token_count || 0,
+                afterTokens: 0,
+                compressed: null,
+              })
+              break
+            }
+
+            case 'compression.completed': {
+              const afterTokens = (evt as any).contextTokens || (evt as any).afterTokens || 0
+              setCompressionState(sid, {
+                compressing: false,
+                messageCount: (evt as any).totalMessages || 0,
+                beforeTokens: (evt as any).beforeTokens || 0,
+                afterTokens,
+                compressed: (evt as any).compressed ?? false,
+                error: (evt as any).error,
+              })
+              if ((evt as any).contextTokens != null) {
+                const target = sessions.value.find(s => s.id === sid)
+                if (target) target.contextTokens = (evt as any).contextTokens
+              }
+              // Auto-clear after 5s
+              setTimeout(() => {
+                const state = compressionStates.value.get(sid)
+                if (state && !state.compressing) {
+                  setCompressionState(sid, null)
+                }
+              }, 5000)
+              break
+            }
+
+            case 'abort.started': {
+              setAbortState({ aborting: true, synced: null })
+              break
+            }
+
+            case 'abort.timeout': {
+              setAbortState({ aborting: true, synced: false, timedOut: true, message: (evt as any).message })
+              break
+            }
+
+            case 'abort.completed': {
+              setAbortState({ aborting: false, synced: (evt as any).synced ?? false })
+              clearPendingInteractions(sid)
+              if ((evt as any).queue_length > 0) {
+                queueLengths.value.set(sid, (evt as any).queue_length)
+                setAbortState(null)
+                break
+              }
+              const msgs = getSessionMsgs(sid)
+              const lastMsg = msgs[msgs.length - 1]
+              if (lastMsg?.isStreaming) {
+                updateMessage(sid, lastMsg.id, { isStreaming: false })
+              }
+              msgs.forEach((m, i) => {
+                if (m.role === 'tool' && m.toolStatus === 'running') {
+                  msgs[i] = { ...m, toolStatus: 'done' }
+                }
+              })
+              cleanup()
+              setAbortState(null)
+              break
+            }
+
+        case 'reasoning.delta':
+        case 'thinking.delta': {
+          const text = evt.text || evt.delta || ''
+          if (!text) break
+          const currentRoute = multiAgentRoutes.value.get(sid)
+          if (currentRoute) {
+            handleMultiAgentReasoningChunk(sid, resolveMultiAgentReasoningStepId(currentRoute), text)
+          }
+
+          break
+        }
+
+            case 'reasoning.available': {
+              // Upstream run_agent.py fires reasoning.available with
+              // `assistant_message.content[:500]` as the preview — i.e.,
+              // the main answer, not real reasoning. Ignore the payload
+              // and only use this event as a "thinking ended" signal so
+              // the duration counter stops.
+              const msgs = getSessionMsgs(sid)
+              const last = msgs[msgs.length - 1]
+              if (last?.role === 'assistant' && last.isStreaming) {
+                // 只有当 reasoning.delta 事件曾经启动过计时，才标记结束；
+                // 否则（上游未转发 delta，只发这一次 available）不显示时长。
+                noteReasoningEnd(last.id)
+              }
+
+              break
+            }
+
+            case 'message.delta': {
+              const msgs = getSessionMsgs(sid)
+              const last = activeAssistantMessageId
+                ? msgs.find(m => m.id === activeAssistantMessageId)
+                : null
+              if (evt.delta) {
+                runProducedAssistantText = true
+                runProducedAssistantContent = true
+              }
+              if (last?.role === 'assistant' && last.isStreaming) {
+                const prev = last.content
+                const next = prev + (evt.delta || '')
+                noteThinkingDelta(last.id, prev, next)
+                // 若之前有 reasoning 累积，则 content 到达即视为推理结束。
+                if (last.reasoning) noteReasoningEnd(last.id)
+                last.content = next
+              } else {
+                const newId = uid()
+                const nextContent = evt.delta || ''
+                noteThinkingDelta(newId, '', nextContent)
+                addMessage(sid, {
+                  id: newId,
+                  role: 'assistant',
+                  content: nextContent,
+                  timestamp: Date.now(),
+                  isStreaming: true,
+                })
+                activeAssistantMessageId = newId
+              }
+
+              break
+            }
+
+            case 'session.title.updated': {
+              applyGeneratedSessionTitle(evt)
+              break
+            }
+
+            case 'tool.started': {
+              runHadToolActivity = true
+              const msgs = getSessionMsgs(sid)
+              const toolCallId = (evt as any).tool_call_id as string | undefined
+              updateWorkflowToolEvent(sid, {
+                id: toolCallId,
+                name: evt.tool || evt.name,
+                preview: evt.preview,
+                status: 'running',
+              })
+              const existingTool = toolCallId
+                ? msgs.find(m => m.role === 'tool' && m.toolCallId === toolCallId)
+                : null
+              if (existingTool) {
+                updateMessage(sid, existingTool.id, {
+                  toolName: evt.tool || evt.name,
+                  toolArgs: hasRuntimeToolPayload((evt as any).arguments) ? (evt as any).arguments : existingTool.toolArgs,
+                  toolPreview: evt.preview || existingTool.toolPreview,
+                  toolStatus: existingTool.toolStatus || 'running',
+                })
+                break
+              }
+              addMessage(sid, {
+                id: uid(),
+                role: 'tool',
+                content: '',
+                timestamp: Date.now(),
+                toolName: evt.tool || evt.name,
+                toolCallId,
+                toolPreview: evt.preview,
+                toolArgs: runtimeToolPayloadOrUndefined((evt as any).arguments),
+                toolStatus: 'running',
+              })
+
+              break
+            }
+
+            case 'tool.completed': {
+              runHadToolActivity = true
+              const msgs = getSessionMsgs(sid)
+              const toolCallId = (evt as any).tool_call_id as string | undefined
+              const toolMsgs = toolCallId
+                ? msgs.filter(m => m.role === 'tool' && m.toolCallId === toolCallId)
+                : msgs.filter(m => m.role === 'tool' && m.toolStatus === 'running')
+              if (toolMsgs.length > 0) {
+                const last = toolMsgs[toolMsgs.length - 1]
+                const output = runtimeToolPayloadOrUndefined((evt as any).output)
+                const hasError = (evt as any).error === true || runtimeToolOutputHasError(output)
+                const duration = (evt as any).duration
+                updateWorkflowToolEvent(sid, {
+                  id: toolCallId,
+                  name: (evt as any).tool || (evt as any).name || last.toolName,
+                  preview: evt.preview,
+                  status: hasError ? 'error' : 'done',
+                  output,
+                })
+                updateMessage(sid, last.id, {
+                  toolStatus: hasError ? 'error' : 'done',
+                  toolDuration: duration,
+                  toolResult: output,
+                })
+              }
+
+              break
+            }
+
+            case 'subagent.task_sent':
+            case 'subagent.task_accepted':
+            case 'subagent.start':
+            case 'subagent.tool':
+            case 'subagent.progress':
+            case 'subagent.artifact_published':
+            case 'subagent.result_received':
+            case 'subagent.result_rejected':
+            case 'subagent.finalization_blocked':
+            case 'subagent.clarify_required':
+            case 'subagent.complete': {
+              runHadToolActivity = true
+              handleSubagentEvent(sid, evt)
+              break
+            }
+
+            case 'approval.requested': {
+              setPendingApproval(evt)
+              break
+            }
+
+            case 'approval.resolved': {
+              clearPendingApproval(evt)
+              break
+            }
+
+            case 'clarify.requested': {
+              setPendingClarify(evt)
+              break
+            }
+
+            case 'clarify.resolved': {
+              clearPendingClarify(evt)
+              break
+            }
+
+            case 'assistant.message': {
+              const msgs = getSessionMsgs(sid)
+              const last = activeAssistantMessageId
+                ? msgs.find(m => m.id === activeAssistantMessageId)
+                : msgs[msgs.length - 1]
+              if (last?.role === 'assistant' && last.isStreaming) {
+                updateMessage(sid, last.id, { isStreaming: false })
+              }
+              activeAssistantMessageId = null
+              handleAssistantMessageEvent(evt)
+              break
+            }
+
+            case 'run.completed': {
+              const waitingForInput = (evt as any).waiting_for_input === true || (evt as any).status === 'clarify_required'
+              if (!waitingForInput) {
+                finalizeMultiAgentRouteState(sid, 'completed')
+              }
+              clearAgentEventMessages(sid)
+              const msgs = getSessionMsgs(sid)
+              const lastMsg = activeAssistantMessageId
+                ? msgs.find(m => m.id === activeAssistantMessageId)
+                : msgs[msgs.length - 1]
+              const completedAssistantMessageId = lastMsg?.role === 'assistant' && lastMsg.isStreaming
+                ? lastMsg.id
+                : null
+              if (lastMsg?.isStreaming) {
+                updateMessage(sid, lastMsg.id, { isStreaming: false })
+              }
+              settleRunningTools(sid, 'done')
+              // Server-computed usage (local countTokens, snapshot-aware)
+              if ((evt as any).inputTokens != null) {
+                const target = sessions.value.find(s => s.id === sid)
+                if (target) {
+                  target.inputTokens = (evt as any).inputTokens
+                  target.outputTokens = (evt as any).outputTokens
+                  if ((evt as any).contextTokens != null) target.contextTokens = (evt as any).contextTokens
+                }
+              }
+              // Belt-and-suspenders: some providers may deliver the final
+              // assistant text only via run.completed.output (no message.delta
+              // stream). If we never produced assistant text but the gateway
+              // reports a non-empty output, fall back to rendering it as a
+              // single assistant message so the user actually sees the reply.
+
+              // Check if backend provided parsed content (from stringified array format)
+              let finalOutputTrimmed = ''
+              if ((evt as any).parsed_content !== undefined) {
+                // Backend has parsed stringified array format, update last assistant message
+                const msgs = getSessionMsgs(sid)
+                const lastAssistant = activeAssistantMessageId
+                  ? msgs.find(m => m.id === activeAssistantMessageId)
+                  : completedAssistantMessageId
+                    ? msgs.find(m => m.id === completedAssistantMessageId)
+                    : undefined
+                const parsedContent = typeof (evt as any).parsed_content === 'string'
+                  ? (evt as any).parsed_content
+                  : ''
+                const parsedContentTrimmed = parsedContent.trim()
+                if (lastAssistant) {
+                  const existingContentTrimmed = lastAssistant.content?.trim() ?? ''
+                  if (parsedContentTrimmed || !existingContentTrimmed) {
+                    updateMessage(sid, lastAssistant.id, {
+                      content: parsedContent,
+                    })
+                    finalOutputTrimmed = parsedContentTrimmed
+                    if (parsedContentTrimmed) {
+                      runProducedAssistantText = true
+                      runProducedAssistantContent = true
+                    }
+                  } else {
+                    finalOutputTrimmed = existingContentTrimmed
+                    runProducedAssistantText = true
+                  }
+                  if ((evt as any).parsed_reasoning) {
+                    updateMessage(sid, lastAssistant.id, {
+                      reasoning: (evt as any).parsed_reasoning,
+                    })
+                  }
+                } else if (parsedContentTrimmed) {
+                  addMessage(sid, {
+                    id: uid(),
+                    role: 'assistant',
+                    content: parsedContent,
+                    reasoning: typeof (evt as any).parsed_reasoning === 'string' ? (evt as any).parsed_reasoning : undefined,
+                    timestamp: Date.now(),
+                  })
+                  finalOutputTrimmed = parsedContentTrimmed
+                  runProducedAssistantText = true
+                  runProducedAssistantContent = true
+                }
+              } else {
+                // Fallback to output field (legacy behavior)
+                const finalOutput =
+                  typeof evt.output === 'string' ? evt.output : ''
+                finalOutputTrimmed = finalOutput.trim()
+                if (!runProducedAssistantText && finalOutputTrimmed !== '') {
+                  addMessage(sid, {
+                    id: uid(),
+                    role: 'assistant',
+                    content: finalOutput,
+                    timestamp: Date.now(),
+                  })
+                  runProducedAssistantText = true
+                  runProducedAssistantContent = true
+                }
+              }
+              // Workaround for upstream DiTing-agent bug: when the agent
+              // layer silently swallows an error (e.g. invalid API key,
+              // unsupported model), the gateway still emits run.completed
+              // with an empty output. Without surfacing it here the chat UI
+              // looks frozen / "succeeded with no reply". Detect by the
+              // combination of: no assistant text AND no tool activity AND
+              // empty final output. Usage being zero is a *supporting*
+              // signal but not required, since some providers/local models
+              // legitimately omit usage.
+              const swallowedError =
+                !runProducedAssistantText &&
+                !runHadToolActivity &&
+                finalOutputTrimmed === ''
+              if (swallowedError) {
+                addMessage(sid, {
+                  id: uid(),
+                  role: 'system',
+                  content: 'Error: Agent returned no output. The model call may have failed (e.g. invalid API key, model not supported by provider, or context exceeded). Check the DiTing-agent logs for details.',
+                  timestamp: Date.now(),
+                })
+              } else {
+                playCompletionBellIfEnabled()
+                showCompletionNotificationIfEnabled(sid, completedAssistantMessageId)
+              }
+
+              // 自动播放语音
+              if (autoPlaySpeechEnabled.value && runProducedAssistantContent) {
+                const msgs = getSessionMsgs(sid)
+                const lastAssistant = [...msgs].reverse().find(m => m.role === 'assistant')
+                if (lastAssistant?.content) {
+                  // 延迟一小会儿再播放，确保 UI 更新完成
+                  setTimeout(() => {
+                    playMessageSpeech(lastAssistant.id, lastAssistant.content)
+                  }, 300)
+                }
+              }
+
+              const hasQueue = (evt as any).queue_remaining > 0
+              markSessionCompletedUnread(sid, hasQueue)
+              if (hasQueue) {
+                queueLengths.value.set(sid, (evt as any).queue_remaining)
+              } else {
+                cleanup()
+              }
+              activeAssistantMessageId = null
+              reasoningAssistantMessageId = null
+              activeRunMarker = null
+              updateSessionTitle(sid)
+              break
+            }
+
+            case 'run.failed': {
+              finalizeMultiAgentRouteState(sid, 'failed')
+              clearAgentEventMessages(sid)
+              if ((evt as any).inputTokens != null) {
+                const target = sessions.value.find(s => s.id === sid)
+                if (target) {
+                  target.inputTokens = (evt as any).inputTokens
+                  target.outputTokens = (evt as any).outputTokens
+                  if ((evt as any).contextTokens != null) target.contextTokens = (evt as any).contextTokens
+                }
+              }
+              if ((evt as any).assistant_feedback_sent !== true) {
+                addAgentErrorMessage(sid, evt.error)
+              }
+              settleRunningTools(sid, 'error')
+              if ((evt as any).queue_remaining > 0) {
+                queueLengths.value.set(sid, (evt as any).queue_remaining)
+              } else {
+                cleanup()
+              }
+              activeAssistantMessageId = null
+              reasoningAssistantMessageId = null
+              activeRunMarker = null
+              break
+            }
+
+            case 'usage.updated': {
+              const target = sessions.value.find(s => s.id === sid)
+              if (target) {
+                target.inputTokens = (evt as any).inputTokens
+                target.outputTokens = (evt as any).outputTokens
+                if ((evt as any).contextTokens != null) target.contextTokens = (evt as any).contextTokens
+              }
+              break
+            }
+          }
+        },
+        // onDone
+        () => {
+          const msgs = getSessionMsgs(sid)
+          const last = msgs[msgs.length - 1]
+          if (last?.isStreaming) {
+            updateMessage(sid, last.id, { isStreaming: false })
+          }
+          cleanup()
+          activeAssistantMessageId = null
+          reasoningAssistantMessageId = null
+          activeRunMarker = null
+          updateSessionTitle(sid)
+        },
+        // onError
+        (err) => {
+          console.warn('Socket.IO run stream error:', err.message)
+          addAgentErrorMessage(sid, err.message)
+          const msgs = getSessionMsgs(sid)
+          msgs.forEach((m, i) => {
+            if (m.role === 'tool' && m.toolStatus === 'running') {
+              msgs[i] = { ...m, toolStatus: 'error' }
+            }
+          })
+          cleanup()
+          activeAssistantMessageId = null
+          reasoningAssistantMessageId = null
+          activeRunMarker = null
+        },
+        undefined,
+        { onReconnectResume: applyReconnectResume, transport: runtimeTransport() },
+      )
+      runSubmitted = true
+
+      if (isCodingAgentSession) {
+        serverWorking.value.add(sid)
+        streamStates.value.set(sid, ctrl)
+      } else if (!isBridgeSlashCommand || isBridgeCompressCommand || isBridgePlanCommand || isBridgeGoalCommand) {
+        streamStates.value.set(sid, ctrl)
+      }
+    } catch (err: any) {
+      if (isBridgeForkCommand) {
+        const nextPendingForkCommands = new Set(pendingForkCommands.value)
+        nextPendingForkCommands.delete(sid)
+        pendingForkCommands.value = nextPendingForkCommands
+      }
+      if (shouldQueue && !runSubmitted) {
+        dropQueuedUserMessage(sid, userMsg.id)
+      }
+      if (!shouldQueue && !runSubmitted) {
+        serverWorking.value.delete(sid)
+      }
+      addMessage(sid, {
+        id: uid(),
+        role: 'system',
+        content: `Error: ${err.message}`,
+        timestamp: Date.now(),
+      })
+    }
+  }
+
+  /**
+   * Resume an in-flight run after page refresh.
+   * Emits 'resume' to join the session room on the server,
+   * then sets up event listeners to receive ongoing events.
+   */
+  function resumeServerWorkingRun(sid: string, force = false) {
+    // Don't register duplicate listeners if already streaming
+    if (streamStates.value.has(sid)) return
+    // Only set up listeners if the server reported an active run during resume.
+    if (!force && !serverWorking.value.has(sid)) return
+
+    let closed = false
+    let runProducedAssistantText = false
+    let runProducedAssistantContent = false
+    let runHadToolActivity = false
+    let activeAssistantMessageId: string | null = null
+    let activeRunMarker: string | null = null
+
+    const cleanup = () => {
+      if (closed) return
+      closed = true
+      streamStates.value.delete(sid)
+      serverWorking.value.delete(sid)
+      // Unregister from global session handlers
+      unregisterSessionHandlers(sid)
+    }
+
+    const closeStreamingAssistant = () => {
+      const msgs = getSessionMsgs(sid)
+      msgs.forEach(m => {
+        if (m.role === 'assistant' && m.isStreaming) {
+          updateMessage(sid, m.id, { isStreaming: false })
+        }
+      })
+      activeAssistantMessageId = null
+      activeRunMarker = null
+    }
+
+    const initializeResumedAssistantState = () => {
+      const resumedAssistantState = resolveResumedAssistantState(getSessionMsgs(sid), { activeRunMarker })
+      activeRunMarker = resumedAssistantState.runMarker
+      if (resumedAssistantState.activeAssistant) {
+        resumedAssistantState.activeAssistant.isStreaming = true
+        activeAssistantMessageId = resumedAssistantState.activeAssistant.id
+        if (resumedAssistantState.hadVisibleText) runProducedAssistantText = true
+      }
+    }
+
+    initializeResumedAssistantState()
+
+    // Shared event handler — filters by session_id tag
+    function handleEvent(evt: RunEvent) {
+      if (closed) return
+      // Filter events for this session (server tags all events with session_id)
+      if (evt.session_id && evt.session_id !== sid) return
+      const eventRunMarker = readRunMarker(evt)
+      if (eventRunMarker) activeRunMarker = eventRunMarker
+      switch (evt.event) {
+        case 'run.queued': {
+          handleRunQueuedEvent(sid, evt)
+          break
+        }
+
+        case 'session.command': {
+          handleSessionCommandEvent(evt)
+          break
+        }
+
+        case 'agent.event': {
+          handleAgentEvent(evt)
+          break
+        }
+
+        case 'run.reattach_failed': {
+          handleAgentEvent(evt)
+          break
+        }
+
+        case 'run.started':
+          clearSessionCompletedUnread(sid)
+          serverWorking.value.add(sid)
+          clearAgentEventMessages(sid)
+          beginDiTingPlannedExecution(sid)
+          setAbortState(null)
+          setCompressionState(sid, null)
+          runProducedAssistantText = false
+          runProducedAssistantContent = false
+          runHadToolActivity = false
+          closeStreamingAssistant()
+          activeRunMarker = readRunMarker(evt) ?? null
+          if ((evt as any).queue_length > 0) {
+            queueLengths.value.set(sid, (evt as any).queue_length)
+          } else {
+            queueLengths.value.delete(sid)
+          }
+          break
+
+        case 'compression.started': {
+          setCompressionState(sid, {
+            compressing: true,
+            messageCount: (evt as any).message_count || 0,
+            beforeTokens: (evt as any).token_count || 0,
+            afterTokens: 0,
+            compressed: null,
+          })
+          break
+        }
+
+        case 'compression.completed': {
+          const afterTokens = (evt as any).contextTokens || (evt as any).afterTokens || 0
+          setCompressionState(sid, {
+            compressing: false,
+            messageCount: (evt as any).totalMessages || 0,
+            beforeTokens: (evt as any).beforeTokens || 0,
+            afterTokens,
+            compressed: (evt as any).compressed ?? false,
+            error: (evt as any).error,
+          })
+          if ((evt as any).contextTokens != null) {
+            const target = sessions.value.find(s => s.id === sid)
+            if (target) target.contextTokens = (evt as any).contextTokens
+          }
+          setTimeout(() => {
+            const state = compressionStates.value.get(sid)
+            if (state && !state.compressing) {
+              setCompressionState(sid, null)
+            }
+          }, 5000)
+          break
+        }
+
+        case 'abort.started': {
+          setAbortState({ aborting: true, synced: null })
+          break
+        }
+
+        case 'abort.timeout': {
+          setAbortState({ aborting: true, synced: false, timedOut: true, message: (evt as any).message })
+          break
+        }
+
+        case 'abort.completed': {
+          setAbortState({ aborting: false, synced: (evt as any).synced ?? false })
+          clearPendingInteractions(sid)
+          if ((evt as any).queue_length > 0) {
+            queueLengths.value.set(sid, (evt as any).queue_length)
+            setAbortState(null)
+            break
+          }
+          const msgs = getSessionMsgs(sid)
+          const lastMsg = msgs[msgs.length - 1]
+          if (lastMsg?.isStreaming) {
+            updateMessage(sid, lastMsg.id, { isStreaming: false })
+          }
+          msgs.forEach((m, i) => {
+            if (m.role === 'tool' && m.toolStatus === 'running') {
+              msgs[i] = { ...m, toolStatus: 'done' }
+            }
+          })
+          cleanup()
+          setAbortState(null)
+          break
+        }
+
+        case 'reasoning.delta':
+        case 'thinking.delta': {
+          const text = evt.text || evt.delta || ''
+          if (!text) break
+          const currentRoute = multiAgentRoutes.value.get(sid)
+          if (currentRoute) {
+            handleMultiAgentReasoningChunk(sid, resolveMultiAgentReasoningStepId(currentRoute), text)
+          }
+
+          break
+        }
+
+        case 'reasoning.available': {
+          const msgs = getSessionMsgs(sid)
+          const last = msgs[msgs.length - 1]
+          if (last?.role === 'assistant' && last.isStreaming) {
+            noteReasoningEnd(last.id)
+          }
+
+          break
+        }
+
+        case 'message.delta': {
+          const msgs = getSessionMsgs(sid)
+          const last = activeAssistantMessageId
+            ? msgs.find(m => m.id === activeAssistantMessageId)
+            : null
+          if (evt.delta) {
+            runProducedAssistantText = true
+            runProducedAssistantContent = true
+          }
+          if (last?.role === 'assistant' && last.isStreaming) {
+            const prev = last.content
+            const next = prev + (evt.delta || '')
+            noteThinkingDelta(last.id, prev, next)
+            if (last.reasoning) noteReasoningEnd(last.id)
+            last.content = next
+          } else {
+            const newId = uid()
+            const nextContent = evt.delta || ''
+            noteThinkingDelta(newId, '', nextContent)
+            addMessage(sid, {
+              id: newId,
+              role: 'assistant',
+              content: nextContent,
+              timestamp: Date.now(),
+              isStreaming: true,
+            })
+            activeAssistantMessageId = newId
+          }
+
+          break
+        }
+
+        case 'session.title.updated': {
+          applyGeneratedSessionTitle(evt)
+          break
+        }
+
+        case 'tool.started': {
+          runHadToolActivity = true
+          const msgs = getSessionMsgs(sid)
+          const toolCallId = (evt as any).tool_call_id as string | undefined
+          updateWorkflowToolEvent(sid, {
+            id: toolCallId,
+            name: evt.tool || evt.name,
+            preview: evt.preview,
+            status: 'running',
+          })
+          const existingTool = toolCallId
+            ? msgs.find(m => m.role === 'tool' && m.toolCallId === toolCallId)
+            : null
+          if (existingTool) {
+            updateMessage(sid, existingTool.id, {
+              toolName: evt.tool || evt.name,
+              toolArgs: hasRuntimeToolPayload((evt as any).arguments) ? (evt as any).arguments : existingTool.toolArgs,
+              toolPreview: evt.preview || existingTool.toolPreview,
+              toolStatus: existingTool.toolStatus || 'running',
+            })
+            break
+          }
+          addMessage(sid, {
+            id: uid(),
+            role: 'tool',
+            content: '',
+            timestamp: Date.now(),
+            toolName: evt.tool || evt.name,
+            toolCallId,
+            toolPreview: evt.preview,
+            toolArgs: runtimeToolPayloadOrUndefined((evt as any).arguments),
+            toolStatus: 'running',
+          })
+
+          break
+        }
+
+        case 'tool.completed': {
+          runHadToolActivity = true
+          const msgs = getSessionMsgs(sid)
+          const toolCallId = (evt as any).tool_call_id as string | undefined
+          const toolMsgs = toolCallId
+            ? msgs.filter(m => m.role === 'tool' && m.toolCallId === toolCallId)
+            : msgs.filter(m => m.role === 'tool' && m.toolStatus === 'running')
+          if (toolMsgs.length > 0) {
+            const last = toolMsgs[toolMsgs.length - 1]
+            const output = runtimeToolPayloadOrUndefined((evt as any).output)
+            const hasError = (evt as any).error === true || runtimeToolOutputHasError(output)
+            updateWorkflowToolEvent(sid, {
+              id: toolCallId,
+              name: (evt as any).tool || (evt as any).name || last.toolName,
+              preview: evt.preview,
+              status: hasError ? 'error' : 'done',
+              output,
+            })
+            updateMessage(sid, last.id, {
+              toolStatus: hasError ? 'error' : 'done',
+              toolDuration: (evt as any).duration,
+              toolResult: output,
+            })
+          }
+
+          break
+        }
+
+            case 'subagent.task_sent':
+            case 'subagent.task_accepted':
+            case 'subagent.start':
+            case 'subagent.tool':
+            case 'subagent.progress':
+            case 'subagent.artifact_published':
+            case 'subagent.result_received':
+            case 'subagent.result_rejected':
+            case 'subagent.finalization_blocked':
+            case 'subagent.clarify_required':
+            case 'subagent.complete': {
+          runHadToolActivity = true
+          handleSubagentEvent(sid, evt)
+          break
+        }
+
+        case 'approval.requested': {
+          setPendingApproval(evt)
+          break
+        }
+
+        case 'approval.resolved': {
+          clearPendingApproval(evt)
+          break
+        }
+
+        case 'clarify.requested': {
+          setPendingClarify(evt)
+          break
+        }
+
+        case 'clarify.resolved': {
+          clearPendingClarify(evt)
+          break
+        }
+
+        case 'assistant.message': {
+          const msgs = getSessionMsgs(sid)
+          const last = activeAssistantMessageId
+            ? msgs.find(m => m.id === activeAssistantMessageId)
+            : msgs[msgs.length - 1]
+          if (last?.role === 'assistant' && last.isStreaming) {
+            updateMessage(sid, last.id, { isStreaming: false })
+          }
+          activeAssistantMessageId = null
+          handleAssistantMessageEvent(evt)
+          break
+        }
+
+        case 'run.completed': {
+          const waitingForInput = (evt as any).waiting_for_input === true || (evt as any).status === 'clarify_required'
+          if (!waitingForInput) {
+            finalizeMultiAgentRouteState(sid, 'completed')
+          }
+          clearAgentEventMessages(sid)
+          const hasQueue = (evt as any).queue_remaining > 0
+          if (hasQueue) {
+            queueLengths.value.set(sid, (evt as any).queue_remaining)
+          } else {
+            queueLengths.value.delete(sid)
+          }
+          const msgs = getSessionMsgs(sid)
+          const lastMsg = activeAssistantMessageId
+            ? msgs.find(m => m.id === activeAssistantMessageId)
+            : msgs[msgs.length - 1]
+          const completedAssistantMessageId = lastMsg?.role === 'assistant' && lastMsg.isStreaming
+            ? lastMsg.id
+            : null
+          if (lastMsg?.isStreaming) {
+            updateMessage(sid, lastMsg.id, { isStreaming: false })
+          }
+          settleRunningTools(sid, 'done')
+          // Server-computed usage (local countTokens, snapshot-aware)
+          if ((evt as any).inputTokens != null) {
+            const target = sessions.value.find(s => s.id === sid)
+            if (target) {
+              target.inputTokens = (evt as any).inputTokens
+              target.outputTokens = (evt as any).outputTokens
+              if ((evt as any).contextTokens != null) target.contextTokens = (evt as any).contextTokens
+            }
+          }
+          // Check if backend provided parsed content (from stringified array format)
+          let finalOutputTrimmed = ''
+          if ((evt as any).parsed_content !== undefined) {
+            // Backend has parsed stringified array format, update last assistant message
+            const msgs = getSessionMsgs(sid)
+            const lastAssistant = activeAssistantMessageId
+              ? msgs.find(m => m.id === activeAssistantMessageId)
+              : completedAssistantMessageId
+                ? msgs.find(m => m.id === completedAssistantMessageId)
+                : undefined
+            const parsedContent = typeof (evt as any).parsed_content === 'string'
+              ? (evt as any).parsed_content
+              : ''
+            const parsedContentTrimmed = parsedContent.trim()
+            if (lastAssistant) {
+              const existingContentTrimmed = lastAssistant.content?.trim() ?? ''
+              if (parsedContentTrimmed || !existingContentTrimmed) {
+                updateMessage(sid, lastAssistant.id, {
+                  content: parsedContent,
+                })
+                finalOutputTrimmed = parsedContentTrimmed
+                if (parsedContentTrimmed) {
+                  runProducedAssistantText = true
+                  runProducedAssistantContent = true
+                }
+              } else {
+                finalOutputTrimmed = existingContentTrimmed
+                runProducedAssistantText = true
+              }
+              if ((evt as any).parsed_reasoning) {
+                updateMessage(sid, lastAssistant.id, {
+                  reasoning: (evt as any).parsed_reasoning,
+                })
+              }
+            } else if (parsedContentTrimmed) {
+              addMessage(sid, {
+                id: uid(),
+                role: 'assistant',
+                content: parsedContent,
+                reasoning: typeof (evt as any).parsed_reasoning === 'string' ? (evt as any).parsed_reasoning : undefined,
+                timestamp: Date.now(),
+              })
+              finalOutputTrimmed = parsedContentTrimmed
+              runProducedAssistantText = true
+              runProducedAssistantContent = true
+            }
+          } else {
+            // Fallback to output field (legacy behavior)
+            const finalOutput = typeof evt.output === 'string' ? evt.output : ''
+            finalOutputTrimmed = finalOutput.trim()
+            if (!runProducedAssistantText && finalOutputTrimmed !== '') {
+              addMessage(sid, {
+                id: uid(),
+                role: 'assistant',
+                content: finalOutput,
+                timestamp: Date.now(),
+              })
+              runProducedAssistantText = true
+              runProducedAssistantContent = true
+            }
+          }
+          const swallowedError = !runProducedAssistantText && !runHadToolActivity && finalOutputTrimmed === ''
+          if (swallowedError) {
+            addMessage(sid, {
+              id: uid(),
+              role: 'system',
+              content: 'Error: Agent returned no output. The model call may have failed (e.g. invalid API key, model not supported by provider, or context exceeded). Check the DiTing-agent logs for details.',
+              timestamp: Date.now(),
+            })
+          } else {
+            playCompletionBellIfEnabled()
+            showCompletionNotificationIfEnabled(sid, completedAssistantMessageId)
+          }
+
+          // Auto-play speech for every completed assistant message
+          if (autoPlaySpeechEnabled.value && runProducedAssistantContent) {
+            const msgs = getSessionMsgs(sid)
+            const lastAssistant = [...msgs].reverse().find(m => m.role === 'assistant')
+            if (lastAssistant?.content) {
+              setTimeout(() => {
+                playMessageSpeech(lastAssistant.id, lastAssistant.content)
+              }, 300)
+            }
+          }
+
+          if (!hasQueue) {
+            markSessionCompletedUnread(sid)
+            cleanup()
+            activeAssistantMessageId = null
+            activeRunMarker = null
+          } else {
+            markSessionCompletedUnread(sid, true)
+            // More runs pending — reset for next run but don't cleanup
+            activeAssistantMessageId = null
+            activeRunMarker = null
+          }
+          updateSessionTitle(sid)
+          break
+        }
+
+        case 'run.failed': {
+          finalizeMultiAgentRouteState(sid, 'failed')
+          clearAgentEventMessages(sid)
+          if ((evt as any).inputTokens != null) {
+            const target = sessions.value.find(s => s.id === sid)
+            if (target) {
+              target.inputTokens = (evt as any).inputTokens
+              target.outputTokens = (evt as any).outputTokens
+              if ((evt as any).contextTokens != null) target.contextTokens = (evt as any).contextTokens
+            }
+          }
+          const hasQueue = (evt as any).queue_remaining > 0
+          if (hasQueue) {
+            queueLengths.value.set(sid, (evt as any).queue_remaining)
+          } else {
+            queueLengths.value.delete(sid)
+          }
+          if ((evt as any).assistant_feedback_sent !== true) {
+            addAgentErrorMessage(sid, evt.error)
+          }
+          settleRunningTools(sid, 'error')
+          if (!hasQueue) {
+            cleanup()
+          }
+          activeAssistantMessageId = null
+          activeRunMarker = null
+          break
+        }
+
+        case 'usage.updated': {
+          const target = sessions.value.find(s => s.id === sid)
+          if (target) {
+            target.inputTokens = (evt as any).inputTokens
+            target.outputTokens = (evt as any).outputTokens
+            if ((evt as any).contextTokens != null) target.contextTokens = (evt as any).contextTokens
+          }
+          break
+        }
+      }
+    }
+
+    // Register handlers in global session map
+    registerSessionHandlers(sid, {
+      onMessageDelta: (evt) => handleEvent(evt),
+      onReasoningDelta: (evt) => handleEvent(evt),
+      onThinkingDelta: (evt) => handleEvent(evt),
+      onReasoningAvailable: (evt) => handleEvent(evt),
+      onToolStarted: (evt) => handleEvent(evt),
+      onToolCompleted: (evt) => handleEvent(evt),
+      onSubagentEvent: (evt) => handleEvent(evt),
+      onRunStarted: (evt) => handleEvent(evt),
+      onRunCompleted: (evt) => handleEvent(evt),
+      onRunFailed: (evt) => handleEvent(evt),
+      onCompressionStarted: (evt) => handleEvent(evt),
+      onCompressionCompleted: (evt) => handleEvent(evt),
+      onAbortStarted: (evt) => handleEvent(evt),
+      onAbortTimeout: (evt) => handleEvent(evt),
+      onAbortCompleted: (evt) => handleEvent(evt),
+      onUsageUpdated: (evt) => handleEvent(evt),
+      onAgentEvent: (evt) => handleEvent(evt),
+      onSessionCommand: (evt) => handleEvent(evt),
+      onRunQueued: (evt) => handleEvent(evt),
+      onClarifyRequested: (evt) => handleEvent(evt),
+      onClarifyResolved: (evt) => handleEvent(evt),
+    })
+
+    // No need to emit resume here — switchSession already did it.
+    // Server already joined room and replayed events.
+    // Just set up handlers for ongoing streaming events.
+
+    // Mark as streaming so UI shows the indicator and can still abort after refresh.
+    streamStates.value.set(sid, {
+      abort: () => {
+        getChatRunSocket(runtimeTransport())?.emit('abort', { session_id: sid })
+      },
+    })
+  }
+
+  function handlePeerUserMessage(evt: RunEvent) {
+    const sid = evt.session_id
+    if (!sid || activeSessionId.value !== sid || !activeSession.value) return
+
+    const peer = evt.message
+    const content = typeof peer?.content === 'string' ? peer.content : ''
+    if (!content.trim()) return
+
+    const messageId = peer?.id != null ? String(peer.id) : ''
+    const msgs = getSessionMsgs(sid)
+    if (messageId && msgs.some(msg => msg.id === messageId)) {
+      serverWorking.value.add(sid)
+      resumeServerWorkingRun(sid, true)
+      return
+    }
+    if (messageId && (queuedUserMessages.value.get(sid) || []).some(msg => msg.id === messageId)) {
+      serverWorking.value.add(sid)
+      resumeServerWorkingRun(sid, true)
+      return
+    }
+
+    const timestamp = typeof peer?.timestamp === 'number' && Number.isFinite(peer.timestamp)
+      ? Math.round(peer.timestamp * 1000)
+      : Date.now()
+
+    const message: Message = {
+      id: messageId || uid(),
+      role: peer?.role === 'command' ? 'command' : 'user',
+      content,
+      timestamp,
+      queued: !!peer?.queued,
+      systemType: peer?.role === 'command' ? 'command' : undefined,
+    }
+    const wasDequeued = messageId ? consumeDequeuedQueueId(sid, messageId) : false
+    if (peer?.queued || (!wasDequeued && isSessionLive(sid))) {
+      enqueueUserMessage(sid, message)
+    } else {
+      addMessage(sid, message)
+      updateSessionTitle(sid)
+    }
+    serverWorking.value.add(sid)
+    resumeServerWorkingRun(sid, true)
+  }
+
+  onPeerUserMessage(handlePeerUserMessage)
+
+  function handleGlobalSessionCommand(evt: RunEvent) {
+    const sid = evt.session_id
+    if (!sid || activeSessionId.value !== sid || !activeSession.value) return
+    const shouldAttachToStartedRun = (evt as any).started === true && (evt as any).terminal === false
+    handleSessionCommandEvent(evt)
+    if (shouldAttachToStartedRun) {
+      serverWorking.value.add(sid)
+      resumeServerWorkingRun(sid, true)
+    }
+  }
+
+  onSessionCommand(handleGlobalSessionCommand)
+
+  onSessionTitleUpdated(applyGeneratedSessionTitle)
+
+  function stopStreaming() {
+    const sid = activeSessionId.value
+    if (!sid) return
+    if (isAborting.value) return
+    clearPendingInteractions(sid)
+    const ctrl = streamStates.value.get(sid)
+    if (ctrl) {
+      setAbortState({ aborting: true, synced: null })
+      ctrl.abort()
+      const msgs = getSessionMsgs(sid)
+      const lastMsg = msgs[msgs.length - 1]
+      if (lastMsg?.isStreaming) {
+        updateMessage(sid, lastMsg.id, { isStreaming: false })
+      }
+      return
+    }
+    if (serverWorking.value.has(sid)) {
+      setAbortState({ aborting: true, synced: null })
+      getChatRunSocket(runtimeTransport())?.emit('abort', { session_id: sid })
+      const msgs = getSessionMsgs(sid)
+      const lastMsg = msgs[msgs.length - 1]
+      if (lastMsg?.isStreaming) {
+        updateMessage(sid, lastMsg.id, { isStreaming: false })
+      }
+    }
+  }
+
+  // Tab visibility: re-sync when returning to foreground
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && !isStreaming.value) {
+        // Live-sync the session list so sessions created elsewhere (CLI,
+        // Telegram, another device) appear without a manual reload.
+        void refreshSessionListOnly()
+      }
+      if (document.visibilityState === 'visible' && activeSessionId.value && !isStreaming.value) {
+        const sid = activeSessionId.value
+        if (sid && !streamStates.value.has(sid)) {
+          // Re-load messages via resume (server loads from DB)
+          resumeSession(sid, (data) => {
+            if (data.isWorking) {
+              serverWorking.value.add(sid)
+            } else {
+              serverWorking.value.delete(sid)
+            }
+            if (data.isAborting) {
+              setAbortState({ aborting: true, synced: null })
+            } else if (!data.isWorking) {
+              setAbortState(null)
+            }
+            if (!data.isWorking) setCompressionState(sid, null)
+            if (data.messages?.length && activeSession.value) {
+              activeSession.value.messages = mapDiTingMessages(data.messages as any[])
+              restoreWorkflowArchiveMessages(sid)
+              activeSession.value.loadedMessageCount = data.messageLoadedCount ?? data.messages.length
+              activeSession.value.messageTotal = data.messageTotal ?? activeSession.value.messageCount ?? activeSession.value.loadedMessageCount
+              activeSession.value.messageCount = activeSession.value.messageTotal
+              activeSession.value.hasMoreBefore = data.hasMoreBefore ?? activeSession.value.loadedMessageCount < activeSession.value.messageTotal
+            }
+            resumeServerWorkingRun(sid)
+          }, activeSession.value?.profile, runtimeTransport())
+        }
+      }
+    })
+  }
+
+  // Mild background polling for live session-list sync (covers sessions created
+  // on the VM via CLI/Telegram while this client is in the foreground). Only
+  // runs when the tab is visible and not streaming, so it's cheap and never
+  // disrupts an active run. visibilitychange (above) handles the wake-from-hidden
+  // case; this covers the "left it open and watching" case.
+  if (typeof window !== 'undefined') {
+    window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
+      if (isStreaming.value) return
+      void refreshSessionListOnly()
+    }, 12_000)
+  }
+
+  // Transient observation of <think> boundaries during active streaming.
+  // Not persisted; cleared on session switch. See spec §5.3.
+  const thinkingObservation = new Map<string, { startedAt?: number; endedAt?: number }>()
+
+  function getThinkingObservation(messageId: string) {
+    return thinkingObservation.get(messageId)
+  }
+
+  function noteThinkingDelta(messageId: string, prevContent: string, nextContent: string) {
+    const { startedAtBoundary, endedAtBoundary } = detectThinkingBoundary(prevContent, nextContent)
+    if (!startedAtBoundary && !endedAtBoundary) return
+    const existing = thinkingObservation.get(messageId) || {}
+    if (startedAtBoundary && existing.startedAt === undefined) {
+      existing.startedAt = Date.now()
+    }
+    if (endedAtBoundary && existing.endedAt === undefined) {
+      existing.endedAt = Date.now()
+    }
+    thinkingObservation.set(messageId, existing)
+  }
+
+  /** 第一次见到某条消息的 reasoning 文本时，标记 startedAt。 */
+  function noteReasoningStart(messageId: string) {
+    const existing = thinkingObservation.get(messageId) || {}
+    if (existing.startedAt === undefined) {
+      existing.startedAt = Date.now()
+      thinkingObservation.set(messageId, existing)
+    }
+  }
+
+  /** 内容首次到达（视为推理结束）或显式收到 reasoning.available 时，标记 endedAt。 */
+  function noteReasoningEnd(messageId: string) {
+    const existing = thinkingObservation.get(messageId)
+    if (!existing || existing.startedAt === undefined) return
+    if (existing.endedAt === undefined) {
+      existing.endedAt = Date.now()
+      thinkingObservation.set(messageId, existing)
+    }
+  }
+
+  function clearProviderFromSessions(provider: string) {
+    if (!provider) return
+    const target = provider.toLowerCase()
+    for (const s of sessions.value) {
+      if ((s.provider || '').toLowerCase() === target) {
+        s.model = undefined
+        s.provider = ''
+      }
+    }
+  }
+
+  // Persisted in localStorage keyed by sessionId so the choice survives
+  // page reloads. Cleared on session deletion is NOT implemented (best-effort
+  // — orphan keys are tiny and never read again).
+  const REASONING_LS_PREFIX = 'DiTing:reasoning_effort:'
+  function setSessionReasoningEffort(sessionId: string, effort: string) {
+    const session = sessions.value.find(s => s.id === sessionId)
+    if (!session) return
+    session.reasoningEffort = effort || undefined
+    try {
+      if (effort) {
+        localStorage.setItem(REASONING_LS_PREFIX + sessionId, effort)
+      } else {
+        localStorage.removeItem(REASONING_LS_PREFIX + sessionId)
+      }
+    } catch {
+      // localStorage may be unavailable (private mode); silently ignore
+    }
+  }
+  function getStoredReasoningEffort(sessionId: string): string | undefined {
+    try {
+      return localStorage.getItem(REASONING_LS_PREFIX + sessionId) || undefined
+    } catch {
+      return undefined
+    }
+  }
+  // Hydrate reasoningEffort onto sessions whenever they come in fresh from
+  // the server (mapDiTingSession doesn't carry this — it's client-only state).
+  watch(sessions, (list) => {
+    for (const s of list) {
+      if (s.reasoningEffort === undefined) {
+        const stored = getStoredReasoningEffort(s.id)
+        if (stored) s.reasoningEffort = stored
+      }
+    }
+  }, { deep: false })
+
+  function clearThinkingObservationFor(_sessionId: string) {
+    // messageId 与 sessionId 的关联未单独持有；方案是切会话时一律清空。
+    // 这符合 spec 定义：observation 是"当前会话范围内"的 transient 状态。
+    thinkingObservation.clear()
+  }
+
+  // 播放消息语音
+  function playMessageSpeech(messageId: string, content: string) {
+    // 触发自定义事件，让 MessageItem 组件处理播放
+    const event = new CustomEvent('auto-play-speech', {
+      detail: { messageId, content }
+    })
+    window.dispatchEvent(event)
+  }
+
+  return {
+    sessions,
+    runtimeMode,
+    activeSessionId,
+    activeSession,
+    focusMessageId,
+    messages,
+    isStreaming,
+    isForkPending,
+    isRunActive,
+    isSessionLive,
+    isSessionCompletedUnread,
+    clearSessionCompletedUnread,
+    sessionProfileFilter,
+    compressionState,
+    abortState,
+    isAborting,
+    queueLengths,
+    queuedUserMessages,
+    multiAgentRoutes,
+    multiAgentRouteHistories,
+    selectedMultiAgentRunIds,
+    pendingApprovals,
+    activePendingApproval,
+    activePendingClarify,
+    removeQueuedMessage,
+    isLoadingSessions,
+    sessionsLoaded,
+    isLoadingMessages,
+
+    newChat,
+    newCliSession,
+    switchSession,
+    ensureSessionLoaded,
+    loadOlderMessages,
+    switchSessionModel,
+    addOrUpdateSession,
+    clearProviderFromSessions,
+    deleteSession,
+    sendMessage,
+    stopStreaming,
+    respondApproval,
+    respondToClarify,
+    loadSessions,
+    refreshSessionListOnly,
+    refreshActiveSession,
+    loadSessionCollaborationHistory,
+    selectMultiAgentRun,
+    getThinkingObservation,
+    noteThinkingDelta,
+    noteReasoningStart,
+    noteReasoningEnd,
+    clearThinkingObservationFor,
+    setAutoPlaySpeech,
+    playMessageSpeech,
+    setSessionReasoningEffort,
+    setRuntimeMode,
+  }
+})

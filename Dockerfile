@@ -1,4 +1,4 @@
-ARG BASE_IMAGE=nousresearch/hermes-agent:latest
+ARG BASE_IMAGE=nousresearch/DiTing-agent:latest
 FROM ${BASE_IMAGE}
 
 ARG NODE_VERSION=24.15.0
@@ -39,25 +39,25 @@ RUN npm run build && npm prune --omit=dev
 
 ENV NODE_ENV=production
 ENV HOME=/home/agent
-ENV HERMES_HOME=/home/agent/.hermes
-ENV HERMES_WEB_UI_HOME=/home/agent/.hermes-web-ui
-ENV HERMES_WEB_UI_MANAGED_GATEWAY=1
-ENV HERMES_WEB_UI_REQUIRE_AGENT_BRIDGE=1
+ENV DiTing_HOME=/home/agent/.DiTing
+ENV DiTing_WEB_UI_HOME=/home/agent/.DiTing-web-ui
+ENV DiTing_WEB_UI_MANAGED_GATEWAY=1
+ENV DiTing_WEB_UI_REQUIRE_AGENT_BRIDGE=1
 ENV PORT=6060
 ENV BIND_HOST=0.0.0.0
-ENV HERMES_ACTIVE_PROFILE=default
-ENV HERMES_AGENT_BRIDGE_ENDPOINT=tcp://127.0.0.1:18765
-ENV HERMES_AGENT_BRIDGE_AUTO_RESTART=1
-ENV HERMES_AGENT_BRIDGE_WORKER_TRANSPORT=tcp
-ENV HERMES_AGENT_BRIDGE_WORKER_PORT_BASE=18780
-ENV HERMES_AGENT_BRIDGE_WARM_PROFILES=active
-ENV HERMES_AGENT_BRIDGE_WORKER_IDLE_TIMEOUT_SECONDS=86400
-ENV HERMES_AGENT_BRIDGE_SESSION_IDLE_TIMEOUT_SECONDS=86400
-ENV HERMES_DOCKER_REQUIRE_PROFILE_CONFIG=0
-ENV PATH=/opt/hermes/.venv/bin:$PATH
+ENV DiTing_ACTIVE_PROFILE=default
+ENV DiTing_AGENT_BRIDGE_ENDPOINT=tcp://127.0.0.1:18765
+ENV DiTing_AGENT_BRIDGE_AUTO_RESTART=1
+ENV DiTing_AGENT_BRIDGE_WORKER_TRANSPORT=tcp
+ENV DiTing_AGENT_BRIDGE_WORKER_PORT_BASE=18780
+ENV DiTing_AGENT_BRIDGE_WARM_PROFILES=active
+ENV DiTing_AGENT_BRIDGE_WORKER_IDLE_TIMEOUT_SECONDS=86400
+ENV DiTing_AGENT_BRIDGE_SESSION_IDLE_TIMEOUT_SECONDS=86400
+ENV DiTing_DOCKER_REQUIRE_PROFILE_CONFIG=0
+ENV PATH=/opt/DiTing/.venv/bin:$PATH
 
-COPY docker/entrypoint.sh /usr/local/bin/hermes-web-ui-entrypoint
-RUN chmod +x /usr/local/bin/hermes-web-ui-entrypoint
+COPY docker/entrypoint.sh /usr/local/bin/DiTing-web-ui-entrypoint
+RUN chmod +x /usr/local/bin/DiTing-web-ui-entrypoint
 
 EXPOSE 6060
 
@@ -65,5 +65,5 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=5 \
   CMD curl -fsS "http://127.0.0.1:${PORT:-6060}/health" >/dev/null || exit 1
 
 # 强制覆盖基础镜像的默认启动脚本，让镜像本身具备独立运行的能力
-ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/hermes-web-ui-entrypoint"]
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/DiTing-web-ui-entrypoint"]
 CMD ["node", "dist/server/index.js"]

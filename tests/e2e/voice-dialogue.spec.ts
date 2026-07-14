@@ -1,5 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
-import { authenticate, mockChatSocket, mockHermesApi, TEST_ACCESS_KEY } from './fixtures'
+import { authenticate, mockChatSocket, mockDiTingApi, TEST_ACCESS_KEY } from './fixtures'
 
 declare global {
   interface Window {
@@ -118,7 +118,7 @@ async function installMockVoiceCapture(page: Page) {
 test('records, transcribes, stages editable text, then sends through the real chat UI', async ({ page }) => {
   await installMockVoiceCapture(page)
   await page.addInitScript(() => {
-    window.localStorage.setItem('hermes-stt-settings-v1', JSON.stringify({
+    window.localStorage.setItem('DiTing-stt-settings-v1', JSON.stringify({
       provider: 'openai',
       openaiModel: 'gpt-4o-transcribe',
       openaiLanguage: '',
@@ -130,11 +130,11 @@ test('records, transcribes, stages editable text, then sends through the real ch
     }))
   })
   await authenticate(page, TEST_ACCESS_KEY, 'research')
-  const api = await mockHermesApi(page)
+  const api = await mockDiTingApi(page)
   await mockChatSocket(page)
 
   let transcriptionRequests = 0
-  await page.route('**/api/hermes/stt/transcribe', async (route) => {
+  await page.route('**/api/DiTing/stt/transcribe', async (route) => {
     transcriptionRequests += 1
     await route.fulfill({
       status: 200,
@@ -143,7 +143,7 @@ test('records, transcribes, stages editable text, then sends through the real ch
     })
   })
 
-  await page.goto('/#/hermes/chat')
+  await page.goto('/#/DiTing/chat')
   await page.evaluate(() => {
     const state = window.__PW_FAKE_VOICE_CAPTURE__
     if (!state) {

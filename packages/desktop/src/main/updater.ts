@@ -14,7 +14,7 @@ let tryingFallbackFeed = false
 let recoveringPendingUpdate = false
 
 const CLOUDFLARE_LATEST_FEED_URL = 'https://download.ekkolearnai.com/latest'
-const GITHUB_LATEST_FEED_URL = 'https://github.com/EKKOLearnAI/hermes-studio/releases/latest/download'
+const GITHUB_LATEST_FEED_URL = 'https://github.com/EKKOLearnAI/DiTing-studio/releases/latest/download'
 const execFileAsync = promisify(execFile)
 
 interface AutoUpdaterOptions {
@@ -100,9 +100,9 @@ export async function stopOtherWindowsAppInstances(execPath = process.execPath, 
   if (!normalizedExecPath) return
   const script = `
 $ErrorActionPreference = 'SilentlyContinue'
-$target = [System.IO.Path]::GetFullPath($env:HERMES_STUDIO_UPDATE_EXE)
-$current = [int]$env:HERMES_STUDIO_UPDATE_PID
-function Get-HermesStudioProcess {
+$target = [System.IO.Path]::GetFullPath($env:DiTing_STUDIO_UPDATE_EXE)
+$current = [int]$env:DiTing_STUDIO_UPDATE_PID
+function Get-DiTingStudioProcess {
   Get-CimInstance Win32_Process | Where-Object {
     try {
       $_.ProcessId -ne $current -and $_.ExecutablePath -and ([System.IO.Path]::GetFullPath($_.ExecutablePath) -ieq $target)
@@ -111,14 +111,14 @@ function Get-HermesStudioProcess {
     }
   }
 }
-Get-HermesStudioProcess | ForEach-Object {
+Get-DiTingStudioProcess | ForEach-Object {
   try {
     $process = Get-Process -Id $_.ProcessId
     if ($process) { $process.CloseMainWindow() | Out-Null }
   } catch {}
 }
 Start-Sleep -Milliseconds 750
-Get-HermesStudioProcess | ForEach-Object {
+Get-DiTingStudioProcess | ForEach-Object {
   try { Stop-Process -Id $_.ProcessId -Force } catch {}
 }
 `.trim()
@@ -126,8 +126,8 @@ Get-HermesStudioProcess | ForEach-Object {
     await execFileAsync('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', script], {
       env: {
         ...process.env,
-        HERMES_STUDIO_UPDATE_EXE: normalizedExecPath,
-        HERMES_STUDIO_UPDATE_PID: String(currentPid),
+        DiTing_STUDIO_UPDATE_EXE: normalizedExecPath,
+        DiTing_STUDIO_UPDATE_PID: String(currentPid),
       },
       timeout: 30_000,
       windowsHide: true,
@@ -202,7 +202,7 @@ export function initAutoUpdater(nextOptions: AutoUpdaterOptions = {}) {
     }
   })
 
-  if (process.env.HERMES_DESKTOP_ENABLE_AUTO_UPDATE !== 'false') {
+  if (process.env.DiTing_DESKTOP_ENABLE_AUTO_UPDATE !== 'false') {
     checkForDesktopUpdates(false).catch(err => {
       console.error('[updater] initial check failed:', err)
     })

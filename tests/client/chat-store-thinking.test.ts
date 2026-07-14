@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
-import { useChatStore } from '@/stores/hermes/chat'
+import { useChatStore } from '@/stores/DiTing/chat'
 
 describe('chat store thinkingObservation', () => {
   beforeEach(() => {

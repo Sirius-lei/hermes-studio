@@ -6,7 +6,7 @@ const router = useRouter()
 const { t } = useI18n()
 
 function openSettingsPage() {
-  void router.push({ name: 'hermes.settings' })
+  void router.push({ name: 'DiTing.settings' })
 }
 </script>
 

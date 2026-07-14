@@ -5,11 +5,11 @@ import type { Server, Socket } from 'socket.io'
 import { io as createClientSocket, type Socket as ClientSocket } from 'socket.io-client'
 import { logger } from '../logger'
 import { authenticateUserToken, type AuthenticatedUser } from '../../middleware/user-auth'
-import { userCanAccessProfile } from '../../db/hermes/users-store'
+import { userCanAccessProfile } from '../../db/DiTing/users-store'
 import { config } from '../../config'
-import { getChatRunServer } from '../../routes/hermes/chat-run'
-import { cleanTtsText } from '../hermes/tts-providers/text'
-import { transcodeToPcmS16le } from '../hermes/stt-providers/audio-convert'
+import { getChatRunServer } from '../../routes/DiTing/chat-run'
+import { cleanTtsText } from '../DiTing/tts-providers/text'
+import { transcodeToPcmS16le } from '../DiTing/stt-providers/audio-convert'
 import type {
   RelayHttpRequest,
   RelayHttpResponse,
@@ -29,7 +29,7 @@ const MCU_TTS_OPTIONS = {
 const MCU_INTERRUPT_DEBOUNCE_MS = 280
 const MCU_TTS_FAILED_PROMPT_TEXT = '当前文字转语音失败了，请配置下文字转语音再使用哦'
 const MCU_TTS_FAILED_PROMPT_PCM_URL =
-  'https://ekko-hermes-studio.oss-cn-beijing.aliyuncs.com/tts-synthesize-failed-xiaohe.s16le.pcm'
+  'https://ekko-DiTing-studio.oss-cn-beijing.aliyuncs.com/tts-synthesize-failed-xiaohe.s16le.pcm'
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000
 const MAX_REQUEST_TIMEOUT_MS = 120_000
 const MAX_REQUEST_BODY_BYTES = 5 * 1024 * 1024
@@ -40,7 +40,7 @@ const ALLOWED_REQUEST_HEADERS = new Set([
   'accept-language',
   'authorization',
   'content-type',
-  'x-hermes-profile',
+  'x-DiTing-profile',
   'x-request-id',
 ])
 const TEXTUAL_RESPONSE_TYPES = [
@@ -222,7 +222,7 @@ function socketRelayError(id: string | undefined, code: string, message: string)
 
 function requestedAgentRole(auth: Record<string, unknown>): boolean {
   const role = String(auth.role || '').trim()
-  return role === 'hermes-studio' || role === 'agent'
+  return role === 'DiTing-studio' || role === 'agent'
 }
 
 function isRelayHttpResponse(value: NormalizedBody | RelayHttpResponse): value is RelayHttpResponse {
@@ -238,7 +238,7 @@ function normalizeRelayPath(path?: string): string | null {
   const raw = String(path || '').trim()
   if (!raw || !raw.startsWith('/') || raw.startsWith('//')) return null
 
-  const parsed = new URL(raw, 'http://hermes-relay.local')
+  const parsed = new URL(raw, 'http://DiTing-relay.local')
   const normalized = `${parsed.pathname}${parsed.search}`
   if (parsed.pathname === '/v1' || parsed.pathname.startsWith('/v1/')) return null
   return normalized
@@ -825,7 +825,7 @@ export class GlobalAgentServer {
     const headers = normalizeHeaders(request.headers)
     headers.set('authorization', `Bearer ${socket.data.userToken}`)
     const profile = this.frontendProfile(socket)
-    if (profile) headers.set('x-hermes-profile', profile)
+    if (profile) headers.set('x-DiTing-profile', profile)
 
     const normalizedBody = normalizeRequestBody(request, method, headers)
     if (isRelayHttpResponse(normalizedBody)) return normalizedBody
@@ -1082,9 +1082,9 @@ export class GlobalAgentServer {
     const headers = {
       Authorization: `Bearer ${userToken}`,
       'Content-Type': 'application/json',
-      'X-Hermes-Profile': profile || 'default',
+      'X-DiTing-Profile': profile || 'default',
     }
-    const requestTts = (provider?: 'edge') => this.fetchImpl(`${this.localBaseUrl}/api/hermes/tts/synthesize`, {
+    const requestTts = (provider?: 'edge') => this.fetchImpl(`${this.localBaseUrl}/api/DiTing/tts/synthesize`, {
       method: 'POST',
       headers,
       body: JSON.stringify({
@@ -1131,7 +1131,7 @@ export class GlobalAgentServer {
     } catch (err) {
       logger.warn({ err }, '[global-agent] MCU TTS audio conversion failed, falling back to Edge TTS')
       try {
-        const fallback = await this.fetchImpl(`${this.localBaseUrl}/api/hermes/tts/synthesize`, {
+        const fallback = await this.fetchImpl(`${this.localBaseUrl}/api/DiTing/tts/synthesize`, {
           method: 'POST',
           headers,
           body: JSON.stringify({
@@ -1154,7 +1154,7 @@ export class GlobalAgentServer {
     await mkdir(dir, { recursive: true })
     const file = `${randomUUID()}.pcm`
     await writeFile(join(dir, file), audio)
-    return { url: `/api/hermes/mcu/audio/${file}` }
+    return { url: `/api/DiTing/mcu/audio/${file}` }
   }
 
   private async enqueueMcuSpeechSegment(options: McuVoiceChatTurnOptions, segmentId: string, text: string): Promise<void> {
@@ -1410,14 +1410,14 @@ export class GlobalAgentServer {
     }
     const wav = this.wrapPcmAsWav(pcm, stream.sampleRate, stream.channels, stream.bitsPerSample)
     try {
-      const response = await this.fetchImpl(`${this.localBaseUrl}/api/hermes/mcu/voice-turn`, {
+      const response = await this.fetchImpl(`${this.localBaseUrl}/api/DiTing/mcu/voice-turn`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${stream.userToken}`,
           'Content-Type': 'audio/wav',
-          'X-Hermes-Mcu-Interaction-Id': stream.interactionId,
-          'X-Hermes-Mcu-Device-Id': clientId,
-          'X-Hermes-Profile': stream.profile,
+          'X-DiTing-Mcu-Interaction-Id': stream.interactionId,
+          'X-DiTing-Mcu-Device-Id': clientId,
+          'X-DiTing-Profile': stream.profile,
         },
         body: new Uint8Array(wav),
       })
@@ -1515,7 +1515,7 @@ export class GlobalAgentServer {
     const headers = { ...(request.headers || {}) }
     headers.authorization = `Bearer ${socket.data.userToken}`
     const profile = this.frontendProfile(socket)
-    if (profile) headers['x-hermes-profile'] = profile
+    if (profile) headers['x-DiTing-profile'] = profile
     return { ...request, headers }
   }
 

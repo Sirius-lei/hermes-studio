@@ -5,7 +5,7 @@ import { resolve } from 'path'
 
 // Test database path
 const TEST_DB_DIR = resolve(process.cwd(), 'packages/server/data/test')
-const TEST_DB_PATH = resolve(TEST_DB_DIR, 'test-hermes.db')
+const TEST_DB_PATH = resolve(TEST_DB_DIR, 'test-DiTing.db')
 
 // Global test database instance
 let testDbInstance: DatabaseSync | null = null
@@ -108,7 +108,7 @@ describe('Database Schema Synchronization', () => {
   describe('Normal initialization - fresh database creation', () => {
     it('creates all tables with correct schemas when database does not exist', async () => {
       const {
-        initAllHermesTables,
+        initAllDiTingTables,
         USAGE_TABLE,
         USAGE_SCHEMA,
         SESSIONS_TABLE,
@@ -120,9 +120,9 @@ describe('Database Schema Synchronization', () => {
         WORKFLOW_RUN_NODE_SESSIONS_TABLE,
         WORKFLOW_RUN_NODE_SESSIONS_SCHEMA,
       } =
-        await import('../../packages/server/src/db/hermes/schemas')
+        await import('../../packages/server/src/db/DiTing/schemas')
 
-      initAllHermesTables()
+      initAllDiTingTables()
 
       const db = getTestDb()
 
@@ -182,7 +182,7 @@ describe('Database Schema Synchronization', () => {
 
   describe('Safe additive schema changes', () => {
     it('adds missing safe columns to existing table without rebuilding', async () => {
-      const { syncTable, USAGE_TABLE, USAGE_SCHEMA } = await import('../../packages/server/src/db/hermes/schemas')
+      const { syncTable, USAGE_TABLE, USAGE_SCHEMA } = await import('../../packages/server/src/db/DiTing/schemas')
 
       // Create initial table without some columns
       const db = getTestDb()
@@ -208,7 +208,7 @@ describe('Database Schema Synchronization', () => {
     })
 
     it('adds created_at to legacy session_usage tables missing the column', async () => {
-      const { syncTable, USAGE_TABLE, USAGE_SCHEMA } = await import('../../packages/server/src/db/hermes/schemas')
+      const { syncTable, USAGE_TABLE, USAGE_SCHEMA } = await import('../../packages/server/src/db/DiTing/schemas')
 
       const db = getTestDb()
       db.exec(`CREATE TABLE "${USAGE_TABLE}" (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL)`)
@@ -227,7 +227,7 @@ describe('Database Schema Synchronization', () => {
   describe('Schema sync with single-column primary keys', () => {
     it('creates table with single-column primary key', async () => {
       const { syncTable, GC_ROOM_AGENTS_TABLE, GC_ROOM_AGENTS_SCHEMA } =
-        await import('../../packages/server/src/db/hermes/schemas')
+        await import('../../packages/server/src/db/DiTing/schemas')
 
       syncTable(GC_ROOM_AGENTS_TABLE, GC_ROOM_AGENTS_SCHEMA, {
         primaryKey: 'id',
@@ -272,7 +272,7 @@ describe('Database Schema Synchronization', () => {
   describe('Destructive schema changes are not applied automatically', () => {
     it('does not rebuild table when primary key differs', async () => {
       const { syncTable, GC_ROOM_MEMBERS_TABLE, GC_ROOM_MEMBERS_SCHEMA } =
-        await import('../../packages/server/src/db/hermes/schemas')
+        await import('../../packages/server/src/db/DiTing/schemas')
 
       const db = getTestDb()
 
@@ -300,7 +300,7 @@ describe('Database Schema Synchronization', () => {
     })
 
     it('does not rebuild table when column types differ', async () => {
-      const { syncTable, USAGE_TABLE, USAGE_SCHEMA } = await import('../../packages/server/src/db/hermes/schemas')
+      const { syncTable, USAGE_TABLE, USAGE_SCHEMA } = await import('../../packages/server/src/db/DiTing/schemas')
 
       const db = getTestDb()
 
@@ -326,7 +326,7 @@ describe('Database Schema Synchronization', () => {
   describe('Index synchronization', () => {
     it('creates specified indexes on table', async () => {
       const { syncTable, MESSAGES_TABLE, MESSAGES_SCHEMA } =
-        await import('../../packages/server/src/db/hermes/schemas')
+        await import('../../packages/server/src/db/DiTing/schemas')
 
       syncTable(MESSAGES_TABLE, MESSAGES_SCHEMA, {
         indexes: {
@@ -343,7 +343,7 @@ describe('Database Schema Synchronization', () => {
 
     it('does not alter indexes on existing tables', async () => {
       const { syncTable, MESSAGES_TABLE, MESSAGES_SCHEMA } =
-        await import('../../packages/server/src/db/hermes/schemas')
+        await import('../../packages/server/src/db/DiTing/schemas')
 
       const db = getTestDb()
 
@@ -370,7 +370,7 @@ describe('Database Schema Synchronization', () => {
 
   describe('Data preservation during schema sync', () => {
     it('preserves data when adding safe columns', async () => {
-      const { syncTable, USAGE_TABLE, USAGE_SCHEMA } = await import('../../packages/server/src/db/hermes/schemas')
+      const { syncTable, USAGE_TABLE, USAGE_SCHEMA } = await import('../../packages/server/src/db/DiTing/schemas')
 
       const db = getTestDb()
 
@@ -395,7 +395,7 @@ describe('Database Schema Synchronization', () => {
 
     it('preserves data and existing table definition when primary key is missing', async () => {
       const { syncTable, GC_ROOM_AGENTS_TABLE, GC_ROOM_AGENTS_SCHEMA } =
-        await import('../../packages/server/src/db/hermes/schemas')
+        await import('../../packages/server/src/db/DiTing/schemas')
 
       const db = getTestDb()
 
@@ -426,7 +426,7 @@ describe('Database Schema Synchronization', () => {
 
   describe('Column preservation', () => {
     it('keeps extra columns on existing table', async () => {
-      const { syncTable, USAGE_TABLE, USAGE_SCHEMA } = await import('../../packages/server/src/db/hermes/schemas')
+      const { syncTable, USAGE_TABLE, USAGE_SCHEMA } = await import('../../packages/server/src/db/DiTing/schemas')
 
       // Create table with extra columns
       const db = getTestDb()

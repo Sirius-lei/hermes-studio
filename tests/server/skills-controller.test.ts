@@ -13,11 +13,11 @@ const mockSafeReadFile = vi.hoisted(() => vi.fn())
 const mockExtractDescription = vi.hoisted(() => vi.fn())
 const mockListFilesRecursive = vi.hoisted(() => vi.fn())
 
-vi.mock('../../packages/server/src/db/hermes/sessions-db', () => ({
+vi.mock('../../packages/server/src/db/DiTing/sessions-db', () => ({
   getSkillUsageStatsFromDb: mockGetSkillUsageStatsFromDb,
 }))
 
-vi.mock('../../packages/server/src/services/hermes/hermes-profile', () => ({
+vi.mock('../../packages/server/src/services/DiTing/DiTing-profile', () => ({
   getActiveProfileName: mockGetActiveProfileName,
   getProfileDir: mockGetProfileDir,
 }))
@@ -32,7 +32,7 @@ vi.mock('../../packages/server/src/services/config-helpers', () => ({
 
 async function loadController() {
   vi.resetModules()
-  return import('../../packages/server/src/controllers/hermes/skills')
+  return import('../../packages/server/src/controllers/DiTing/skills')
 }
 
 function multipartBody(boundary: string, parts: Array<{ name: string; value: string; filename?: string; filenameStar?: string; contentType?: string }>): Buffer {
@@ -58,7 +58,7 @@ describe('skills controller', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockGetActiveProfileName.mockReturnValue('default')
-    mockGetProfileDir.mockImplementation((profile: string) => `/tmp/hermes-${profile}`)
+    mockGetProfileDir.mockImplementation((profile: string) => `/tmp/DiTing-${profile}`)
     mockReadConfigYamlForProfile.mockResolvedValue({})
     mockSafeReadFile.mockImplementation(async (path: string) => {
       try {
@@ -129,7 +129,7 @@ describe('skills controller', () => {
   })
 
   it('lists configured external skill directories with external source while keeping local skills first', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'hermes-web-ui-external-skills-'))
+    const root = await mkdtemp(join(tmpdir(), 'DiTing-web-ui-external-skills-'))
     const profileDir = join(root, 'profile')
     const localSkillDir = join(profileDir, 'skills', 'tools', 'dupe-skill')
     const externalDir = join(root, 'external-skills')
@@ -165,7 +165,7 @@ describe('skills controller', () => {
   })
 
   it('lists flat symlinked skills in the misc category', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'hermes-web-ui-symlink-flat-skill-'))
+    const root = await mkdtemp(join(tmpdir(), 'DiTing-web-ui-symlink-flat-skill-'))
     const profileDir = join(root, 'profile')
     const profileSkillsDir = join(profileDir, 'skills')
     const sharedSkillDir = join(root, 'shared-skills', 'linked-flat-skill')
@@ -199,7 +199,7 @@ describe('skills controller', () => {
   })
 
   it('lists Codex user and system skills for the codex target', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'hermes-web-ui-codex-skills-'))
+    const root = await mkdtemp(join(tmpdir(), 'DiTing-web-ui-codex-skills-'))
     const previousHome = process.env.HOME
     const userSkillDir = join(root, '.agents', 'skills', 'user-skill')
     const systemSkillDir = join(root, '.codex', 'skills', '.system', 'system-skill')
@@ -234,7 +234,7 @@ describe('skills controller', () => {
   })
 
   it('reads Codex system skill details for the codex target', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'hermes-web-ui-codex-system-skill-'))
+    const root = await mkdtemp(join(tmpdir(), 'DiTing-web-ui-codex-system-skill-'))
     const previousHome = process.env.HOME
     const systemSkillDir = join(root, '.codex', 'skills', '.system', 'imagegen')
 
@@ -278,7 +278,7 @@ describe('skills controller', () => {
   })
 
   it('traverses symlinked category entries without following hidden or cyclic links', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'hermes-web-ui-symlink-category-skill-'))
+    const root = await mkdtemp(join(tmpdir(), 'DiTing-web-ui-symlink-category-skill-'))
     const profileDir = join(root, 'profile')
     const toolsDir = join(profileDir, 'skills', 'tools')
     const linkedSkillDir = join(root, 'shared-skills', 'linked-skill')
@@ -337,12 +337,12 @@ describe('skills controller', () => {
   })
 
   it('imports skills into the request-scoped profile directory', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'hermes-web-ui-import-profile-'))
+    const root = await mkdtemp(join(tmpdir(), 'DiTing-web-ui-import-profile-'))
     const defaultProfileDir = join(root, 'default')
     const researchProfileDir = join(root, 'research')
     mockGetProfileDir.mockImplementation((profile: string) => profile === 'research' ? researchProfileDir : defaultProfileDir)
 
-    const boundary = '----hermes-skill-import-test'
+    const boundary = '----DiTing-skill-import-test'
     const ctx: any = {
       get: vi.fn((header: string) => header.toLowerCase() === 'content-type' ? `multipart/form-data; boundary=${boundary}` : ''),
       req: Readable.from([multipartBody(boundary, [
@@ -366,7 +366,7 @@ describe('skills controller', () => {
   })
 
   it('returns bad request for malformed encoded skill import filenames', async () => {
-    const boundary = '----hermes-skill-import-bad-filename'
+    const boundary = '----DiTing-skill-import-bad-filename'
     const ctx: any = {
       get: vi.fn((header: string) => header.toLowerCase() === 'content-type' ? `multipart/form-data; boundary=${boundary}` : ''),
       req: Readable.from([multipartBody(boundary, [
@@ -385,11 +385,11 @@ describe('skills controller', () => {
   })
 
   it('imports skills with valid encoded multipart filenames', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'hermes-web-ui-import-encoded-filename-'))
+    const root = await mkdtemp(join(tmpdir(), 'DiTing-web-ui-import-encoded-filename-'))
     const profileDir = join(root, 'research')
     mockGetProfileDir.mockReturnValue(profileDir)
 
-    const boundary = '----hermes-skill-import-encoded-filename'
+    const boundary = '----DiTing-skill-import-encoded-filename'
     const ctx: any = {
       get: vi.fn((header: string) => header.toLowerCase() === 'content-type' ? `multipart/form-data; boundary=${boundary}` : ''),
       req: Readable.from([multipartBody(boundary, [
@@ -412,7 +412,7 @@ describe('skills controller', () => {
   })
 
   it('deletes local skills only from the request-scoped profile directory', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'hermes-web-ui-delete-profile-'))
+    const root = await mkdtemp(join(tmpdir(), 'DiTing-web-ui-delete-profile-'))
     const defaultProfileDir = join(root, 'default')
     const researchProfileDir = join(root, 'research')
     const defaultSkillDir = join(defaultProfileDir, 'skills', 'tools', 'dupe-skill')

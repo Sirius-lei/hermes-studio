@@ -8,13 +8,13 @@ const profileMock = vi.hoisted(() => ({
   getActiveProfileDir: vi.fn(),
 }))
 
-vi.mock('../../packages/server/src/services/hermes/hermes-profile', () => ({
+vi.mock('../../packages/server/src/services/DiTing/DiTing-profile', () => ({
   getActiveProfileDir: profileMock.getActiveProfileDir,
   getProfileDir: vi.fn(),
 }))
 
 function createStateDb(withApiCallCount = true): string {
-  const dir = mkdtempSync(join(tmpdir(), 'hermes-usage-'))
+  const dir = mkdtempSync(join(tmpdir(), 'DiTing-usage-'))
   const db = new DatabaseSync(join(dir, 'state.db'))
   db.exec(`
     CREATE TABLE sessions (
@@ -100,7 +100,7 @@ function day(seconds: number): string {
   return new Date(seconds * 1000).toISOString().slice(0, 10)
 }
 
-describe('native-style Hermes usage analytics DB aggregation', () => {
+describe('native-style DiTing usage analytics DB aggregation', () => {
   let profileDir: string | null = null
 
   beforeEach(() => {
@@ -186,7 +186,7 @@ describe('native-style Hermes usage analytics DB aggregation', () => {
       api_call_count: 9,
     })
 
-    const mod = await import('../../packages/server/src/db/hermes/sessions-db')
+    const mod = await import('../../packages/server/src/db/DiTing/sessions-db')
     const result = await mod.getUsageStatsFromDb(30, now)
 
     expect(result).toMatchObject({
@@ -239,7 +239,7 @@ describe('native-style Hermes usage analytics DB aggregation', () => {
       estimated_cost_usd: 0.001,
     }, false)
 
-    const mod = await import('../../packages/server/src/db/hermes/sessions-db')
+    const mod = await import('../../packages/server/src/db/DiTing/sessions-db')
     const result = await mod.getUsageStatsFromDb(30, now)
 
     expect(result.input_tokens).toBe(4)

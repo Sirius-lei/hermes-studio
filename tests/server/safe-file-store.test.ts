@@ -8,7 +8,7 @@ import { SafeFileStore } from '../../packages/server/src/services/safe-file-stor
 const tempDirs: string[] = []
 
 async function tempFile(name: string): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), 'hermes-safe-file-store-'))
+  const dir = await mkdtemp(join(tmpdir(), 'DiTing-safe-file-store-'))
   tempDirs.push(dir)
   return join(dir, name)
 }

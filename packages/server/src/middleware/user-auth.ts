@@ -8,7 +8,7 @@ import {
   userCanAccessProfile,
   type UserRecord,
   type UserRole,
-} from '../db/hermes/users-store'
+} from '../db/DiTing/users-store'
 
 export interface AuthenticatedUser {
   id: number
@@ -26,7 +26,7 @@ interface JwtPayload {
   username: string
   role: UserRole
   type: 'access'
-  aud: 'hermes-web-ui'
+  aud: 'DiTing-web-ui'
   iat: number
   exp: number
 }
@@ -39,7 +39,7 @@ declare module 'koa' {
   }
 }
 
-const JWT_AUDIENCE = 'hermes-web-ui'
+const JWT_AUDIENCE = 'DiTing-web-ui'
 const DEFAULT_EXPIRES_SECONDS = 60 * 60 * 24 * 30
 export const MODEL_RUN_EXPIRES_SECONDS = 60 * 60
 
@@ -72,8 +72,8 @@ function requestToken(ctx: Context): string {
 }
 
 const SERVER_TOKEN_EXACT_PATHS = new Set([
-  '/api/hermes/media/apikey-image-generate',
-  '/api/hermes/media/grok-image-to-video',
+  '/api/DiTing/media/apikey-image-generate',
+  '/api/DiTing/media/grok-image-to-video',
 ])
 
 function allowsServerTokenPath(path: string): boolean {
@@ -228,10 +228,10 @@ export async function requireSuperAdmin(ctx: Context, next: Next): Promise<void>
 }
 
 export function resolveRequestedProfile(ctx: Context): string {
-  if (ctx.path === '/api/hermes/available-models' && typeof ctx.query.profile !== 'string') {
+  if (ctx.path === '/api/DiTing/available-models' && typeof ctx.query.profile !== 'string') {
     return ''
   }
-  const headerProfile = ctx.get('x-hermes-profile')
+  const headerProfile = ctx.get('x-DiTing-profile')
   const queryProfile = typeof ctx.query.profile === 'string' ? ctx.query.profile : ''
   const body = ctx.request.body as { profile?: unknown } | undefined
   const bodyProfile = typeof body?.profile === 'string' ? body.profile : ''

@@ -17,7 +17,7 @@ const getOrCreateSessionMock = vi.fn((sessionMap: Map<string, any>, sessionId: s
   return sessionMap.get(sessionId)
 })
 
-vi.mock('../../packages/server/src/db/hermes/session-store', () => ({
+vi.mock('../../packages/server/src/db/DiTing/session-store', () => ({
   addMessage: addMessageMock,
   addMessages: addMessagesMock,
   clearSessionMessages: clearSessionMessagesMock,
@@ -30,7 +30,7 @@ vi.mock('../../packages/server/src/db/hermes/session-store', () => ({
   updateSessionStats: updateSessionStatsMock,
 }))
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/compression', () => ({
+vi.mock('../../packages/server/src/services/DiTing/run-chat/compression', () => ({
   buildDbHistory: vi.fn(),
   estimateSnapshotAwareHistoryUsage: vi.fn(),
   forceCompressBridgeHistory: vi.fn(),
@@ -38,17 +38,17 @@ vi.mock('../../packages/server/src/services/hermes/run-chat/compression', () => 
   replaceState: vi.fn(),
 }))
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/usage', () => ({
+vi.mock('../../packages/server/src/services/DiTing/run-chat/usage', () => ({
   calcAndUpdateUsage: vi.fn(async () => ({ inputTokens: 0, outputTokens: 0 })),
   contextTokensWithCachedOverhead: vi.fn((_state: any, tokens: number) => tokens),
   updateMessageContextTokenUsage: vi.fn(),
 }))
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/abort', () => ({
+vi.mock('../../packages/server/src/services/DiTing/run-chat/abort', () => ({
   handleAbort: vi.fn(),
 }))
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/bridge-message', () => ({
+vi.mock('../../packages/server/src/services/DiTing/run-chat/bridge-message', () => ({
   flushBridgePendingToDb: vi.fn(),
 }))
 
@@ -77,7 +77,7 @@ function makeParentSession(overrides: Record<string, any> = {}) {
     id: 'session-1',
     profile: 'default',
     source: 'cli',
-    agent: 'hermes',
+    agent: 'DiTing',
     agent_mode: '',
     agent_session_id: '',
     agent_native_session_id: '',
@@ -121,14 +121,14 @@ describe('branch session command', () => {
   })
 
   it('parses /fork as the only user-facing fork command', async () => {
-    const { parseSessionCommand } = await import('../../packages/server/src/services/hermes/run-chat/session-command')
+    const { parseSessionCommand } = await import('../../packages/server/src/services/DiTing/run-chat/session-command')
 
     expect(parseSessionCommand('/fork')).toMatchObject({ name: 'branch', rawName: 'fork', args: '' })
     expect(parseSessionCommand('/branch alternate path')).toBeNull()
   })
 
   it('rejects /fork while the bridge session is running', async () => {
-    const { handleSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/hermes/run-chat/session-command')
+    const { handleSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/DiTing/run-chat/session-command')
     const { nsp, socket, namespaceEmit } = makeSocketHarness()
     const sessionMap = new Map<string, any>([
       ['session-1', { messages: [], isWorking: true, events: [], queue: [] }],
@@ -149,7 +149,7 @@ describe('branch session command', () => {
   })
 
   it('rejects /fork for coding agent sessions', async () => {
-    const { handleSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/hermes/run-chat/session-command')
+    const { handleSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/DiTing/run-chat/session-command')
     const { nsp, socket, namespaceEmit } = makeSocketHarness()
     const sessionMap = new Map<string, any>([
       ['session-1', { messages: [], isWorking: false, events: [], queue: [] }],
@@ -168,7 +168,7 @@ describe('branch session command', () => {
   })
 
   it('rejects /fork when there are no visible conversation messages', async () => {
-    const { handleSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/hermes/run-chat/session-command')
+    const { handleSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/DiTing/run-chat/session-command')
     const { nsp, socket, namespaceEmit } = makeSocketHarness()
     const sessionMap = new Map<string, any>([
       ['session-1', { messages: [], isWorking: false, events: [], queue: [] }],
@@ -191,7 +191,7 @@ describe('branch session command', () => {
   })
 
   it('auto-titles /fork as branch: original title by default', async () => {
-    const { handleSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/hermes/run-chat/session-command')
+    const { handleSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/DiTing/run-chat/session-command')
     const { nsp, socket, namespaceEmit } = makeSocketHarness()
     const sessionMap = new Map<string, any>([
       ['session-1', { messages: [], isWorking: false, events: [], queue: [] }],
@@ -211,7 +211,7 @@ describe('branch session command', () => {
   })
 
   it('forks an idle local bridge chat by copying persisted messages into a child session', async () => {
-    const { handleSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/hermes/run-chat/session-command')
+    const { handleSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/DiTing/run-chat/session-command')
     const { nsp, socket, namespaceEmit } = makeSocketHarness()
     const sessionMap = new Map<string, any>([
       ['session-1', { messages: [], isWorking: false, events: [], queue: [] }],
@@ -226,7 +226,7 @@ describe('branch session command', () => {
       parent_session_id: 'session-1',
       profile: 'default',
       source: 'cli',
-      agent: 'hermes',
+      agent: 'DiTing',
       model: 'openai/gpt-5.4',
       provider: 'openai-codex',
       workspace: '/repo',
@@ -265,18 +265,18 @@ describe('branch session command', () => {
   })
 
   it('preserves api_server source when forking non-bridge chat sessions', async () => {
-    const { handleSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/hermes/run-chat/session-command')
+    const { handleSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/DiTing/run-chat/session-command')
     const { nsp, socket, namespaceEmit } = makeSocketHarness()
     const sessionMap = new Map<string, any>([
       ['session-1', { messages: [], isWorking: false, events: [], queue: [] }],
     ])
-    getSessionMock.mockReturnValue(makeParentSession({ source: 'api_server', agent: 'hermes' }))
+    getSessionMock.mockReturnValue(makeParentSession({ source: 'api_server', agent: 'DiTing' }))
 
     await handleSessionCommand('session-1', parseSessionCommand('/fork')!, makeCtx(sessionMap, nsp, socket))
 
     expect(createBranchedSessionMock).toHaveBeenCalledWith(expect.objectContaining({
       source: 'api_server',
-      agent: 'hermes',
+      agent: 'DiTing',
       parent_session_id: 'session-1',
     }))
     const branchEvent = namespaceEmit.mock.calls.find(call => call[0] === 'session.command')?.[1]

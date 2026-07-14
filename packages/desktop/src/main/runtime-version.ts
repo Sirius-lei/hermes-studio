@@ -1,29 +1,29 @@
 export type RuntimeManifestVersionMetadata = {
-  hermesAgentVersion?: string
+  DiTingAgentVersion?: string
   asset?: {
     name?: string
   }
 }
 
-export function hermesAgentVersionFromRuntimeTag(tag?: string | null): string | null {
+export function DiTingAgentVersionFromRuntimeTag(tag?: string | null): string | null {
   const value = tag?.trim()
   if (!value) return null
-  const match = value.match(/^hermes-(.+)-runtime$/)
+  const match = value.match(/^DiTing-(.+)-runtime$/)
   return match?.[1] || null
 }
 
-export function runtimeManifestMatchesHermesAgentVersion(
+export function runtimeManifestMatchesDiTingAgentVersion(
   manifest: RuntimeManifestVersionMetadata | null,
   expectedVersion: string,
 ): boolean | null {
   if (!manifest) return null
-  if (manifest.hermesAgentVersion) return manifest.hermesAgentVersion === expectedVersion
+  if (manifest.DiTingAgentVersion) return manifest.DiTingAgentVersion === expectedVersion
   const assetName = manifest.asset?.name
-  if (assetName) return assetName.includes(`hermes-agent-${expectedVersion}-`)
+  if (assetName) return assetName.includes(`DiTing-agent-${expectedVersion}-`)
   return null
 }
 
-export function compareHermesAgentVersions(left?: string | null, right?: string | null): number | null {
+export function compareDiTingAgentVersions(left?: string | null, right?: string | null): number | null {
   const leftValue = left?.trim().replace(/^v/, '')
   const rightValue = right?.trim().replace(/^v/, '')
   if (!leftValue || !rightValue) return null

@@ -1,6 +1,6 @@
 /**
  * Provider registry — single source of truth for both frontend and backend.
- * Synced from hermes-agent hermes_cli/models.py _PROVIDER_MODELS.
+ * Synced from DiTing-agent DiTing_cli/models.py _PROVIDER_MODELS.
  */
 
 export interface ProviderPreset {
@@ -240,7 +240,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     value: 'alibaba-coding-plan',
     builtin: true,
     // NOTE: This is the international (intl) DashScope endpoint, matching upstream
-    // hermes-agent (auth.py:255). Mainland China DashScope accounts (sk-sp-* keys
+    // DiTing-agent (auth.py:255). Mainland China DashScope accounts (sk-sp-* keys
     // issued by dashscope.aliyun.com) must override via ALIBABA_CODING_PLAN_BASE_URL=
     // https://coding.dashscope.aliyuncs.com/v1 (no -intl), since the -intl endpoint
     // returns HTTP 401 for those keys.
@@ -517,7 +517,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     builtin: true,
     base_url: 'https://inference-api.nousresearch.com/v1',
     // Synced from:
-    // - https://hermes-agent.nousresearch.com/docs/api/model-catalog.json
+    // - https://DiTing-agent.nousresearch.com/docs/api/model-catalog.json
     // - https://portal.nousresearch.com/api/nous/recommended-models
     models: [
       'anthropic/claude-opus-4.8',

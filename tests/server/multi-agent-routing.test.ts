@@ -3,7 +3,7 @@ import {
   buildExecutionPlanFromTaskPlanner,
   pickDominantPlannedAgent,
   type MultiAgentRouteCandidate,
-} from '../../packages/server/src/services/hermes/run-chat/multi-agent-routing'
+} from '../../packages/server/src/services/DiTing/run-chat/multi-agent-routing'
 import type { GeneratedTaskPlan } from '../../packages/server/src/services/task-planner'
 
 const candidates: MultiAgentRouteCandidate[] = [
@@ -101,7 +101,7 @@ describe('multi-agent routing planner mapping', () => {
       title: '确认统计口径',
       phase: '分析',
       status: 'todo',
-      executor: { type: 'hermes', name: 'Hermes' },
+      executor: { type: 'DiTing', name: 'DiTing' },
     })
     expect(executionPlan.nodes[3]).toMatchObject({
       title: '查询月报数据',

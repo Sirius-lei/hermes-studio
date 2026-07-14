@@ -9,9 +9,9 @@ import {
   copyModelProviderAuthForClone,
   EXCLUSIVE_PLATFORMS,
   EXCLUSIVE_PLATFORM_ENV_PATTERNS,
-} from '../../packages/server/src/services/hermes/profile-credentials'
+} from '../../packages/server/src/services/DiTing/profile-credentials'
 
-const originalHermesHome = process.env.HERMES_HOME
+const originalDiTingHome = process.env.DiTing_HOME
 let tmpDir: string
 
 beforeEach(() => {
@@ -19,13 +19,13 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  if (originalHermesHome === undefined) delete process.env.HERMES_HOME
-  else process.env.HERMES_HOME = originalHermesHome
+  if (originalDiTingHome === undefined) delete process.env.DiTing_HOME
+  else process.env.DiTing_HOME = originalDiTingHome
   rmSync(tmpDir, { recursive: true, force: true })
 })
 
 describe('isExclusivePlatformKey', () => {
-  it('matches all known exclusive platform prefixes (aligned with hermes-agent gateway/platforms)', () => {
+  it('matches all known exclusive platform prefixes (aligned with DiTing-agent gateway/platforms)', () => {
     const samples = [
       'TELEGRAM_BOT_TOKEN',
       'DISCORD_BOT_TOKEN',
@@ -41,11 +41,11 @@ describe('isExclusivePlatformKey', () => {
   })
 
   it('does not match removed aliases or non-lock platforms', () => {
-    // 这些前缀在 hermes-agent gateway/platforms/ 中没有 _acquire_platform_lock 调用
+    // 这些前缀在 DiTing-agent gateway/platforms/ 中没有 _acquire_platform_lock 调用
     const nonLock = [
       'WECHAT_APP_ID',         // wechat 不是上游 platform key（实际是 weixin）
       'LARK_APP_SECRET',       // lark 不是上游 platform key（实际是 feishu）
-      'LINE_CHANNEL_SECRET',   // line 在 hermes-agent 中没有 adapter
+      'LINE_CHANNEL_SECRET',   // line 在 DiTing-agent 中没有 adapter
       'MATTERMOST_TOKEN', 'MATRIX_TOKEN', 'DINGTALK_TOKEN',
       'WECOM_TOKEN', 'QQBOT_TOKEN', 'BLUEBUBBLES_TOKEN',
     ]
@@ -64,7 +64,7 @@ describe('isExclusivePlatformKey', () => {
       'DASHSCOPE_API_KEY',
       'BROWSER_HEADLESS',
       'TERMINAL_DEFAULT_SHELL',
-      'HERMES_MAX_ITERATIONS',
+      'DiTing_MAX_ITERATIONS',
       'PORT',
       'NODE_ENV',
     ]
@@ -214,7 +214,7 @@ describe('disableExclusivePlatformsInConfig', () => {
 
 describe('copyModelProviderAuthForClone', () => {
   it('copies only the cloned model provider OAuth auth from the active source profile', () => {
-    process.env.HERMES_HOME = tmpDir
+    process.env.DiTing_HOME = tmpDir
     writeFileSync(join(tmpDir, 'active_profile'), 'default\n')
     writeFileSync(join(tmpDir, 'auth.json'), JSON.stringify({
       providers: {
@@ -246,7 +246,7 @@ describe('copyModelProviderAuthForClone', () => {
   })
 
   it('copies the Claude OAuth runtime alias needed for chat execution', () => {
-    process.env.HERMES_HOME = tmpDir
+    process.env.DiTing_HOME = tmpDir
     writeFileSync(join(tmpDir, 'active_profile'), 'default\n')
     writeFileSync(join(tmpDir, 'auth.json'), JSON.stringify({
       providers: {
@@ -282,7 +282,7 @@ describe('copyModelProviderAuthForClone', () => {
   })
 
   it('does not copy auth for API-key providers that should use env/config credentials', () => {
-    process.env.HERMES_HOME = tmpDir
+    process.env.DiTing_HOME = tmpDir
     writeFileSync(join(tmpDir, 'active_profile'), 'default\n')
     writeFileSync(join(tmpDir, 'auth.json'), JSON.stringify({
       providers: {
@@ -306,7 +306,7 @@ describe('copyModelProviderAuthForClone', () => {
   })
 
   it('does not copy auth for keyless providers that are not stored OAuth providers', () => {
-    process.env.HERMES_HOME = tmpDir
+    process.env.DiTing_HOME = tmpDir
     writeFileSync(join(tmpDir, 'active_profile'), 'default\n')
     writeFileSync(join(tmpDir, 'auth.json'), JSON.stringify({
       providers: {

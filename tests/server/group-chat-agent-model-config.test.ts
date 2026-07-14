@@ -15,7 +15,7 @@ describe('group chat agent model config', () => {
     readConfigYamlForProfileMock.mockResolvedValueOnce({
       model: { default: 'research-model', provider: 'research-provider' },
     })
-    const { resolveGroupAgentModelContext } = await import('../../packages/server/src/services/hermes/group-chat/agent-clients')
+    const { resolveGroupAgentModelContext } = await import('../../packages/server/src/services/DiTing/group-chat/agent-clients')
 
     const result = await resolveGroupAgentModelContext('research')
 
@@ -24,7 +24,7 @@ describe('group chat agent model config', () => {
   })
 
   it('requires cached context metadata to match the active model and provider', async () => {
-    const { isGroupBridgeContextCacheCompatible } = await import('../../packages/server/src/services/hermes/group-chat/agent-clients')
+    const { isGroupBridgeContextCacheCompatible } = await import('../../packages/server/src/services/DiTing/group-chat/agent-clients')
 
     expect(isGroupBridgeContextCacheCompatible(
       { model: 'research-model', provider: 'research-provider' },

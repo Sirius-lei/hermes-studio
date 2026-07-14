@@ -4,18 +4,18 @@ import {
   estimateGroupHistoryMessageTokens,
   groupBridgeReasoningDeltaFromEvent,
   groupContextTokensWithFixedOverhead,
-} from '../../packages/server/src/services/hermes/group-chat/agent-clients'
-import { ContextEngine } from '../../packages/server/src/services/hermes/context-engine/compressor'
+} from '../../packages/server/src/services/DiTing/group-chat/agent-clients'
+import { ContextEngine } from '../../packages/server/src/services/DiTing/context-engine/compressor'
 import type {
   GatewayCaller,
   MessageFetcher,
   StoredMessage,
-} from '../../packages/server/src/services/hermes/context-engine/types'
+} from '../../packages/server/src/services/DiTing/context-engine/types'
 import {
   sliceGroupMessagesCanonical,
   sliceGroupMessagesForSnapshotTail,
   sortGroupMessagesCanonical,
-} from '../../packages/server/src/services/hermes/group-chat/group-message-ordering'
+} from '../../packages/server/src/services/DiTing/group-chat/group-message-ordering'
 
 function makeMessage(overrides: Partial<StoredMessage>): StoredMessage {
   return {

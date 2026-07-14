@@ -29,25 +29,25 @@ const historyButtonLabel = computed(() =>
 
 function openChat() {
   if (props.active === 'chat') return
-  void router.push({ name: 'hermes.chat' })
+  void router.push({ name: 'DiTing.chat' })
 }
 
 function openHistory() {
   if (props.active === 'history') {
-    void router.push({ name: 'hermes.chat' })
+    void router.push({ name: 'DiTing.chat' })
     return
   }
-  void router.push({ name: 'hermes.history' })
+  void router.push({ name: 'DiTing.history' })
 }
 
 function openGroupChat() {
   if (props.active === 'group') return
-  void router.push({ name: 'hermes.groupChat' })
+  void router.push({ name: 'DiTing.groupChat' })
 }
 
 function openWorkflow() {
   if (props.active === 'workflow') return
-  void router.push({ name: 'hermes.workflow' })
+  void router.push({ name: 'DiTing.workflow' })
 }
 
 function openApiRelay() {

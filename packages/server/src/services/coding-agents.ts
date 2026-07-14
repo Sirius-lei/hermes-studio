@@ -7,17 +7,17 @@ import { delimiter, dirname, join } from 'path'
 import { promisify } from 'util'
 import { getWebUiHome } from '../config'
 import { PROVIDER_ENV_MAP, readConfigYamlForProfile, safeReadFile } from './config-helpers'
-import { getCompatibleCustomProviders } from './hermes/custom-providers-compat'
+import { getCompatibleCustomProviders } from './DiTing/custom-providers-compat'
 import { registerClaudeCodeProxyTarget } from './agent-runner/proxies/claude-code-proxy'
 import { registerCodexProxyTarget } from './agent-runner/proxies/codex-proxy'
 import type { ApiMode } from './agent-runner/types'
 import { PROVIDER_PRESETS } from '../shared/providers'
-import { getModelContextLength } from './hermes/model-context'
-import { getProfileDir } from './hermes/hermes-profile'
+import { getModelContextLength } from './DiTing/model-context'
+import { getProfileDir } from './DiTing/DiTing-profile'
 import { getSystemPrompt } from '../lib/llm-prompt'
 import { codingAgentRunManager } from './agent-runner/coding-agent-run-manager'
-import { getSession, updateSession, type HermesSessionRow } from '../db/hermes/session-store'
-import type { SessionState } from './hermes/run-chat/types'
+import { getSession, updateSession, type DiTingSessionRow } from '../db/DiTing/session-store'
+import type { SessionState } from './DiTing/run-chat/types'
 import { normalizeWindowsCommandPath, windowsCmdShimExecution, windowsCommandNeedsShell, type WindowsCommandExecution } from './windows-command'
 
 const execFileAsync = promisify(execFile)
@@ -31,22 +31,22 @@ const WINDOWS_LAUNCHER_FILE = 'launch.ps1'
 const CODING_AGENT_SCOPED_AUTH_PROVIDERS = new Set(['openai-codex', 'copilot', 'xai-oauth', 'nous', 'google-gemini-cli', 'claude-oauth'])
 const CLAUDE_CODE_SKIP_PERMISSIONS_ARGS = ['--dangerously-skip-permissions']
 const CLAUDE_CODE_ROOT_PERMISSION_ARGS = ['--permission-mode', 'auto']
-const HERMES_MCP_SERVERS = [
-  { name: 'hermes-studio-api', toolset: 'api' },
-  { name: 'hermes-studio-devices', toolset: 'devices' },
-  { name: 'hermes-studio-use', toolset: 'use' },
+const DiTing_MCP_SERVERS = [
+  { name: 'DiTing-studio-api', toolset: 'api' },
+  { name: 'DiTing-studio-devices', toolset: 'devices' },
+  { name: 'DiTing-studio-use', toolset: 'use' },
 ] as const
-const HERMES_MCP_SERVER_NAMES: Set<string> = new Set(HERMES_MCP_SERVERS.map(server => server.name))
-const LEGACY_HERMES_MCP_SERVER_NAMES = new Set(['hermes-studio', 'hermes-studio-mcp', 'hermes-web-ui-mcp'])
-const LEGACY_HERMES_MCP_COMMANDS = new Set([
-  'hermes-lan-peer-mcp',
-  'hermes-devices-mcp',
-  'hermes-web-ui-mcp',
-  'hermes-studio-mcp',
+const DiTing_MCP_SERVER_NAMES: Set<string> = new Set(DiTing_MCP_SERVERS.map(server => server.name))
+const LEGACY_DiTing_MCP_SERVER_NAMES = new Set(['DiTing-studio', 'DiTing-studio-mcp', 'DiTing-web-ui-mcp'])
+const LEGACY_DiTing_MCP_COMMANDS = new Set([
+  'DiTing-lan-peer-mcp',
+  'DiTing-devices-mcp',
+  'DiTing-web-ui-mcp',
+  'DiTing-studio-mcp',
 ])
-const HERMES_MCP_MANAGED_ENV_KEY = 'HERMES_WEB_UI_MANAGED_MCP'
-const HERMES_PROMPT_BLOCK_BEGIN = '<!-- BEGIN HERMES WEB UI PROMPT -->'
-const HERMES_PROMPT_BLOCK_END = '<!-- END HERMES WEB UI PROMPT -->'
+const DiTing_MCP_MANAGED_ENV_KEY = 'DiTing_WEB_UI_MANAGED_MCP'
+const DiTing_PROMPT_BLOCK_BEGIN = '<!-- BEGIN DiTing WEB UI PROMPT -->'
+const DiTing_PROMPT_BLOCK_END = '<!-- END DiTing WEB UI PROMPT -->'
 
 interface CommandExecution {
   command: string
@@ -165,7 +165,7 @@ const CONFIG_FILE_DEFINITIONS: Record<CodingAgentId, Array<Omit<CodingAgentConfi
   'claude-code': [
     { key: 'settings', path: '~/.claude/settings.json', scopedPath: 'settings.json', language: 'json' },
     { key: 'mcp', path: '~/.claude.json', scopedPath: 'mcp.json', language: 'json' },
-    { key: 'prompt', path: '~/.claude/hermes-rules.md', scopedPath: 'hermes-rules.md', language: 'markdown' },
+    { key: 'prompt', path: '~/.claude/DiTing-rules.md', scopedPath: 'DiTing-rules.md', language: 'markdown' },
   ],
   codex: [
     { key: 'auth', path: '~/.codex/auth.json', scopedPath: 'auth.json', language: 'json' },
@@ -217,7 +217,7 @@ function getNpmBin() {
 }
 
 function getGlobalConfigHome() {
-  return process.env.HERMES_CODING_AGENT_GLOBAL_HOME?.trim() || homedir()
+  return process.env.DiTing_CODING_AGENT_GLOBAL_HOME?.trim() || homedir()
 }
 
 function compareNodeVersionDesc(left: string, right: string): number {
@@ -231,7 +231,7 @@ function compareNodeVersionDesc(left: string, right: string): number {
 }
 
 function getNvmNodeBinPaths(): string {
-  if (process.env.HERMES_DESKTOP !== 'true' || process.platform === 'win32') return ''
+  if (process.env.DiTing_DESKTOP !== 'true' || process.platform === 'win32') return ''
 
   const nvmDir = process.env.NVM_DIR?.trim() || join(homedir(), '.nvm')
   const versionsDir = join(nvmDir, 'versions', 'node')
@@ -269,7 +269,7 @@ function getLoginShell(): string | null {
 }
 
 async function getLoginShellPath(): Promise<string | null> {
-  if (process.env.HERMES_DESKTOP !== 'true' || process.platform === 'win32') return null
+  if (process.env.DiTing_DESKTOP !== 'true' || process.platform === 'win32') return null
   if (typeof cachedLoginShellPath !== 'undefined') return cachedLoginShellPath
 
   const shell = getLoginShell()
@@ -292,7 +292,7 @@ async function getLoginShellPath(): Promise<string | null> {
 }
 
 function getDesktopCommonBinPaths(): string[] {
-  if (process.env.HERMES_DESKTOP !== 'true' || process.platform === 'win32') return []
+  if (process.env.DiTing_DESKTOP !== 'true' || process.platform === 'win32') return []
   const home = homedir()
   return [
     join(home, '.npm-global', 'bin'),
@@ -494,7 +494,7 @@ function assertScopedCodingAgentProviderAllowed(mode: CodingAgentLaunchResult['m
 
 async function resolveStoredProviderLaunchInput(
   input: CodingAgentLaunchInput & { sessionId: string },
-  existingSession: HermesSessionRow | null,
+  existingSession: DiTingSessionRow | null,
 ): Promise<CodingAgentLaunchInput & { sessionId: string }> {
   if (input.mode === 'global') return input
 
@@ -587,7 +587,7 @@ function normalizeLaunchApiMode(value: unknown, fallback: ApiMode): ApiMode {
   return mode
 }
 
-function storedCodingAgentMode(session: HermesSessionRow | null): 'scoped' | 'global' {
+function storedCodingAgentMode(session: DiTingSessionRow | null): 'scoped' | 'global' {
   if (session?.agent_mode === 'global' || session?.agent_mode === 'scoped') return session.agent_mode
   return session?.provider === 'global' ? 'global' : 'scoped'
 }
@@ -715,21 +715,21 @@ function expandHomePath(path: string): string {
   return path
 }
 
-function hermesPromptDocument(): string {
+function DiTingPromptDocument(): string {
   return [
-    HERMES_PROMPT_BLOCK_BEGIN,
+    DiTing_PROMPT_BLOCK_BEGIN,
     getSystemPrompt().trim(),
-    HERMES_PROMPT_BLOCK_END,
+    DiTing_PROMPT_BLOCK_END,
     '',
   ].join('\n')
 }
 
 function upsertManagedMarkdownBlock(existing: string, block: string): string {
   const normalizedBlock = block.endsWith('\n') ? block : `${block}\n`
-  const start = existing.indexOf(HERMES_PROMPT_BLOCK_BEGIN)
-  const end = existing.indexOf(HERMES_PROMPT_BLOCK_END)
+  const start = existing.indexOf(DiTing_PROMPT_BLOCK_BEGIN)
+  const end = existing.indexOf(DiTing_PROMPT_BLOCK_END)
   if (start >= 0 && end >= start) {
-    const afterEnd = end + HERMES_PROMPT_BLOCK_END.length
+    const afterEnd = end + DiTing_PROMPT_BLOCK_END.length
     const before = existing.slice(0, start).replace(/\s*$/, '')
     const after = existing.slice(afterEnd).replace(/^\s*/, '')
     return [before, normalizedBlock.trimEnd(), after].filter(Boolean).join('\n\n') + '\n'
@@ -746,7 +746,7 @@ async function writeManagedPromptFile(definition: CodingAgentConfigFileDefinitio
   } catch (err: any) {
     if (err?.code !== 'ENOENT') throw err
   }
-  const next = upsertManagedMarkdownBlock(existing, hermesPromptDocument())
+  const next = upsertManagedMarkdownBlock(existing, DiTingPromptDocument())
   if (next !== existing) {
     await mkdir(dirname(definition.absolutePath), { recursive: true })
     await writeFile(definition.absolutePath, next, 'utf-8')
@@ -796,18 +796,18 @@ function tomlInlineStringTable(values: Record<string, string>): string {
 }
 
 function isDesktopRuntime(): boolean {
-  return String(process.env.HERMES_DESKTOP || '').trim().toLowerCase() === 'true'
+  return String(process.env.DiTing_DESKTOP || '').trim().toLowerCase() === 'true'
 }
 
 function candidateBundledMcpScripts(): string[] {
   return [
-    process.env.HERMES_WEB_UI_MCP_BIN,
-    join(process.cwd(), 'bin/hermes-studio-mcp.mjs'),
-    join(__dirname, '../../bin/hermes-studio-mcp.mjs'),
-    join(__dirname, '../../../../../bin/hermes-studio-mcp.mjs'),
-    join(process.cwd(), 'bin/hermes-web-ui-mcp.mjs'),
-    join(__dirname, '../../bin/hermes-web-ui-mcp.mjs'),
-    join(__dirname, '../../../../../bin/hermes-web-ui-mcp.mjs'),
+    process.env.DiTing_WEB_UI_MCP_BIN,
+    join(process.cwd(), 'bin/DiTing-studio-mcp.mjs'),
+    join(__dirname, '../../bin/DiTing-studio-mcp.mjs'),
+    join(__dirname, '../../../../../bin/DiTing-studio-mcp.mjs'),
+    join(process.cwd(), 'bin/DiTing-web-ui-mcp.mjs'),
+    join(__dirname, '../../bin/DiTing-web-ui-mcp.mjs'),
+    join(__dirname, '../../../../../bin/DiTing-web-ui-mcp.mjs'),
   ].filter((value): value is string => !!value)
 }
 
@@ -815,34 +815,34 @@ function bundledMcpScriptPath(): string | null {
   return candidateBundledMcpScripts().find(candidate => existsSync(candidate)) || null
 }
 
-function hermesMcpCommandConfig(toolset: string): { command: string; args?: string[] } {
-  if (isDesktopRuntime()) return { command: 'hermes-studio-mcp', args: [toolset] }
+function DiTingMcpCommandConfig(toolset: string): { command: string; args?: string[] } {
+  if (isDesktopRuntime()) return { command: 'DiTing-studio-mcp', args: [toolset] }
   const script = bundledMcpScriptPath()
   if (script) return { command: process.execPath, args: [script, toolset] }
-  return { command: 'hermes-studio-mcp', args: [toolset] }
+  return { command: 'DiTing-studio-mcp', args: [toolset] }
 }
 
-function hermesMcpServerConfig(profile: string, serverName: string, toolset: string): { command: string; args?: string[]; env: Record<string, string> } {
+function DiTingMcpServerConfig(profile: string, serverName: string, toolset: string): { command: string; args?: string[]; env: Record<string, string> } {
   const appHome = getWebUiHome()
   return {
-    ...hermesMcpCommandConfig(toolset),
+    ...DiTingMcpCommandConfig(toolset),
     env: {
-      HERMES_WEB_UI_URL: `http://127.0.0.1:${process.env.PORT || '8648'}`,
-      HERMES_WEB_UI_HOME: appHome,
-      HERMES_WEBUI_STATE_DIR: appHome,
-      HERMES_WEB_UI_PROFILE: profile,
-      HERMES_MCP_SERVER_NAME: serverName,
-      HERMES_MCP_TOOLSET: toolset,
-      [HERMES_MCP_MANAGED_ENV_KEY]: '1',
+      DiTing_WEB_UI_URL: `http://127.0.0.1:${process.env.PORT || '8648'}`,
+      DiTing_WEB_UI_HOME: appHome,
+      DiTing_WEBUI_STATE_DIR: appHome,
+      DiTing_WEB_UI_PROFILE: profile,
+      DiTing_MCP_SERVER_NAME: serverName,
+      DiTing_MCP_TOOLSET: toolset,
+      [DiTing_MCP_MANAGED_ENV_KEY]: '1',
     },
   }
 }
 
-function isManagedHermesMcpServer(value: unknown): boolean {
+function isManagedDiTingMcpServer(value: unknown): boolean {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false
   const server = value as Record<string, any>
-  if (server.env && typeof server.env === 'object' && server.env[HERMES_MCP_MANAGED_ENV_KEY] === '1') return true
-  return typeof server.command === 'string' && LEGACY_HERMES_MCP_COMMANDS.has(server.command)
+  if (server.env && typeof server.env === 'object' && server.env[DiTing_MCP_MANAGED_ENV_KEY] === '1') return true
+  return typeof server.command === 'string' && LEGACY_DiTing_MCP_COMMANDS.has(server.command)
 }
 
 function parseClaudeMcpServers(existingContent: string | null | undefined = ''): Record<string, unknown> {
@@ -851,9 +851,9 @@ function parseClaudeMcpServers(existingContent: string | null | undefined = ''):
     const parsed = JSON.parse(existingContent)
     if (!parsed?.mcpServers || typeof parsed.mcpServers !== 'object' || Array.isArray(parsed.mcpServers)) return {}
     return Object.fromEntries(Object.entries(parsed.mcpServers).filter(([name, server]) => {
-      if (HERMES_MCP_SERVER_NAMES.has(name)) return false
-      if (LEGACY_HERMES_MCP_SERVER_NAMES.has(name)) return false
-      return !isManagedHermesMcpServer(server)
+      if (DiTing_MCP_SERVER_NAMES.has(name)) return false
+      if (LEGACY_DiTing_MCP_SERVER_NAMES.has(name)) return false
+      return !isManagedDiTingMcpServer(server)
     }))
   } catch {
     return {}
@@ -862,16 +862,16 @@ function parseClaudeMcpServers(existingContent: string | null | undefined = ''):
 
 function claudeMcpConfigJson(profile: string, existingContent: string | null | undefined = ''): string {
   const mcpServers = parseClaudeMcpServers(existingContent)
-  for (const server of HERMES_MCP_SERVERS) {
-    mcpServers[server.name] = hermesMcpServerConfig(profile, server.name, server.toolset)
+  for (const server of DiTing_MCP_SERVERS) {
+    mcpServers[server.name] = DiTingMcpServerConfig(profile, server.name, server.toolset)
   }
   return `${JSON.stringify({ mcpServers }, null, 2)}\n`
 }
 
 function codexMcpConfigToml(profile: string): string {
   const blocks: string[] = []
-  for (const item of HERMES_MCP_SERVERS) {
-    const server = hermesMcpServerConfig(profile, item.name, item.toolset)
+  for (const item of DiTing_MCP_SERVERS) {
+    const server = DiTingMcpServerConfig(profile, item.name, item.toolset)
     const lines = [
       `[mcp_servers.${item.name}]`,
       `command = ${tomlString(server.command)}`,
@@ -1615,11 +1615,11 @@ export async function prepareCodingAgentLaunch(id: string, input: CodingAgentLau
     const existingMcpPath = getScopedConfigFileDefinition(tool.id, 'mcp', scope)?.absolutePath
     const existingMcpConfig = existingMcpPath ? await safeReadFile(existingMcpPath) : ''
     await writeScopedFile('mcp', claudeMcpConfigJson(scope.profile, existingMcpConfig))
-    await writeScopedFile('prompt', hermesPromptDocument())
+    await writeScopedFile('prompt', DiTingPromptDocument())
 
     const settingsPath = join(rootDir, 'settings.json')
     const mcpPath = join(rootDir, 'mcp.json')
-    const promptPath = join(rootDir, 'hermes-rules.md')
+    const promptPath = join(rootDir, 'DiTing-rules.md')
     args = [
       '--settings',
       settingsPath,

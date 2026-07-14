@@ -2,11 +2,11 @@ import { app, BrowserWindow, Menu, Tray, shell, ipcMain, nativeImage, Notificati
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { startWebUiServer, stopWebUiServer, getToken } from './webui-server'
-import { bundledNode, desktopIcon, desktopRuntimeVersion, desktopTrayTemplateIcon, desktopWindowsTrayIcon, hermesBinExists, hermesBin, webuiDir } from './paths'
+import { bundledNode, desktopIcon, desktopRuntimeVersion, desktopTrayTemplateIcon, desktopWindowsTrayIcon, DiTingBinExists, DiTingBin, webuiDir } from './paths'
 import { checkForDesktopUpdates, initAutoUpdater } from './updater'
 import { t } from './desktop-i18n'
-import { installHermesStudioCliShim, installHermesStudioMcpShim } from './cli-shim'
-import { parseHermesCliArgs, runBundledHermesCli } from './hermes-cli'
+import { installDiTingStudioCliShim, installDiTingStudioMcpShim } from './cli-shim'
+import { parseDiTingCliArgs, runBundledDiTingCli } from './DiTing-cli'
 import {
   ensureDesktopRuntime,
   isDesktopRuntimeReady,
@@ -15,10 +15,10 @@ import {
   type RuntimeProgress,
 } from './runtime-manager'
 
-const PORT = Number(process.env.HERMES_DESKTOP_PORT) || 8748
+const PORT = Number(process.env.DiTing_DESKTOP_PORT) || 8748
 const START_HIDDEN = process.argv.includes('--hidden')
 const QUIT_EXISTING = process.argv.includes('--quit')
-const APP_USER_MODEL_ID = 'com.hermeswebui.studio'
+const APP_USER_MODEL_ID = 'com.DiTingwebui.studio'
 type WindowControlAction = 'minimize' | 'toggle-maximize' | 'close'
 
 let mainWindow: BrowserWindow | null = null
@@ -185,7 +185,7 @@ function createTray() {
     icon.setTemplateImage(true)
   }
   tray = new Tray(icon)
-  tray.setToolTip('Hermes Studio')
+  tray.setToolTip('DiTing Studio')
   tray.on('click', () => {
     showMainWindow()
     updateTrayMenu()
@@ -199,7 +199,7 @@ function createWindow() {
     height: 820,
     minWidth: 960,
     minHeight: 600,
-    title: 'Hermes Studio',
+    title: 'DiTing Studio',
     backgroundColor: '#1a1a1a',
     autoHideMenuBar: true,
     show: false,
@@ -259,7 +259,7 @@ function createWindow() {
 
 function splashHtml(label = t('desktop.startingLocalServices')): string {
   const startingLabel = escapeHtml(label)
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Hermes Studio</title>
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>DiTing Studio</title>
 <style>
   html,body{margin:0;height:100%;background:#1a1a1a;color:#e5e5e5;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif;-webkit-app-region:drag;}
   .wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:20px}
@@ -273,7 +273,7 @@ function splashHtml(label = t('desktop.startingLocalServices')): string {
   .bar{width:0;height:100%;background:#d8d8d8;transition:width .18s ease}
   h1{font-weight:500;margin:0;font-size:18px}
 </style></head><body><div class="wrap">
-<h1>Hermes Studio</h1>
+<h1>DiTing Studio</h1>
 <div class="row"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
 <div id="label" class="label">${startingLabel}</div>
 <div class="progress"><div id="bar" class="bar"></div></div>
@@ -336,7 +336,7 @@ function runtimeSourceHtml(errorMessage?: string): string {
         <pre>${safeError}</pre>
        </section>`
     : ''
-  const html = `<!doctype html><html><head><meta charset="utf-8"><title>Hermes Studio</title>
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>DiTing Studio</title>
 <style>
   :root{color-scheme:dark}
   *{box-sizing:border-box}
@@ -363,7 +363,7 @@ function runtimeSourceHtml(errorMessage?: string): string {
     button{min-height:78px}
   }
 </style></head><body><main class="wrap">
-<div class="brand">${logoUrl ? `<img class="mark" src="${logoUrl}" alt="Hermes Studio">` : ''}<h1>Hermes Studio</h1></div>
+<div class="brand">${logoUrl ? `<img class="mark" src="${logoUrl}" alt="DiTing Studio">` : ''}<h1>DiTing Studio</h1></div>
 <p class="label">${escapeHtml(t('desktop.selectRuntimeSource'))}</p>
 ${errorBlock}
 <div class="actions">
@@ -378,10 +378,10 @@ ${errorBlock}
 </div>
 <script>
   document.getElementById('cf')?.addEventListener('click', () => {
-    window.hermesDesktop?.retryBootstrap?.('cf')
+    window.DiTingDesktop?.retryBootstrap?.('cf')
   })
   document.getElementById('github')?.addEventListener('click', () => {
-    window.hermesDesktop?.retryBootstrap?.('github')
+    window.DiTingDesktop?.retryBootstrap?.('github')
   })
 </script>
 </main></body></html>`
@@ -389,7 +389,7 @@ ${errorBlock}
 }
 
 function envRuntimeDownloadSource(): RuntimeDownloadSource | undefined {
-  const source = process.env.HERMES_DESKTOP_RUNTIME_SOURCE?.trim().toLowerCase()
+  const source = process.env.DiTing_DESKTOP_RUNTIME_SOURCE?.trim().toLowerCase()
   return source === 'cf' || source === 'github' ? source : undefined
 }
 
@@ -435,9 +435,9 @@ async function bootstrap(source?: RuntimeDownloadSource) {
 
   try {
     const selectedSource = source || envRuntimeDownloadSource()
-    const runtimeUrlOverride = !!process.env.HERMES_DESKTOP_RUNTIME_URL?.trim()
-    const manifestOverride = !!process.env.HERMES_DESKTOP_RUNTIME_MANIFEST_URL?.trim()
-    const forceUpdate = !!process.env.HERMES_DESKTOP_RUNTIME_FORCE_UPDATE
+    const runtimeUrlOverride = !!process.env.DiTing_DESKTOP_RUNTIME_URL?.trim()
+    const manifestOverride = !!process.env.DiTing_DESKTOP_RUNTIME_MANIFEST_URL?.trim()
+    const forceUpdate = !!process.env.DiTing_DESKTOP_RUNTIME_FORCE_UPDATE
     const runtimeReady = isDesktopRuntimeReady()
     const needsRuntimeWork = !runtimeReady || forceUpdate || runtimeUrlOverride || manifestOverride
 
@@ -453,7 +453,7 @@ async function bootstrap(source?: RuntimeDownloadSource) {
       writeActiveRuntimeVersion()
     }
   } catch (err) {
-    console.error('Failed to prepare Hermes runtime:', err)
+    console.error('Failed to prepare DiTing runtime:', err)
     if (mainWindow) {
       const msg = String(err instanceof Error ? err.message : err)
       await mainWindow.loadURL(runtimeSourceHtml(`${t('desktop.failedPrepareRuntime')}\n\n${msg}`))
@@ -462,9 +462,9 @@ async function bootstrap(source?: RuntimeDownloadSource) {
     return
   }
 
-  if (!hermesBinExists()) {
-    console.error(`hermes binary missing at ${hermesBin()}`)
-    console.error('Run: npm run prepare:runtime (to build a local Hermes runtime)')
+  if (!DiTingBinExists()) {
+    console.error(`DiTing binary missing at ${DiTingBin()}`)
+    console.error('Run: npm run prepare:runtime (to build a local DiTing runtime)')
   }
 
   try {
@@ -487,9 +487,9 @@ async function bootstrap(source?: RuntimeDownloadSource) {
   }
 }
 
-ipcMain.handle('hermes-desktop:get-token', () => getToken())
-ipcMain.handle('hermes-desktop:get-window-state', () => windowState())
-ipcMain.handle('hermes-desktop:window-control', (_event, action?: unknown) => {
+ipcMain.handle('DiTing-desktop:get-token', () => getToken())
+ipcMain.handle('DiTing-desktop:get-window-state', () => windowState())
+ipcMain.handle('DiTing-desktop:window-control', (_event, action?: unknown) => {
   if (action !== 'minimize' && action !== 'toggle-maximize' && action !== 'close') return windowState()
   return handleWindowControl(action)
 })
@@ -507,7 +507,7 @@ function resolveNotificationIcon(icon: unknown): string {
   return candidates.find(candidate => existsSync(candidate)) || desktopIcon()
 }
 
-ipcMain.handle('hermes-desktop:notify-completion', (_event, payload?: { title?: unknown; body?: unknown; icon?: unknown; tag?: unknown }) => {
+ipcMain.handle('DiTing-desktop:notify-completion', (_event, payload?: { title?: unknown; body?: unknown; icon?: unknown; tag?: unknown }) => {
   const supported = Notification.isSupported()
   if (!supported) {
     console.warn('[desktop-notification] Electron notifications are not supported on this system')
@@ -516,7 +516,7 @@ ipcMain.handle('hermes-desktop:notify-completion', (_event, payload?: { title?: 
 
   const title = typeof payload?.title === 'string' && payload.title.trim()
     ? payload.title.trim()
-    : 'Hermes Studio'
+    : 'DiTing Studio'
   const body = typeof payload?.body === 'string' ? payload.body.trim().slice(0, 240) : ''
   const icon = resolveNotificationIcon(payload?.icon)
   const notification = new Notification({
@@ -541,7 +541,7 @@ ipcMain.handle('hermes-desktop:notify-completion', (_event, payload?: { title?: 
   notification.show()
   return true
 })
-ipcMain.handle('hermes-desktop:retry-bootstrap', async (_event, source?: RuntimeDownloadSource) => {
+ipcMain.handle('DiTing-desktop:retry-bootstrap', async (_event, source?: RuntimeDownloadSource) => {
   if (serverUrl) {
     await mainWindow?.loadURL(serverUrl)
     return
@@ -578,27 +578,27 @@ function runDesktopApp() {
     // default is fine there.
     if (process.platform !== 'darwin') Menu.setApplicationMenu(null)
     if (app.isPackaged) {
-      installHermesStudioCliShim({
+      installDiTingStudioCliShim({
         nodePath: bundledNode(),
         runtimeVersion: desktopRuntimeVersion(),
-        webUiScriptPath: join(webuiDir(), 'bin', 'hermes-web-ui.mjs'),
+        webUiScriptPath: join(webuiDir(), 'bin', 'DiTing-web-ui.mjs'),
       }).then(result => {
         if (result.status === 'skipped') {
           console.warn(`[cli-shim] ${result.reason}: ${result.shimPath}`)
         }
       }).catch(err => {
-        console.warn(`[cli-shim] failed to install hermes-studio command: ${err instanceof Error ? err.message : String(err)}`)
+        console.warn(`[cli-shim] failed to install DiTing-studio command: ${err instanceof Error ? err.message : String(err)}`)
       })
-      installHermesStudioMcpShim({
+      installDiTingStudioMcpShim({
         nodePath: bundledNode(),
-        scriptPath: join(webuiDir(), 'bin', 'hermes-studio-mcp.mjs'),
+        scriptPath: join(webuiDir(), 'bin', 'DiTing-studio-mcp.mjs'),
         webUiUrl: `http://127.0.0.1:${PORT}`,
       }).then(result => {
         if (result.status === 'skipped') {
           console.warn(`[cli-shim] ${result.reason}: ${result.shimPath}`)
         }
       }).catch(err => {
-        console.warn(`[cli-shim] failed to install hermes-studio-mcp command: ${err instanceof Error ? err.message : String(err)}`)
+        console.warn(`[cli-shim] failed to install DiTing-studio-mcp command: ${err instanceof Error ? err.message : String(err)}`)
       })
     }
     createTray()
@@ -637,12 +637,12 @@ function runDesktopApp() {
   })
 }
 
-const hermesCliArgs = parseHermesCliArgs(process.argv)
-if (hermesCliArgs) {
-  runBundledHermesCli(hermesCliArgs)
+const DiTingCliArgs = parseDiTingCliArgs(process.argv)
+if (DiTingCliArgs) {
+  runBundledDiTingCli(DiTingCliArgs)
     .then(code => app.exit(code))
     .catch(err => {
-      console.error(`Failed to run bundled Hermes CLI: ${err instanceof Error ? err.message : String(err)}`)
+      console.error(`Failed to run bundled DiTing CLI: ${err instanceof Error ? err.message : String(err)}`)
       app.exit(1)
     })
 } else {

@@ -3,10 +3,10 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
 
-let hermesHome = ''
+let DiTingHome = ''
 
 function readAuthJson(path = 'auth.json') {
-  return JSON.parse(readFileSync(join(hermesHome, path), 'utf-8'))
+  return JSON.parse(readFileSync(join(DiTingHome, path), 'utf-8'))
 }
 
 function makeCtx(profile: string): any {
@@ -26,24 +26,24 @@ async function loadNousAuthController() {
   vi.doMock('../../packages/server/src/services/logger', () => ({
     logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn() },
   }))
-  return import('../../packages/server/src/controllers/hermes/nous-auth')
+  return import('../../packages/server/src/controllers/DiTing/nous-auth')
 }
 
 describe('Nous auth controller', () => {
   beforeEach(() => {
-    hermesHome = mkdtempSync(join(tmpdir(), 'hwui-nous-auth-'))
-    process.env.HERMES_HOME = hermesHome
+    DiTingHome = mkdtempSync(join(tmpdir(), 'hwui-nous-auth-'))
+    process.env.DiTing_HOME = DiTingHome
   })
 
   afterEach(() => {
     vi.doUnmock('../../packages/server/src/services/logger')
-    delete process.env.HERMES_HOME
-    if (hermesHome) rmSync(hermesHome, { recursive: true, force: true })
-    hermesHome = ''
+    delete process.env.DiTing_HOME
+    if (DiTingHome) rmSync(DiTingHome, { recursive: true, force: true })
+    DiTingHome = ''
   })
 
   it('persists OAuth credentials in the request-scoped profile only', async () => {
-    mkdirSync(join(hermesHome, 'profiles', 'research'), { recursive: true })
+    mkdirSync(join(DiTingHome, 'profiles', 'research'), { recursive: true })
 
     const { saveNousOAuthTokensForProfile } = await loadNousAuthController()
     saveNousOAuthTokensForProfile(
@@ -58,7 +58,7 @@ describe('Nous auth controller', () => {
       '2026-06-02T01:00:00.000Z',
     )
 
-    expect(existsSync(join(hermesHome, 'auth.json'))).toBe(false)
+    expect(existsSync(join(DiTingHome, 'auth.json'))).toBe(false)
     const auth = readAuthJson('profiles/research/auth.json')
     expect(auth.providers.nous.access_token).toBe('research-access-token')
     expect(auth.providers.nous.agent_key).toBe('research-agent-key')
@@ -66,7 +66,7 @@ describe('Nous auth controller', () => {
   })
 
   it('checks Nous auth status against the request-scoped profile', async () => {
-    mkdirSync(join(hermesHome, 'profiles', 'research'), { recursive: true })
+    mkdirSync(join(DiTingHome, 'profiles', 'research'), { recursive: true })
 
     const { saveNousOAuthTokensForProfile, status } = await loadNousAuthController()
     saveNousOAuthTokensForProfile('research', {

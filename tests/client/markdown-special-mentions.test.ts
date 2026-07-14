@@ -21,16 +21,16 @@ vi.mock('naive-ui', async (importOriginal) => {
   }
 })
 
-vi.mock('@/api/hermes/download', () => ({
+vi.mock('@/api/DiTing/download', () => ({
   downloadFile: vi.fn(),
   getDownloadUrl: vi.fn((path: string) => `/download?path=${encodeURIComponent(path)}`),
 }))
 
-vi.mock('@/components/hermes/chat/mermaidRenderer', () => ({
+vi.mock('@/components/DiTing/chat/mermaidRenderer', () => ({
   renderMermaidDiagram: vi.fn(),
 }))
 
-import MarkdownRenderer from '@/components/hermes/chat/MarkdownRenderer.vue'
+import MarkdownRenderer from '@/components/DiTing/chat/MarkdownRenderer.vue'
 
 describe('MarkdownRenderer special mentions', () => {
   it('highlights @all as a mention when provided by group chat', () => {

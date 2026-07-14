@@ -36,7 +36,7 @@ if (existsSync(resolve(OUT_DIR, 'cmd', 'git.exe'))) {
 async function latestMinGitUrl() {
   if (process.env.GIT_FOR_WINDOWS_URL?.trim()) return process.env.GIT_FOR_WINDOWS_URL.trim()
 
-  const headers = { 'User-Agent': 'hermes-studio-desktop-build' }
+  const headers = { 'User-Agent': 'DiTing-studio-desktop-build' }
   const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN
   if (token?.trim()) headers.Authorization = `Bearer ${token.trim()}`
 

@@ -25,14 +25,14 @@ describe('MCU login controller', () => {
       getStoragePath: () => ':memory:',
     }))
 
-    const schemas = await import('../../packages/server/src/db/hermes/schemas')
-    schemas.initAllHermesTables()
+    const schemas = await import('../../packages/server/src/db/DiTing/schemas')
+    schemas.initAllDiTingTables()
   })
 
   async function loadModules() {
     return {
       ctrl: await import('../../packages/server/src/controllers/auth'),
-      users: await import('../../packages/server/src/db/hermes/users-store'),
+      users: await import('../../packages/server/src/db/DiTing/users-store'),
       auth: await import('../../packages/server/src/middleware/user-auth'),
     }
   }

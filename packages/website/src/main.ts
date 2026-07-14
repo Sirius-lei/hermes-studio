@@ -6,7 +6,7 @@ import App from './App.vue'
 import '@client/styles/variables.scss'
 import './styles/global.scss'
 
-localStorage.setItem('hermes_website_theme', 'light')
+localStorage.setItem('DiTing_website_theme', 'light')
 document.documentElement.classList.remove('dark')
 
 const app = createApp(App)

@@ -28,9 +28,9 @@ const mockKanbanApi = vi.hoisted(() => ({
   openKanbanEventStream: vi.fn(),
 }))
 
-vi.mock('@/api/hermes/kanban', () => mockKanbanApi)
+vi.mock('@/api/DiTing/kanban', () => mockKanbanApi)
 
-import { KANBAN_SELECTED_BOARD_STORAGE_KEY, normalizeBoardSlug, useKanbanStore } from '@/stores/hermes/kanban'
+import { KANBAN_SELECTED_BOARD_STORAGE_KEY, normalizeBoardSlug, useKanbanStore } from '@/stores/DiTing/kanban'
 
 describe('Kanban store', () => {
   it('normalizes board slugs with canonical underscore, uppercase, and length rules', () => {
@@ -52,7 +52,7 @@ describe('Kanban store', () => {
       { slug: 'default', name: 'Default', archived: false, counts: {}, total: 0 },
       { slug: 'project-a', name: 'Project A', archived: false, counts: { todo: 1 }, total: 1 },
     ])
-    mockKanbanApi.getCapabilities.mockResolvedValue({ source: 'hermes-cli', supports: { boardsList: true }, missing: [] })
+    mockKanbanApi.getCapabilities.mockResolvedValue({ source: 'DiTing-cli', supports: { boardsList: true }, missing: [] })
     mockKanbanApi.openKanbanEventStream.mockReturnValue({ close: vi.fn(), onmessage: null, onclose: null, onerror: null })
   })
 
@@ -123,7 +123,7 @@ describe('Kanban store', () => {
 
   it('uses capability metadata before calling parity APIs', async () => {
     mockKanbanApi.getCapabilities.mockResolvedValue({
-      source: 'hermes-cli',
+      source: 'DiTing-cli',
       supports: { commentsWrite: true, dispatch: false },
       missing: ['dispatch'],
     })
@@ -144,7 +144,7 @@ describe('Kanban store', () => {
 
   it('passes selected board to link and partial bulk parity actions', async () => {
     mockKanbanApi.getCapabilities.mockResolvedValue({
-      source: 'hermes-cli',
+      source: 'DiTing-cli',
       supports: { links: true, bulk: false },
       missing: ['bulk'],
       capabilities: [
@@ -181,7 +181,7 @@ describe('Kanban store', () => {
       .mockReturnValueOnce(socketA)
       .mockReturnValueOnce(socketB)
     mockKanbanApi.getCapabilities.mockResolvedValue({
-      source: 'hermes-cli',
+      source: 'DiTing-cli',
       supports: {},
       missing: [],
       capabilities: [{ key: 'events', status: 'partial', requiresBoard: true }],
@@ -213,7 +213,7 @@ describe('Kanban store', () => {
 
   it('passes selected board to parity actions and refreshes affected board state', async () => {
     mockKanbanApi.getCapabilities.mockResolvedValue({
-      source: 'hermes-cli',
+      source: 'DiTing-cli',
       supports: { taskLog: true, diagnostics: true, reclaim: true, reassign: true, specify: true, dispatch: true },
       missing: [],
     })

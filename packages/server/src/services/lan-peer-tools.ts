@@ -1,6 +1,6 @@
 import { getLanPeerSocketManager, type LanPeerExecResult, type LanPeerTerminalInfo, type LanPeerTerminalList, type LanPeerTerminalReadResult } from './lan-peer-socket'
 import { readFile, writeFile } from 'fs/promises'
-import { validatePath } from './hermes/file-provider'
+import { validatePath } from './DiTing/file-provider'
 
 export type PeerToolUploadInput = {
   connectionId: string

@@ -20,7 +20,7 @@ const options = [
 
 function handleChange(val: string) {
   switchLocale(val)
-  localStorage.setItem('hermes_locale', val)
+  localStorage.setItem('DiTing_locale', val)
 }
 </script>
 

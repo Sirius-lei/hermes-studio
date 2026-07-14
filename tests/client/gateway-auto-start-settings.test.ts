@@ -16,11 +16,11 @@ const mockProfilesStore = vi.hoisted(() => ({
   profiles: [{ name: 'default' }, { name: 'reviewer' }, { name: 'scratch' }],
 }))
 
-vi.mock('@/stores/hermes/settings', () => ({
+vi.mock('@/stores/DiTing/settings', () => ({
   useSettingsStore: () => mockSettingsStore,
 }))
 
-vi.mock('@/stores/hermes/profiles', () => ({
+vi.mock('@/stores/DiTing/profiles', () => ({
   useProfilesStore: () => mockProfilesStore,
 }))
 
@@ -56,7 +56,7 @@ vi.mock('naive-ui', async () => {
   }
 })
 
-import GatewayAutoStartSettings from '@/components/hermes/settings/GatewayAutoStartSettings.vue'
+import GatewayAutoStartSettings from '@/components/DiTing/settings/GatewayAutoStartSettings.vue'
 
 describe('GatewayAutoStartSettings', () => {
   beforeEach(() => {

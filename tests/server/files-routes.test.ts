@@ -10,20 +10,20 @@ const provider = {
   writeFile: vi.fn(),
 }
 const createFileProviderMock = vi.fn(async () => provider)
-const resolveHermesPathMock = vi.fn((relativePath: string) => {
+const resolveDiTingPathMock = vi.fn((relativePath: string) => {
   const normalized = relativePath.replace(/^\/+/, '')
-  return normalized ? `/home/agent/.hermes/${normalized}` : '/home/agent/.hermes'
+  return normalized ? `/home/agent/.DiTing/${normalized}` : '/home/agent/.DiTing'
 })
 
-vi.mock('../../packages/server/src/services/hermes/file-provider', () => ({
+vi.mock('../../packages/server/src/services/DiTing/file-provider', () => ({
   createFileProvider: createFileProviderMock,
-  resolveHermesPath: resolveHermesPathMock,
+  resolveDiTingPath: resolveDiTingPathMock,
   isSensitivePath: vi.fn(() => false),
   MAX_EDIT_SIZE: 10 * 1024 * 1024,
 }))
 
 async function runFileRoute(path: string, ctx: any) {
-  const { fileRoutes } = await import('../../packages/server/src/routes/hermes/files')
+  const { fileRoutes } = await import('../../packages/server/src/routes/DiTing/files')
   const layer = fileRoutes.stack.find((entry: any) => entry.path === path)
   if (!layer) throw new Error(`Missing file route ${path}`)
 
@@ -50,7 +50,7 @@ describe('file routes path metadata', () => {
   beforeEach(() => {
     vi.resetModules()
     createFileProviderMock.mockClear()
-    resolveHermesPathMock.mockClear()
+    resolveDiTingPathMock.mockClear()
     provider.listDir.mockReset()
     provider.stat.mockReset()
     provider.readFile.mockReset()
@@ -66,19 +66,19 @@ describe('file routes path metadata', () => {
 
     const ctx: any = { query: { path: 'logs' }, state: { profile: { name: 'research' } }, body: null }
 
-    await runFileRoute('/api/hermes/files/list', ctx)
+    await runFileRoute('/api/DiTing/files/list', ctx)
 
     expect(createFileProviderMock).toHaveBeenCalledWith('research')
-    expect(resolveHermesPathMock).toHaveBeenCalledWith('logs', 'research')
-    expect(provider.listDir).toHaveBeenCalledWith('/home/agent/.hermes/logs')
+    expect(resolveDiTingPathMock).toHaveBeenCalledWith('logs', 'research')
+    expect(provider.listDir).toHaveBeenCalledWith('/home/agent/.DiTing/logs')
     expect(ctx.body).toEqual({
       path: 'logs',
-      absolutePath: '/home/agent/.hermes/logs',
+      absolutePath: '/home/agent/.DiTing/logs',
       entries: [
         {
           name: 'app.log',
           path: 'logs/app.log',
-          absolutePath: '/home/agent/.hermes/logs/app.log',
+          absolutePath: '/home/agent/.DiTing/logs/app.log',
           isDir: false,
           size: 12,
           modTime: '2026-05-20T00:00:00.000Z',
@@ -98,14 +98,14 @@ describe('file routes path metadata', () => {
 
     const ctx: any = { query: { path: 'logs/app.log' }, state: { profile: { name: 'research' } }, body: null }
 
-    await runFileRoute('/api/hermes/files/stat', ctx)
+    await runFileRoute('/api/DiTing/files/stat', ctx)
 
     expect(createFileProviderMock).toHaveBeenCalledWith('research')
-    expect(resolveHermesPathMock).toHaveBeenCalledWith('logs/app.log', 'research')
+    expect(resolveDiTingPathMock).toHaveBeenCalledWith('logs/app.log', 'research')
     expect(ctx.body).toEqual({
       name: 'app.log',
       path: 'logs/app.log',
-      absolutePath: '/home/agent/.hermes/logs/app.log',
+      absolutePath: '/home/agent/.DiTing/logs/app.log',
       isDir: false,
       size: 12,
       modTime: '2026-05-20T00:00:00.000Z',
@@ -121,11 +121,11 @@ describe('file routes path metadata', () => {
       body: null,
     }
 
-    await runFileRoute('/api/hermes/files/delete', ctx)
+    await runFileRoute('/api/DiTing/files/delete', ctx)
 
     expect(createFileProviderMock).toHaveBeenCalledWith('research')
-    expect(resolveHermesPathMock).toHaveBeenCalledWith('workspace/weather.txt', 'research')
-    expect(provider.deleteFile).toHaveBeenCalledWith('/home/agent/.hermes/workspace/weather.txt')
+    expect(resolveDiTingPathMock).toHaveBeenCalledWith('workspace/weather.txt', 'research')
+    expect(provider.deleteFile).toHaveBeenCalledWith('/home/agent/.DiTing/workspace/weather.txt')
     expect(provider.deleteDir).not.toHaveBeenCalled()
     expect(ctx.body).toEqual({ ok: true })
   })
@@ -137,7 +137,7 @@ describe('file routes path metadata', () => {
       body: null,
     }
 
-    await runFileRoute('/api/hermes/files/delete', ctx)
+    await runFileRoute('/api/DiTing/files/delete', ctx)
 
     expect(ctx.status).toBe(400)
     expect(ctx.body).toEqual({ error: 'Missing path parameter', code: 'missing_path' })
@@ -171,12 +171,12 @@ describe('file routes path metadata', () => {
         : ''),
     }
 
-    await runFileRoute('/api/hermes/files/upload', ctx)
+    await runFileRoute('/api/DiTing/files/upload', ctx)
 
     expect(createFileProviderMock).toHaveBeenCalledWith('research')
-    expect(resolveHermesPathMock).toHaveBeenCalledWith('workspace/daily report.txt', 'research')
+    expect(resolveDiTingPathMock).toHaveBeenCalledWith('workspace/daily report.txt', 'research')
     expect(provider.writeFile).toHaveBeenCalledWith(
-      '/home/agent/.hermes/workspace/daily report.txt',
+      '/home/agent/.DiTing/workspace/daily report.txt',
       Buffer.from('hello'),
     )
     expect(ctx.body).toEqual({
@@ -208,7 +208,7 @@ describe('file routes path metadata', () => {
         : ''),
     }
 
-    await runFileRoute('/api/hermes/files/upload', ctx)
+    await runFileRoute('/api/DiTing/files/upload', ctx)
 
     expect(ctx.status).toBe(400)
     expect(ctx.body).toEqual({ error: 'Malformed multipart filename', code: 'invalid_request' })
@@ -225,7 +225,7 @@ describe('file routes path metadata', () => {
       body: null,
     }
 
-    await runFileRoute('/api/hermes/files/read', readCtx)
+    await runFileRoute('/api/DiTing/files/read', readCtx)
 
     expect(readCtx.status).toBe(403)
     expect(readCtx.body).toEqual({ error: 'Super administrator privileges are required' })
@@ -240,7 +240,7 @@ describe('file routes path metadata', () => {
       body: null,
     }
 
-    await runFileRoute('/api/hermes/files/write', writeCtx)
+    await runFileRoute('/api/DiTing/files/write', writeCtx)
 
     expect(writeCtx.status).toBe(403)
     expect(writeCtx.body).toEqual({ error: 'Super administrator privileges are required' })

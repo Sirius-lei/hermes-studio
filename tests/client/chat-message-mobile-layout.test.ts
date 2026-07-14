@@ -4,14 +4,14 @@ import { describe, expect, it } from 'vitest'
 
 describe('chat message mobile layout guards', () => {
   it('keeps chat message containers shrinkable on narrow screens', () => {
-    const chatPanel = readFileSync('packages/client/src/components/hermes/chat/ChatPanel.vue', 'utf8')
-    const messageList = readFileSync('packages/client/src/components/hermes/chat/MessageList.vue', 'utf8')
-    const virtualList = readFileSync('packages/client/src/components/hermes/chat/VirtualMessageList.vue', 'utf8')
-    const messageItem = readFileSync('packages/client/src/components/hermes/chat/MessageItem.vue', 'utf8')
-    const markdownRenderer = readFileSync('packages/client/src/components/hermes/chat/MarkdownRenderer.vue', 'utf8')
-    const groupChatPanel = readFileSync('packages/client/src/components/hermes/group-chat/GroupChatPanel.vue', 'utf8')
-    const groupMessageList = readFileSync('packages/client/src/components/hermes/group-chat/GroupMessageList.vue', 'utf8')
-    const groupMessageItem = readFileSync('packages/client/src/components/hermes/group-chat/GroupMessageItem.vue', 'utf8')
+    const chatPanel = readFileSync('packages/client/src/components/DiTing/chat/ChatPanel.vue', 'utf8')
+    const messageList = readFileSync('packages/client/src/components/DiTing/chat/MessageList.vue', 'utf8')
+    const virtualList = readFileSync('packages/client/src/components/DiTing/chat/VirtualMessageList.vue', 'utf8')
+    const messageItem = readFileSync('packages/client/src/components/DiTing/chat/MessageItem.vue', 'utf8')
+    const markdownRenderer = readFileSync('packages/client/src/components/DiTing/chat/MarkdownRenderer.vue', 'utf8')
+    const groupChatPanel = readFileSync('packages/client/src/components/DiTing/group-chat/GroupChatPanel.vue', 'utf8')
+    const groupMessageList = readFileSync('packages/client/src/components/DiTing/group-chat/GroupMessageList.vue', 'utf8')
+    const groupMessageItem = readFileSync('packages/client/src/components/DiTing/group-chat/GroupMessageItem.vue', 'utf8')
 
     expect(chatPanel).toContain('.chat-panel')
     expect(chatPanel).toContain('min-width: 0;')

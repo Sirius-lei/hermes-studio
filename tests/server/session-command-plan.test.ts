@@ -5,7 +5,7 @@ const createSessionMock = vi.fn()
 const getSessionMock = vi.fn()
 const updateSessionStatsMock = vi.fn()
 
-vi.mock('../../packages/server/src/db/hermes/session-store', () => ({
+vi.mock('../../packages/server/src/db/DiTing/session-store', () => ({
   addMessage: addMessageMock,
   clearSessionMessages: vi.fn(),
   createSession: createSessionMock,
@@ -18,7 +18,7 @@ vi.mock('../../packages/server/src/services/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }))
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/compression', () => ({
+vi.mock('../../packages/server/src/services/DiTing/run-chat/compression', () => ({
   buildDbHistory: vi.fn(),
   estimateSnapshotAwareHistoryUsage: vi.fn(),
   forceCompressBridgeHistory: vi.fn(),
@@ -26,17 +26,17 @@ vi.mock('../../packages/server/src/services/hermes/run-chat/compression', () => 
   replaceState: vi.fn(),
 }))
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/usage', () => ({
+vi.mock('../../packages/server/src/services/DiTing/run-chat/usage', () => ({
   calcAndUpdateUsage: vi.fn(),
   contextTokensWithCachedOverhead: vi.fn(),
   updateMessageContextTokenUsage: vi.fn(),
 }))
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/abort', () => ({
+vi.mock('../../packages/server/src/services/DiTing/run-chat/abort', () => ({
   handleAbort: vi.fn(),
 }))
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/bridge-message', () => ({
+vi.mock('../../packages/server/src/services/DiTing/run-chat/bridge-message', () => ({
   flushBridgePendingToDb: vi.fn(),
 }))
 
@@ -88,7 +88,7 @@ describe('plan session command', () => {
   it('queues running plan commands once without visible command echo', async () => {
     const state = { messages: [], isWorking: true, events: [], queue: [] }
     const { bridge, namespaceEmit, nsp, runQueuedItem, sessionMap, socket } = makeContext(state)
-    const { handleSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/hermes/run-chat/session-command')
+    const { handleSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/DiTing/run-chat/session-command')
     const command = parseSessionCommand('/plan build the feature')!
 
     await handleSessionCommand('session-1', command, {
@@ -132,7 +132,7 @@ describe('plan session command', () => {
       message: 'Goal set.',
       kickoff_prompt: 'build a todo app',
     })
-    const { handleSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/hermes/run-chat/session-command')
+    const { handleSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/DiTing/run-chat/session-command')
     const command = parseSessionCommand('/goal build a todo app')!
 
     await handleSessionCommand('session-1', command, {
@@ -159,7 +159,7 @@ describe('plan session command', () => {
       type: 'skill',
       message: '[IMPORTANT: expanded skill prompt]',
     })
-    const { handleSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/hermes/run-chat/session-command')
+    const { handleSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/DiTing/run-chat/session-command')
     const command = parseSessionCommand('/skill github-pr-review check PR 123')!
 
     await handleSessionCommand('session-1', command, {
@@ -201,7 +201,7 @@ describe('plan session command', () => {
       type: 'skill',
       message: '[IMPORTANT: expanded skill prompt]',
     })
-    const { handleSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/hermes/run-chat/session-command')
+    const { handleSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/DiTing/run-chat/session-command')
     const command = parseSessionCommand('/skill review follow up')!
 
     await handleSessionCommand('session-1', command, {
@@ -237,8 +237,8 @@ describe('plan session command', () => {
   })
 
   it('keeps the client known-command registry accepted by the server parser', async () => {
-    const { BRIDGE_SESSION_COMMAND_NAMES, isKnownBridgeSessionCommand } = await import('../../packages/client/src/utils/hermes/bridge-session-commands')
-    const { parseSessionCommand } = await import('../../packages/server/src/services/hermes/run-chat/session-command')
+    const { BRIDGE_SESSION_COMMAND_NAMES, isKnownBridgeSessionCommand } = await import('../../packages/client/src/utils/DiTing/bridge-session-commands')
+    const { parseSessionCommand } = await import('../../packages/server/src/services/DiTing/run-chat/session-command')
 
     for (const commandName of BRIDGE_SESSION_COMMAND_NAMES) {
       expect(isKnownBridgeSessionCommand(`/${commandName}`)).toBe(true)
@@ -259,7 +259,7 @@ describe('plan session command', () => {
   })
 
   it('returns null for unknown slash commands so bridge runs can pass them through', async () => {
-    const { isSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/hermes/run-chat/session-command')
+    const { isSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/DiTing/run-chat/session-command')
 
     expect(parseSessionCommand('/not-a-command test')).toBeNull()
     expect(isSessionCommand('/not-a-command test')).toBe(false)
@@ -275,7 +275,7 @@ describe('plan session command', () => {
       kickoff_prompt: 'fix the tests',
       max_turns: 20,
     })
-    const { handleSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/hermes/run-chat/session-command')
+    const { handleSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/DiTing/run-chat/session-command')
     const command = parseSessionCommand('/goal fix the tests')!
 
     await handleSessionCommand('session-1', command, {
@@ -321,7 +321,7 @@ describe('plan session command', () => {
       message: 'Goal paused.',
       clear_goal_continuations: true,
     })
-    const { handleSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/hermes/run-chat/session-command')
+    const { handleSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/DiTing/run-chat/session-command')
     const command = parseSessionCommand('/goal pause')!
 
     await handleSessionCommand('session-1', command, {
@@ -357,7 +357,7 @@ describe('plan session command', () => {
       message: 'Goal cleared.',
       clear_goal_continuations: true,
     })
-    const { handleSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/hermes/run-chat/session-command')
+    const { handleSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/DiTing/run-chat/session-command')
     const command = parseSessionCommand('/goal done')!
 
     await handleSessionCommand('session-1', command, {
@@ -391,7 +391,7 @@ describe('plan session command', () => {
       kickoff_prompt: '[Continuing toward your standing goal]\nGoal: fix the tests',
       max_turns: 20,
     })
-    const { handleSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/hermes/run-chat/session-command')
+    const { handleSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/DiTing/run-chat/session-command')
     const command = parseSessionCommand('/goal resume')!
 
     await handleSessionCommand('session-1', command, {
@@ -434,7 +434,7 @@ describe('plan session command', () => {
       current_run_id: 'run-123',
       message_count: 4,
     })
-    const { handleSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/hermes/run-chat/session-command')
+    const { handleSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/DiTing/run-chat/session-command')
     const command = parseSessionCommand('/goal status')!
 
     await handleSessionCommand('session-1', command, {
@@ -460,7 +460,7 @@ describe('plan session command', () => {
   it('rejects MCP reload while the session is running', async () => {
     const state = { messages: [], isWorking: true, events: [], queue: [] }
     const { bridge, namespaceEmit, runQueuedItem, sessionMap, socket, nsp } = makeContext(state)
-    const { handleSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/hermes/run-chat/session-command')
+    const { handleSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/DiTing/run-chat/session-command')
     const command = parseSessionCommand('/reload-mcp github')!
 
     await handleSessionCommand('session-1', command, {
@@ -486,7 +486,7 @@ describe('plan session command', () => {
   it('reloads skills while idle without queuing a model run', async () => {
     const state = { messages: [], isWorking: false, events: [], queue: [] }
     const { bridge, namespaceEmit, runQueuedItem, sessionMap, socket, nsp } = makeContext(state)
-    const { handleSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/hermes/run-chat/session-command')
+    const { handleSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/DiTing/run-chat/session-command')
     const command = parseSessionCommand('/reload-skills')!
 
     await handleSessionCommand('session-1', command, {
@@ -511,7 +511,7 @@ describe('plan session command', () => {
   it('rejects skills reload while the session is running', async () => {
     const state = { messages: [], isWorking: true, events: [], queue: [] }
     const { bridge, namespaceEmit, runQueuedItem, sessionMap, socket, nsp } = makeContext(state)
-    const { handleSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/hermes/run-chat/session-command')
+    const { handleSessionCommand, parseSessionCommand } = await import('../../packages/server/src/services/DiTing/run-chat/session-command')
     const command = parseSessionCommand('/reload-skills')!
 
     await handleSessionCommand('session-1', command, {

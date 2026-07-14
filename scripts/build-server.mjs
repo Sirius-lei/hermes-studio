@@ -29,14 +29,14 @@ await esbuild.build({
 })
 
 const bridgeOutDir = resolve(serverOutDir, 'agent-bridge', 'python')
-const bridgeSrcDir = resolve(rootDir, 'packages/server/src/services/hermes/agent-bridge/python')
+const bridgeSrcDir = resolve(rootDir, 'packages/server/src/services/DiTing/agent-bridge/python')
 mkdirSync(bridgeOutDir, { recursive: true })
 for (const fileName of readdirSync(bridgeSrcDir)) {
   if (fileName.endsWith('.py')) {
     cpSync(resolve(bridgeSrcDir, fileName), resolve(bridgeOutDir, fileName))
   }
 }
-chmodSync(resolve(bridgeOutDir, 'hermes_bridge.py'), 0o755)
+chmodSync(resolve(bridgeOutDir, 'DiTing_bridge.py'), 0o755)
 
 cpSync(
   resolve(rootDir, 'docs/openapi.json'),

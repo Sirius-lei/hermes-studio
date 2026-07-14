@@ -12,16 +12,16 @@ vi.mock('../../packages/server/src/middleware/user-auth', () => ({
 
 describe('model run prompt', () => {
   afterEach(() => {
-    delete process.env.HERMES_WEB_UI_HOME
+    delete process.env.DiTing_WEB_UI_HOME
     for (const home of homes.splice(0)) rmSync(home, { recursive: true, force: true })
   })
 
   it('stores the model-run token under the profile and keeps the token out of the prompt', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'hermes-model-run-prompt-'))
+    const home = mkdtempSync(join(tmpdir(), 'DiTing-model-run-prompt-'))
     homes.push(home)
-    process.env.HERMES_WEB_UI_HOME = home
+    process.env.DiTing_WEB_UI_HOME = home
 
-    const { writeModelRunProfileToken, modelRunProfileTokenPath } = await import('../../packages/server/src/services/hermes/run-chat/model-run-prompt')
+    const { writeModelRunProfileToken, modelRunProfileTokenPath } = await import('../../packages/server/src/services/DiTing/run-chat/model-run-prompt')
     await writeModelRunProfileToken({ id: 1, username: 'admin', role: 'super_admin' }, 'default')
     const tokenPath = modelRunProfileTokenPath('default')
 
@@ -31,11 +31,11 @@ describe('model run prompt', () => {
   })
 
   it('returns profile instructions without writing a token for anonymous runs', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'hermes-model-run-prompt-'))
+    const home = mkdtempSync(join(tmpdir(), 'DiTing-model-run-prompt-'))
     homes.push(home)
-    process.env.HERMES_WEB_UI_HOME = home
+    process.env.DiTing_WEB_UI_HOME = home
 
-    const { writeModelRunProfileToken, modelRunProfileTokenPath } = await import('../../packages/server/src/services/hermes/run-chat/model-run-prompt')
+    const { writeModelRunProfileToken, modelRunProfileTokenPath } = await import('../../packages/server/src/services/DiTing/run-chat/model-run-prompt')
     await writeModelRunProfileToken(undefined, 'research')
 
     expect(existsSync(modelRunProfileTokenPath('research'))).toBe(false)

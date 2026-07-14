@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, rmSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { canOpenTerminal, resolveTerminalCwd } from '../../packages/server/src/routes/hermes/terminal'
+import { canOpenTerminal, resolveTerminalCwd } from '../../packages/server/src/routes/DiTing/terminal'
 
 const tmpRoots: string[] = []
 
@@ -17,12 +17,12 @@ afterEach(() => {
 })
 
 describe('terminal cwd resolution', () => {
-  it('defaults terminal sessions to the active Hermes profile directory', () => {
+  it('defaults terminal sessions to the active DiTing profile directory', () => {
     const profileDir = makeTmpRoot()
     expect(resolveTerminalCwd({}, profileDir)).toBe(profileDir)
   })
 
-  it('resolves relative configured cwd from the Hermes profile directory', () => {
+  it('resolves relative configured cwd from the DiTing profile directory', () => {
     const profileDir = makeTmpRoot()
     mkdirSync(join(profileDir, 'workspace'))
     expect(resolveTerminalCwd({ cwd: 'workspace' }, profileDir)).toBe(join(profileDir, 'workspace'))

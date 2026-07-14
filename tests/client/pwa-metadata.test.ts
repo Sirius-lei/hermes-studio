@@ -15,7 +15,7 @@ describe('PWA metadata', () => {
 
     expect(manifest.name).toBe('智能体工作台')
     expect(manifest.display).toBe('standalone')
-    expect(manifest.start_url).toBe('/#/hermes/chat')
+    expect(manifest.start_url).toBe('/#/DiTing/chat')
     expect(manifest.icons).toEqual(expect.arrayContaining([
       expect.objectContaining({
         src: '/coding-agents/assistant-badge.svg',

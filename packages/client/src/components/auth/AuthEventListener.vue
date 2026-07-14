@@ -22,11 +22,11 @@ function onAuthNotice(event: Event) {
 }
 
 onMounted(() => {
-  window.addEventListener('hermes-auth-notice', onAuthNotice)
+  window.addEventListener('DiTing-auth-notice', onAuthNotice)
 })
 
 onUnmounted(() => {
-  window.removeEventListener('hermes-auth-notice', onAuthNotice)
+  window.removeEventListener('DiTing-auth-notice', onAuthNotice)
 })
 </script>
 

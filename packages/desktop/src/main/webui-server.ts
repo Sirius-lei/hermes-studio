@@ -13,9 +13,9 @@ import {
   gitPathDirs,
   webuiServerEntry,
   webuiDir,
-  hermesBin,
+  DiTingBin,
   webUiHome,
-  hermesHome,
+  DiTingHome,
   nodeBinDir,
   tokenFile,
   pythonDir,
@@ -63,18 +63,18 @@ function envPositiveInt(name: string): number | undefined {
 }
 
 function readyTimeoutMs(): number {
-  return envPositiveInt('HERMES_DESKTOP_READY_TIMEOUT_MS') || DEFAULT_READY_TIMEOUT_MS
+  return envPositiveInt('DiTing_DESKTOP_READY_TIMEOUT_MS') || DEFAULT_READY_TIMEOUT_MS
 }
 
 function fullStartupWaitMs(): number {
-  const raw = process.env.HERMES_DESKTOP_FULL_STARTUP_WAIT_MS
+  const raw = process.env.DiTing_DESKTOP_FULL_STARTUP_WAIT_MS
   if (raw === undefined) return DEFAULT_FULL_STARTUP_WAIT_MS
   const value = Number(raw)
   return Number.isFinite(value) && value >= 0 ? value : DEFAULT_FULL_STARTUP_WAIT_MS
 }
 
 function gracefulStopTimeoutMs(): number {
-  return envPositiveInt('HERMES_DESKTOP_GRACEFUL_STOP_TIMEOUT_MS') || DEFAULT_GRACEFUL_STOP_TIMEOUT_MS
+  return envPositiveInt('DiTing_DESKTOP_GRACEFUL_STOP_TIMEOUT_MS') || DEFAULT_GRACEFUL_STOP_TIMEOUT_MS
 }
 
 function timeoutAfter(ms: number, message: string): Promise<void> {
@@ -179,8 +179,8 @@ const COMMON_USER_BIN_DIRS = process.platform === 'win32'
       '/usr/sbin',
       '/sbin',
     ]
-const PATH_MARKER_START = '__HERMES_DESKTOP_PATH_START__'
-const PATH_MARKER_END = '__HERMES_DESKTOP_PATH_END__'
+const PATH_MARKER_START = '__DiTing_DESKTOP_PATH_START__'
+const PATH_MARKER_END = '__DiTing_DESKTOP_PATH_END__'
 
 function mergePathEntries(...paths: Array<string | undefined | null>): string {
   const seen = new Set<string>()
@@ -311,12 +311,12 @@ export async function startWebUiServer(port = DEFAULT_PORT): Promise<string> {
   }
 
   const home = webUiHome()
-  const agentHome = hermesHome()
+  const agentHome = DiTingHome()
   mkdirSync(home, { recursive: true })
   mkdirSync(agentHome, { recursive: true })
 
   // Tell agent-bridge to use the bundled Python directly. Otherwise the
-  // bridge auto-detects Python from HERMES_BIN's shebang — which on our
+  // bridge auto-detects Python from DiTing_BIN's shebang — which on our
   // setup is a #!/bin/sh wrapper, not a python interpreter, so detection
   // resolves to /bin/sh and the bridge crashes (exit code 2) immediately.
   const isWin = process.platform === 'win32'
@@ -333,7 +333,7 @@ export async function startWebUiServer(port = DEFAULT_PORT): Promise<string> {
   const loginShellPath = await getLoginShellPath()
   const nvmNodeBinPaths = getNvmNodeBinPaths()
   const runtimePath = mergePathEntries(
-    dirname(hermesBin()),
+    dirname(DiTingBin()),
     bundledAgentBrowserBin,
     bundledNodeBin,
     bundledGitPath,
@@ -351,52 +351,52 @@ export async function startWebUiServer(port = DEFAULT_PORT): Promise<string> {
     ...process.env,
     ELECTRON_RUN_AS_NODE: '1',
     NODE_ENV: 'production',
-    HERMES_DESKTOP: 'true',
-    HERMES_BIN: hermesBin(),
+    DiTing_DESKTOP: 'true',
+    DiTing_BIN: DiTingBin(),
     // The bridge and its per-profile workers need working stdout/stderr for
     // ready handshakes. Use python.exe on Windows and hide windows at the
     // process creation layer instead of switching the bridge to pythonw.exe.
-    HERMES_AGENT_BRIDGE_PYTHON: bundledPython,
-    HERMES_AGENT_CLI_PYTHON: bundledPython,
-    HERMES_AGENT_ROOT: pythonDir(),
-    HERMES_AGENT_NODE: bundledNode(),
-    HERMES_AGENT_NODE_ROOT: isWin ? bundledNodeBin : dirname(bundledNodeBin),
+    DiTing_AGENT_BRIDGE_PYTHON: bundledPython,
+    DiTing_AGENT_CLI_PYTHON: bundledPython,
+    DiTing_AGENT_ROOT: pythonDir(),
+    DiTing_AGENT_NODE: bundledNode(),
+    DiTing_AGENT_NODE_ROOT: isWin ? bundledNodeBin : dirname(bundledNodeBin),
     AGENT_BROWSER_HOME: process.env.AGENT_BROWSER_HOME?.trim() || bundledAgentBrowserHome(),
     ...(browserExecutableOverride ? { AGENT_BROWSER_EXECUTABLE_PATH: browserExecutableOverride } : {}),
     PLAYWRIGHT_BROWSERS_PATH: process.env.PLAYWRIGHT_BROWSERS_PATH || join(pythonDir(), 'ms-playwright'),
-    ...(gitBin ? { HERMES_AGENT_GIT: gitBin } : {}),
+    ...(gitBin ? { DiTing_AGENT_GIT: gitBin } : {}),
     // Force TCP loopback for the agent bridge. The default `ipc:///tmp/...`
     // unix socket is rejected on macOS in some EDR/sandbox setups (silent
     // SIGKILL of the bridge child within ~150ms). TCP on 127.0.0.1 works
     // identically and avoids the issue cross-platform.
-    HERMES_AGENT_BRIDGE_ENDPOINT: `tcp://127.0.0.1:${bridgePort}`,
+    DiTing_AGENT_BRIDGE_ENDPOINT: `tcp://127.0.0.1:${bridgePort}`,
     // Desktop opens the UI as soon as the Web UI HTTP server is ready, while
     // the Python bridge starts in the background. Let the first chat/context
     // request wait for broker readiness instead of failing during cold start.
-    HERMES_AGENT_BRIDGE_CONNECT_RETRY_MS: process.env.HERMES_AGENT_BRIDGE_CONNECT_RETRY_MS ?? '120000',
+    DiTing_AGENT_BRIDGE_CONNECT_RETRY_MS: process.env.DiTing_AGENT_BRIDGE_CONNECT_RETRY_MS ?? '120000',
     // Force TCP for worker endpoints too (upstream #1106). Same EDR/sandbox
     // reason as above — default ipc:// unix sockets in /tmp get killed.
-    HERMES_AGENT_BRIDGE_WORKER_TRANSPORT: 'tcp',
-    HERMES_AGENT_BRIDGE_WORKER_PORT_BASE: String(workerPortBase),
+    DiTing_AGENT_BRIDGE_WORKER_TRANSPORT: 'tcp',
+    DiTing_AGENT_BRIDGE_WORKER_PORT_BASE: String(workerPortBase),
     // And for preview-mode bridges spawned by the in-app update controller.
-    HERMES_WEB_UI_PREVIEW_AGENT_BRIDGE_TRANSPORT: 'tcp',
-    // Suppress the npm-registry update prompt (upstream #1105). hermes-web-ui
+    DiTing_WEB_UI_PREVIEW_AGENT_BRIDGE_TRANSPORT: 'tcp',
+    // Suppress the npm-registry update prompt (upstream #1105). DiTing-web-ui
     // is bundled here; users can't `npm i -g` to upgrade, they have to wait
     // for the wrapper app to ship a new release.
-    HERMES_WEB_UI_DISABLE_UPDATE_CHECK: 'true',
+    DiTing_WEB_UI_DISABLE_UPDATE_CHECK: 'true',
     // Single-user desktop install: open the gateway's user allowlist by
     // default. Otherwise the gateway silently drops every inbound platform
     // message (DingTalk/Slack/Telegram) with a startup warning. Users can
     // still override by setting GATEWAY_ALLOW_ALL_USERS=false in their
-    // HERMES_HOME/.env or by configuring per-platform allowlists.
+    // DiTing_HOME/.env or by configuring per-platform allowlists.
     GATEWAY_ALLOW_ALL_USERS: process.env.GATEWAY_ALLOW_ALL_USERS ?? 'true',
-    // Keep the bundled Hermes Agent, bridge, gateway, and Web UI path helpers
+    // Keep the bundled DiTing Agent, bridge, gateway, and Web UI path helpers
     // on the same data directory. Native Windows uses an existing
-    // %LOCALAPPDATA%\hermes or %APPDATA%\hermes; otherwise all platforms keep
-    // the standard ~/.hermes layout.
-    HERMES_HOME: agentHome,
-    HERMES_WEB_UI_HOME: home,
-    HERMES_WEBUI_STATE_DIR: home,
+    // %LOCALAPPDATA%\DiTing or %APPDATA%\DiTing; otherwise all platforms keep
+    // the standard ~/.DiTing layout.
+    DiTing_HOME: agentHome,
+    DiTing_WEB_UI_HOME: home,
+    DiTing_WEBUI_STATE_DIR: home,
     AUTH_TOKEN: token,
     PORT: String(port),
     // Prepend bundled Python's bin to PATH so any incidental `python` resolution lands on ours
@@ -486,7 +486,7 @@ export async function stopWebUiServer(): Promise<void> {
     const timer = setTimeout(() => {
       killProcessTree(proc)
       resolve()
-    }, envPositiveInt('HERMES_DESKTOP_STOP_TIMEOUT_MS') || DEFAULT_STOP_TIMEOUT_MS)
+    }, envPositiveInt('DiTing_DESKTOP_STOP_TIMEOUT_MS') || DEFAULT_STOP_TIMEOUT_MS)
     proc.once('exit', () => {
       clearTimeout(timer)
       resolve()

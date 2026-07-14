@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 describe('AgentBridgeClient.chat reasoning_effort forwarding', () => {
   it('forwards reasoning_effort when provided in options', async () => {
-    const { AgentBridgeClient } = await import('../../packages/server/src/services/hermes/agent-bridge/client')
+    const { AgentBridgeClient } = await import('../../packages/server/src/services/DiTing/agent-bridge/client')
     const client = new AgentBridgeClient({ endpoint: 'tcp://127.0.0.1:1', connectRetryMs: 0, timeoutMs: 1 })
     const request = vi.spyOn(client, 'request').mockResolvedValue({
       ok: true,
@@ -23,7 +23,7 @@ describe('AgentBridgeClient.chat reasoning_effort forwarding', () => {
   })
 
   it('omits reasoning_effort entirely when the option is not set', async () => {
-    const { AgentBridgeClient } = await import('../../packages/server/src/services/hermes/agent-bridge/client')
+    const { AgentBridgeClient } = await import('../../packages/server/src/services/DiTing/agent-bridge/client')
     const client = new AgentBridgeClient({ endpoint: 'tcp://127.0.0.1:1', connectRetryMs: 0, timeoutMs: 1 })
     const request = vi.spyOn(client, 'request').mockResolvedValue({
       ok: true,
@@ -40,7 +40,7 @@ describe('AgentBridgeClient.chat reasoning_effort forwarding', () => {
   })
 
   it('omits reasoning_effort when option is an empty string', async () => {
-    const { AgentBridgeClient } = await import('../../packages/server/src/services/hermes/agent-bridge/client')
+    const { AgentBridgeClient } = await import('../../packages/server/src/services/DiTing/agent-bridge/client')
     const client = new AgentBridgeClient({ endpoint: 'tcp://127.0.0.1:1', connectRetryMs: 0, timeoutMs: 1 })
     const request = vi.spyOn(client, 'request').mockResolvedValue({
       ok: true,

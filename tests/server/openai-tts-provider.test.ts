@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { clampTtsText, cleanTtsText } from '../../packages/server/src/services/hermes/tts-providers/text'
-import { customTtsProvider, openaiTtsProvider } from '../../packages/server/src/services/hermes/tts-providers/openai'
+import { clampTtsText, cleanTtsText } from '../../packages/server/src/services/DiTing/tts-providers/text'
+import { customTtsProvider, openaiTtsProvider } from '../../packages/server/src/services/DiTing/tts-providers/openai'
 
 const mockFetch = vi.fn()
 vi.stubGlobal('fetch', mockFetch)

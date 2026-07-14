@@ -9,7 +9,7 @@ const chatApi = vi.hoisted(() => ({
   unregisterSessionHandlers: vi.fn(),
 }))
 
-vi.mock('@/api/hermes/chat', () => ({
+vi.mock('@/api/DiTing/chat', () => ({
   startRunViaSocket: chatApi.startRunViaSocket,
   resumeSession: chatApi.resumeSession,
   registerSessionHandlers: chatApi.registerSessionHandlers,
@@ -27,18 +27,18 @@ vi.mock('@/api/client', () => ({
   hasApiKey: () => false,
 }))
 
-vi.mock('@/api/hermes/sessions', () => ({
+vi.mock('@/api/DiTing/sessions', () => ({
   deleteSession: vi.fn(),
   fetchSession: vi.fn(),
   fetchSessions: vi.fn(),
   setSessionModel: vi.fn(),
 }))
 
-vi.mock('@/api/hermes/download', () => ({
+vi.mock('@/api/DiTing/download', () => ({
   getDownloadUrl: (_path: string, name: string) => `/download/${name}`,
 }))
 
-vi.mock('@/api/hermes/system', () => ({
+vi.mock('@/api/DiTing/system', () => ({
   checkHealth: vi.fn(),
   fetchAvailableModels: vi.fn(),
   addCustomModel: vi.fn(),
@@ -53,7 +53,7 @@ vi.mock('@/utils/completion-sound', () => ({
   playCompletionSound: vi.fn(),
 }))
 
-import { useChatStore, type Message, type Session } from '@/stores/hermes/chat'
+import { useChatStore, type Message, type Session } from '@/stores/DiTing/chat'
 
 function makeSession(id: string): Session {
   return {
@@ -307,11 +307,11 @@ describe('chat store error handling - #1644', () => {
       plan: {
         currentNodeId: 'task_1',
         nodes: [
-          { id: 'understand', title: '理解需求', phase: '分析', status: 'done', executor: { type: 'hermes', name: '主智能体' }, summary: 'done' },
-          { id: 'route', title: '确认路径', phase: '路由', status: 'done', executor: { type: 'hermes', name: '主智能体' }, summary: 'done' },
+          { id: 'understand', title: '理解需求', phase: '分析', status: 'done', executor: { type: 'DiTing', name: '主智能体' }, summary: 'done' },
+          { id: 'route', title: '确认路径', phase: '路由', status: 'done', executor: { type: 'DiTing', name: '主智能体' }, summary: 'done' },
           { id: 'task_1', title: '查询涉案记录', phase: '执行', status: 'doing', executor: { type: 'subagent', id: 'data-agent', name: '问数智能体' }, summary: '执行中' },
-          { id: 'task_2', title: '汇总涉案记录', phase: '汇总', status: 'todo', executor: { type: 'hermes', name: '主智能体' }, summary: '等待 task_1' },
-          { id: 'respond', title: '汇总回复', phase: '汇总', status: 'todo', executor: { type: 'hermes', name: '主智能体' }, summary: '等待汇总' },
+          { id: 'task_2', title: '汇总涉案记录', phase: '汇总', status: 'todo', executor: { type: 'DiTing', name: '主智能体' }, summary: '等待 task_1' },
+          { id: 'respond', title: '汇总回复', phase: '汇总', status: 'todo', executor: { type: 'DiTing', name: '主智能体' }, summary: '等待汇总' },
         ],
         dependencies: [
           { from: 'understand', to: 'route', type: 'blocks' },
@@ -384,12 +384,12 @@ describe('chat store error handling - #1644', () => {
       plan: {
         currentNodeId: 'task_1',
         nodes: [
-          { id: 'understand', title: '理解需求', phase: '分析', status: 'done', executor: { type: 'hermes', name: '主智能体' }, summary: 'done' },
-          { id: 'route', title: '确认路径', phase: '路由', status: 'done', executor: { type: 'hermes', name: '主智能体' }, summary: 'done' },
+          { id: 'understand', title: '理解需求', phase: '分析', status: 'done', executor: { type: 'DiTing', name: '主智能体' }, summary: 'done' },
+          { id: 'route', title: '确认路径', phase: '路由', status: 'done', executor: { type: 'DiTing', name: '主智能体' }, summary: 'done' },
           { id: 'task_1', title: '检索涉案记录', phase: '执行', status: 'doing', executor: { type: 'subagent', id: 'data-agent', name: '问数智能体' }, summary: '执行中' },
-          { id: 'task_2', title: '身份归并', phase: '执行', status: 'todo', executor: { type: 'hermes', name: '主智能体' }, summary: '等待 task_1' },
-          { id: 'task_3', title: '汇总结果', phase: '汇总', status: 'todo', executor: { type: 'hermes', name: '主智能体' }, summary: '等待 task_2' },
-          { id: 'respond', title: '汇总回复', phase: '汇总', status: 'todo', executor: { type: 'hermes', name: '主智能体' }, summary: '等待汇总' },
+          { id: 'task_2', title: '身份归并', phase: '执行', status: 'todo', executor: { type: 'DiTing', name: '主智能体' }, summary: '等待 task_1' },
+          { id: 'task_3', title: '汇总结果', phase: '汇总', status: 'todo', executor: { type: 'DiTing', name: '主智能体' }, summary: '等待 task_2' },
+          { id: 'respond', title: '汇总回复', phase: '汇总', status: 'todo', executor: { type: 'DiTing', name: '主智能体' }, summary: '等待汇总' },
         ],
         dependencies: [
           { from: 'understand', to: 'route', type: 'blocks' },

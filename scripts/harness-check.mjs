@@ -75,21 +75,21 @@ function changedFilesFromGit() {
 }
 
 function isChatSessionChainFile(file) {
-  return file === 'packages/client/src/api/hermes/chat.ts'
-    || file === 'packages/client/src/api/hermes/group-chat.ts'
-    || file === 'packages/client/src/api/hermes/sessions.ts'
-    || file === 'packages/client/src/stores/hermes/group-chat.ts'
-    || file === 'packages/client/src/stores/hermes/chat.ts'
-    || file === 'packages/server/src/controllers/hermes/sessions.ts'
-    || file === 'packages/server/src/db/hermes/session-store.ts'
-    || file === 'packages/server/src/routes/hermes/group-chat.ts'
-    || file.startsWith('packages/client/src/components/hermes/group-chat/')
-    || file.startsWith('packages/client/src/components/hermes/chat/')
+  return file === 'packages/client/src/api/DiTing/chat.ts'
+    || file === 'packages/client/src/api/DiTing/group-chat.ts'
+    || file === 'packages/client/src/api/DiTing/sessions.ts'
+    || file === 'packages/client/src/stores/DiTing/group-chat.ts'
+    || file === 'packages/client/src/stores/DiTing/chat.ts'
+    || file === 'packages/server/src/controllers/DiTing/sessions.ts'
+    || file === 'packages/server/src/db/DiTing/session-store.ts'
+    || file === 'packages/server/src/routes/DiTing/group-chat.ts'
+    || file.startsWith('packages/client/src/components/DiTing/group-chat/')
+    || file.startsWith('packages/client/src/components/DiTing/chat/')
     || file.startsWith('packages/server/src/lib/context-compressor/')
-    || file.startsWith('packages/server/src/services/hermes/context-engine/')
-    || file.startsWith('packages/server/src/services/hermes/group-chat/')
-    || file.startsWith('packages/server/src/services/hermes/run-chat/')
-    || file.startsWith('packages/server/src/services/hermes/agent-bridge/')
+    || file.startsWith('packages/server/src/services/DiTing/context-engine/')
+    || file.startsWith('packages/server/src/services/DiTing/group-chat/')
+    || file.startsWith('packages/server/src/services/DiTing/run-chat/')
+    || file.startsWith('packages/server/src/services/DiTing/agent-bridge/')
 }
 
 function isChatChainChangeFragment(file) {
@@ -177,7 +177,7 @@ for (const phrase of [
   'packages/client/src',
   'packages/server/src',
   'packages/desktop',
-  'HERMES_WEB_UI_HOME',
+  'DiTing_WEB_UI_HOME',
   'fail_on_unmatched_files: true',
 ]) {
   if (!architecture.includes(phrase)) {
@@ -200,8 +200,8 @@ for (const phrase of [
   '最近链路变更记录',
   'docs/chat-chain-changes/',
   '每个 PR 一个变更片段',
-  'packages/server/src/services/hermes/agent-bridge/',
-  'packages/server/src/services/hermes/group-chat/',
+  'packages/server/src/services/DiTing/agent-bridge/',
+  'packages/server/src/services/DiTing/group-chat/',
   'packages/server/src/lib/context-compressor/',
   '任何改动都算 Chat 链路改动',
 ]) {
@@ -211,6 +211,31 @@ for (const phrase of [
 }
 
 const changedFiles = changedFilesFromGit()
+
+const retiredBrandTokens = [
+  ['her', 'mes'].join(''),
+  ['h', 'studio'].join(''),
+]
+const repositoryFiles = gitLines(['ls-files', '--cached', '--others', '--exclude-standard'])
+for (const file of repositoryFiles) {
+  const absolutePath = path.join(root, file)
+  if (!existsSync(absolutePath)) continue
+  const normalizedPath = file.toLowerCase()
+  const pathToken = retiredBrandTokens.find(token => normalizedPath.includes(token))
+  if (pathToken) {
+    fail(`Retired brand token found in repository path: ${file}`)
+    continue
+  }
+  try {
+    const content = (await readFile(absolutePath)).toString('latin1').toLowerCase()
+    if (retiredBrandTokens.some(token => content.includes(token))) {
+      fail(`Retired brand token found in repository file: ${file}`)
+    }
+  } catch {
+    // Directories and unreadable generated entries are covered by the path check.
+  }
+}
+
 const changedChatChainFiles = changedFiles.filter(
   file => !isChatChainChangeFragment(file)
     && file !== 'docs/chat-chain-changes/README.md'
@@ -251,8 +276,8 @@ const webuiReleaseWorkflow = await readText('.github/workflows/webui-release.yml
 const dockerPublishWorkflow = await readText('.github/workflows/docker-publish.yml')
 const electronBuilderConfig = await readText('packages/desktop/electron-builder.yml')
 const desktopPackageJson = await readText('packages/desktop/package.json')
-const desktopInstallHermes = await readText('packages/desktop/scripts/install-hermes.mjs')
-const desktopHermesPatches = await readText('packages/desktop/scripts/apply-hermes-patches.mjs')
+const desktopInstallDiTing = await readText('packages/desktop/scripts/install-DiTing.mjs')
+const desktopDiTingPatches = await readText('packages/desktop/scripts/apply-DiTing-patches.mjs')
 const desktopWebuiServer = await readText('packages/desktop/src/main/webui-server.ts')
 const desktopMain = await readText('packages/desktop/src/main/index.ts')
 const desktopUpdater = await readText('packages/desktop/src/main/updater.ts')
@@ -383,14 +408,14 @@ for (const phrase of [
   }
 }
 
-if (!desktopRuntimeAssetName.includes('hermes-runtime-hermes-agent-')) {
-  fail('runtime asset naming must include hermes-agent version')
+if (!desktopRuntimeAssetName.includes('DiTing-runtime-DiTing-agent-')) {
+  fail('runtime asset naming must include DiTing-agent version')
 }
 
 for (const phrase of [
   'websockets',
   'agent-browser@^0.26.0',
-  'HERMES_CHROME_FOR_TESTING_VERSION',
+  'DiTing_CHROME_FOR_TESTING_VERSION',
   '149.0.7827.55',
   'pinChromeForTestingBundle',
   'chromeForTestingPlatform',
@@ -400,21 +425,21 @@ for (const phrase of [
   'ms-playwright',
   'removeBrokenDashboardAuthPlugin',
 ]) {
-  if (!desktopInstallHermes.includes(phrase)) {
-    fail(`install-hermes.mjs must bundle Hermes browser runtime support: ${phrase}`)
+  if (!desktopInstallDiTing.includes(phrase)) {
+    fail(`install-DiTing.mjs must bundle DiTing browser runtime support: ${phrase}`)
   }
 }
 
 for (const phrase of [
   'from pathlib import Path',
   'browser stdout decode fallback is incomplete',
-  'def _hermes_read_browser_output',
+  'def _DiTing_read_browser_output',
   'dingtalk AI Card webhook patches are incomplete',
   'sitecustomize hidden subprocess patch marker exists',
   'python compile check',
 ]) {
-  if (!desktopHermesPatches.includes(phrase)) {
-    fail(`apply-hermes-patches.mjs must keep browser stdout fallback complete: ${phrase}`)
+  if (!desktopDiTingPatches.includes(phrase)) {
+    fail(`apply-DiTing-patches.mjs must keep browser stdout fallback complete: ${phrase}`)
   }
 }
 
@@ -422,8 +447,8 @@ for (const phrase of [
   'bundledAgentBrowserHome',
   'AGENT_BROWSER_HOME',
   'bundledNodeBin',
-  'HERMES_AGENT_NODE',
-  'HERMES_AGENT_GIT',
+  'DiTing_AGENT_NODE',
+  'DiTing_AGENT_GIT',
   'PLAYWRIGHT_BROWSERS_PATH',
   'ms-playwright',
 ]) {
@@ -446,19 +471,19 @@ for (const phrase of [
 }
 
 for (const phrase of [
-  'HERMES_STUDIO_EXE',
+  'DiTing_STUDIO_EXE',
   'Get-CimInstance Win32_Process',
   'CloseMainWindow()',
   'Stop-Process -Id',
 ]) {
   if (!desktopInstallerScript.includes(phrase)) {
-    fail(`desktop installer must close stale Hermes Studio processes by installed executable path: ${phrase}`)
+    fail(`desktop installer must close stale DiTing Studio processes by installed executable path: ${phrase}`)
   }
 }
 
 for (const phrase of [
   'https://download.ekkolearnai.com/latest',
-  'https://github.com/EKKOLearnAI/hermes-studio/releases/latest/download',
+  'https://github.com/EKKOLearnAI/DiTing-studio/releases/latest/download',
   'checkForUpdatesWithFallback()',
 ]) {
   if (!desktopUpdater.includes(phrase)) {
@@ -471,8 +496,8 @@ if (desktopUpdater.includes('fetch(')) {
 }
 
 for (const phrase of [
-  'HERMES_DESKTOP_RUNTIME_URL',
-  'HERMES_DESKTOP_RUNTIME_BASE_URL',
+  'DiTing_DESKTOP_RUNTIME_URL',
+  'DiTing_DESKTOP_RUNTIME_BASE_URL',
   'runtime-manifest.json',
 ]) {
   if (!desktopRuntimeManager.includes(phrase)) {
@@ -480,8 +505,8 @@ for (const phrase of [
   }
 }
 
-if (!desktopPaths.includes('HERMES_DESKTOP_RUNTIME_DIR')) {
-  fail('desktop paths must allow HERMES_DESKTOP_RUNTIME_DIR override')
+if (!desktopPaths.includes('DiTing_DESKTOP_RUNTIME_DIR')) {
+  fail('desktop paths must allow DiTing_DESKTOP_RUNTIME_DIR override')
 }
 
 if (failures.length > 0) {
