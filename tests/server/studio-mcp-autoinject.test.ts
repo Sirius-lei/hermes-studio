@@ -169,6 +169,28 @@ describe('studio MCP autoinject', () => {
     expect(updated.data.mcp_servers['DiTing-studio-use']).toBeDefined()
   })
 
+  it('cleans obsolete Web UI managed entries from earlier namespaces', async () => {
+    const { injectBundledMcpServer } = await import('../../packages/server/src/services/DiTing/studio-mcp-autoinject')
+
+    await injectBundledMcpServer()
+
+    const updated = await updateConfigYamlForProfileMock.mock.calls[0][1]({
+      mcp_servers: {
+        'retired-studio-api': {
+          command: process.execPath,
+          env: {
+            PREVIOUS_WEB_UI_MANAGED_MCP: '1',
+          },
+          enabled: true,
+        },
+      },
+    })
+
+    expect(updated.result.status).toBe('updated')
+    expect(updated.data.mcp_servers['retired-studio-api']).toBeUndefined()
+    expect(updated.data.mcp_servers['DiTing-studio-api']).toBeDefined()
+  })
+
   it('updates old managed PATH-only MCP entries to the bundled node script', async () => {
     const { injectBundledMcpServer } = await import('../../packages/server/src/services/DiTing/studio-mcp-autoinject')
 

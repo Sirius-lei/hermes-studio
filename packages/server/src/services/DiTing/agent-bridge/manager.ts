@@ -9,6 +9,8 @@ import { AgentBridgeClient, DEFAULT_AGENT_BRIDGE_ENDPOINT } from './client'
 const DEFAULT_AGENT_BRIDGE_STARTUP_TIMEOUT_MS = 120000
 const DEFAULT_AGENT_BRIDGE_RESTART_DELAY_MS = 1000
 const MAX_AGENT_BRIDGE_RESTART_DELAY_MS = 30000
+const DEFAULT_AGENT_BRIDGE_ATTACH_TIMEOUT_MS = 5000
+const DEFAULT_IPC_AGENT_BRIDGE_ATTACH_TIMEOUT_MS = 250
 const DEFAULT_AGENT_BRIDGE_RECOVERY_EXIT_TIMEOUT_MS = 5000
 const DEFAULT_AGENT_BRIDGE_RECOVERY_SIGKILL_WAIT_MS = 250
 const OPENROUTER_WEB_UI_ATTRIBUTION_ENV = {
@@ -108,6 +110,11 @@ export function buildAgentBridgeProcessEnv(endpoint: string, DiTingHome: string 
   }
   delete env.ANTHROPIC_AUTH_TOKEN
   return env
+}
+
+export function shouldProbeExistingBridge(endpoint: string): boolean {
+  if (process.platform === 'win32' || !endpoint.startsWith('ipc://')) return true
+  return existsSync(endpoint.slice('ipc://'.length))
 }
 
 function pathCandidates(agentRoot?: string): string[] {
@@ -1017,11 +1024,20 @@ export class AgentBridgeManager {
   }
 
   private async attachExistingBridge(): Promise<boolean> {
+    if (!shouldProbeExistingBridge(this.endpoint)) {
+      this.attached = false
+      this.ready = false
+      return false
+    }
+
     try {
+      const defaultTimeoutMs = this.endpoint.startsWith('ipc://')
+        ? DEFAULT_IPC_AGENT_BRIDGE_ATTACH_TIMEOUT_MS
+        : DEFAULT_AGENT_BRIDGE_ATTACH_TIMEOUT_MS
       const client = new AgentBridgeClient({
         endpoint: this.endpoint,
-        timeoutMs: envPositiveInt('DiTing_AGENT_BRIDGE_ATTACH_TIMEOUT_MS') ?? 5000,
-        connectRetryMs: envPositiveInt('DiTing_AGENT_BRIDGE_ATTACH_RETRY_MS') ?? 5000,
+        timeoutMs: envPositiveInt('DiTing_AGENT_BRIDGE_ATTACH_TIMEOUT_MS') ?? defaultTimeoutMs,
+        connectRetryMs: envPositiveInt('DiTing_AGENT_BRIDGE_ATTACH_RETRY_MS') ?? defaultTimeoutMs,
       })
       await client.ping()
       this.child = null

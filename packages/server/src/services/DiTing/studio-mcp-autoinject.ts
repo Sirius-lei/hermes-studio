@@ -126,7 +126,9 @@ function isRecord(value: unknown): value is Record<string, any> {
 
 function isManagedServer(server: unknown): boolean {
   if (!isRecord(server)) return false
-  if (isRecord(server.env) && server.env[MANAGED_ENV_KEY] === '1') return true
+  if (isRecord(server.env) && Object.entries(server.env).some(([key, value]) => (
+    key.endsWith('_WEB_UI_MANAGED_MCP') && value === '1'
+  ))) return true
   return typeof server.command === 'string' && LEGACY_COMMANDS.has(server.command)
 }
 

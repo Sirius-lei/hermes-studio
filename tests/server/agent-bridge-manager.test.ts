@@ -152,6 +152,13 @@ describe('agent bridge manager command resolution', () => {
     expect(DEFAULT_AGENT_BRIDGE_ENDPOINT).not.toBe('ipc:///tmp/DiTing-agent-bridge.sock')
   })
 
+  it('does not wait for an existing bridge when the IPC socket is absent', async () => {
+    const { shouldProbeExistingBridge } = await import('../../packages/server/src/services/DiTing/agent-bridge/manager')
+
+    expect(shouldProbeExistingBridge(`ipc://${join(tempDir, 'missing.sock')}`)).toBe(false)
+    expect(shouldProbeExistingBridge('tcp://127.0.0.1:18765')).toBe(true)
+  })
+
   it('honors the bridge connect retry environment override', async () => {
     process.env.DiTing_AGENT_BRIDGE_CONNECT_RETRY_MS = '120000'
 
