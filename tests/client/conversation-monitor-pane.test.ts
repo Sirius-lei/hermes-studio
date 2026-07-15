@@ -8,7 +8,7 @@ const mockConversationsApi = vi.hoisted(() => ({
   fetchConversationDetail: vi.fn(),
 }))
 
-vi.mock('@/api/hermes/conversations', () => mockConversationsApi)
+vi.mock('@/api/DiTing/conversations', () => mockConversationsApi)
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({
@@ -19,7 +19,7 @@ vi.mock('vue-i18n', () => ({
   }),
 }))
 
-import ConversationMonitorPane from '@/components/hermes/chat/ConversationMonitorPane.vue'
+import ConversationMonitorPane from '@/components/DiTing/chat/ConversationMonitorPane.vue'
 
 async function flushPromises() {
   await Promise.resolve()

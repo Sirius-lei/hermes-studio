@@ -8,7 +8,7 @@ vi.mock('vue-i18n', () => ({
   }),
 }))
 
-import PlatformCard from '@/components/hermes/settings/PlatformCard.vue'
+import PlatformCard from '@/components/DiTing/settings/PlatformCard.vue'
 
 function mountCard(credentials: Record<string, any>) {
   return mount(PlatformCard, {
@@ -38,7 +38,7 @@ describe('PlatformCard', () => {
     expect(mountCard({
       extra: {
         homeserver: 'https://matrix.example.org',
-        user_id: '@hermes:example.org',
+        user_id: '@DiTing:example.org',
         password: 'secret',
       },
     }).find('.platform-card').classes()).toContain('configured')

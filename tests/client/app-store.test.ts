@@ -13,10 +13,10 @@ const mockSystemApi = vi.hoisted(() => ({
   triggerUpdate: vi.fn(),
 }))
 
-vi.mock('@/api/hermes/system', () => mockSystemApi)
+vi.mock('@/api/DiTing/system', () => mockSystemApi)
 vi.mock('@/api/client', () => ({ hasApiKey: () => true }))
 
-import { useAppStore } from '@/stores/hermes/app'
+import { useAppStore } from '@/stores/DiTing/app'
 
 describe('App Store', () => {
   beforeEach(() => {
@@ -38,11 +38,11 @@ describe('App Store', () => {
 
     store.toggleSidebarCollapsed()
     expect(store.sidebarCollapsed).toBe(true)
-    expect(window.localStorage.getItem('hermes_sidebar_collapsed')).toBe('1')
+    expect(window.localStorage.getItem('DiTing_sidebar_collapsed')).toBe('1')
 
     store.toggleSidebarCollapsed()
     expect(store.sidebarCollapsed).toBe(false)
-    expect(window.localStorage.getItem('hermes_sidebar_collapsed')).toBe('0')
+    expect(window.localStorage.getItem('DiTing_sidebar_collapsed')).toBe('0')
   })
 
   it('loads model visibility and falls back when the configured default is hidden', async () => {
@@ -202,7 +202,7 @@ describe('App Store', () => {
 
     expect(ok).toBe(false)
     expect(store.updating).toBe(false)
-    expect(consoleError).toHaveBeenCalledWith('Failed to update Hermes Web UI:', expect.any(Error))
+    expect(consoleError).toHaveBeenCalledWith('Failed to update DiTing Web UI:', expect.any(Error))
     consoleError.mockRestore()
   })
 
@@ -233,7 +233,7 @@ describe('App Store', () => {
   })
 
   it('selects the browser active profile default instead of the aggregate response default', async () => {
-    window.localStorage.setItem('hermes_active_profile_name', 'tester')
+    window.localStorage.setItem('DiTing_active_profile_name', 'tester')
     mockSystemApi.fetchAvailableModels.mockResolvedValue({
       default: 'glm-5-turbo',
       default_provider: 'custom:glm-coding-plan',

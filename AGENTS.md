@@ -29,8 +29,8 @@ Use the smallest relevant check while iterating. Before a broad PR, run
 ## Code Ownership Map
 
 - `packages/client/src` - Vue 3 client, stores, routes, i18n, API helpers.
-- `packages/server/src` - Koa API, Socket.IO, persistence, Hermes integration.
-- `packages/desktop` - Electron wrapper, bundled Python/Hermes runtime, release artifacts.
+- `packages/server/src` - Koa API, Socket.IO, persistence, DiTing integration.
+- `packages/desktop` - Electron wrapper, bundled Python/DiTing runtime, release artifacts.
 - `tests/client`, `tests/server`, `tests/shared` - Vitest coverage.
 - `tests/e2e` - Playwright browser coverage with mocked backend services.
 - `.github/workflows` - CI, release, Docker, and desktop packaging automation.
@@ -38,8 +38,8 @@ Use the smallest relevant check while iterating. Before a broad PR, run
 ## Hard Rules
 
 - Keep routes thin: put request handling in controllers and reusable behavior in services.
-- Keep Web UI state under `HERMES_WEB_UI_HOME` or `HERMES_WEBUI_STATE_DIR`.
-- Keep Hermes Agent state separate from Web UI state.
+- Keep Web UI state under `DiTing_WEB_UI_HOME` or `DiTing_WEBUI_STATE_DIR`.
+- Keep DiTing Agent state separate from Web UI state.
 - Register local API routes before proxy catch-all routes.
 - Use structured APIs and argument arrays instead of shell string construction.
 - Add user-facing strings to every locale file.

@@ -1,16 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { NButton, NModal, NSpin, useMessage } from 'naive-ui'
-import { useProfilesStore } from '@/stores/hermes/profiles'
+import { useProfilesStore } from '@/stores/DiTing/profiles'
 import {
   fetchProfileRuntimeStatusesWithMeta,
   restartProfileGateway,
   restartProfileRuntime,
-  type HermesProfile,
+  type DiTingProfile,
   type ProfileAvatar,
   type ProfileRuntimeStatus,
-} from '@/api/hermes/profiles'
-import ProfileAvatarView from '@/components/hermes/profiles/ProfileAvatar.vue'
+} from '@/api/DiTing/profiles'
+import ProfileAvatarView from '@/components/DiTing/profiles/ProfileAvatar.vue'
 import { useI18n } from 'vue-i18n'
 
 const emit = defineEmits<{
@@ -28,7 +28,7 @@ const runtimeStatuses = ref<ProfileRuntimeStatus[]>([])
 const runtimeLoading = ref(false)
 const showProfileModal = ref(false)
 const showAvatarModal = ref(false)
-const editingProfile = ref<HermesProfile | null>(null)
+const editingProfile = ref<DiTingProfile | null>(null)
 const avatarSaving = ref(false)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const gatewayRestarting = ref<Record<string, boolean>>({})
@@ -83,7 +83,7 @@ function handleProfileModalShowChange(show: boolean) {
   setProfileModalShow(show)
 }
 
-function openAvatarModal(profile: HermesProfile) {
+function openAvatarModal(profile: DiTingProfile) {
   editingProfile.value = profile
   showAvatarModal.value = true
 }

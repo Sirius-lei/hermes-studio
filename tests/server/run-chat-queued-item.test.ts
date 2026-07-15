@@ -20,27 +20,27 @@ const sessionStoreMocks = vi.hoisted(() => ({
   clearSessionMessages: vi.fn(),
 }))
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/handle-bridge-run', () => ({
+vi.mock('../../packages/server/src/services/DiTing/run-chat/handle-bridge-run', () => ({
   handleBridgeRun: handleBridgeRunMock,
   resumeBridgeRun: resumeBridgeRunMock,
 }))
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/load-state', () => ({
+vi.mock('../../packages/server/src/services/DiTing/run-chat/load-state', () => ({
   loadSessionStateFromDb: loadSessionStateFromDbMock,
   resolveRunSource: vi.fn((source?: string) => source || 'cli'),
 }))
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/handle-coding-agent-run', () => ({
+vi.mock('../../packages/server/src/services/DiTing/run-chat/handle-coding-agent-run', () => ({
   handleCodingAgentRun: handleCodingAgentRunMock,
 }))
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/session-command', () => sessionCommandMocks)
+vi.mock('../../packages/server/src/services/DiTing/run-chat/session-command', () => sessionCommandMocks)
 
-vi.mock('../../packages/server/src/services/hermes/agent-bridge', () => ({
+vi.mock('../../packages/server/src/services/DiTing/agent-bridge', () => ({
   AgentBridgeClient: vi.fn(() => bridgeMock),
 }))
 
-vi.mock('../../packages/server/src/services/hermes/agent-bridge/manager', () => ({
+vi.mock('../../packages/server/src/services/DiTing/agent-bridge/manager', () => ({
   getAgentBridgeManager: vi.fn(() => ({
     ensureReady: ensureReadyMock,
   })),
@@ -54,15 +54,15 @@ vi.mock('../../packages/server/src/lib/llm-prompt', () => ({
   getSystemPrompt: vi.fn(() => 'system prompt'),
 }))
 
-vi.mock('../../packages/server/src/db/hermes/session-store', () => ({
+vi.mock('../../packages/server/src/db/DiTing/session-store', () => ({
   clearSessionMessages: sessionStoreMocks.clearSessionMessages,
   getSession: vi.fn(() => ({ id: 'session-1', profile: 'default', source: 'cli' })),
   getSessionDetail: vi.fn(() => null),
 }))
 
-vi.mock('../../packages/server/src/services/hermes/hermes-profile', () => ({
+vi.mock('../../packages/server/src/services/DiTing/DiTing-profile', () => ({
   getActiveProfileName: vi.fn(() => 'default'),
-  getProfileDir: vi.fn(() => '/tmp/hermes-default'),
+  getProfileDir: vi.fn(() => '/tmp/DiTing-default'),
   listProfileNamesFromDisk: vi.fn(() => ['default']),
 }))
 
@@ -71,7 +71,7 @@ vi.mock('../../packages/server/src/middleware/user-auth', () => ({
   isAuthEnabled: vi.fn(async () => false),
 }))
 
-vi.mock('../../packages/server/src/db/hermes/users-store', () => ({
+vi.mock('../../packages/server/src/db/DiTing/users-store', () => ({
   userCanAccessProfile: vi.fn(() => true),
 }))
 
@@ -109,7 +109,7 @@ describe('ChatRunSocket queued bridge runs', () => {
     ensureReadyMock.mockResolvedValue({
       reachable: true,
       status: 'ready',
-      endpoint: 'ipc:///tmp/hermes-agent-bridge.sock',
+      endpoint: 'ipc:///tmp/diting-agent-bridge.sock',
     })
     bridgeMock.statusIfLoaded.mockResolvedValue({ ok: true, exists: false, running: false, loaded: false })
     bridgeMock.interrupt.mockResolvedValue({ ok: true })
@@ -125,7 +125,7 @@ describe('ChatRunSocket queued bridge runs', () => {
   })
 
   it('dispatches unknown slash bridge input through the normal bridge run path', async () => {
-    const { ChatRunSocket } = await import('../../packages/server/src/services/hermes/run-chat')
+    const { ChatRunSocket } = await import('../../packages/server/src/services/DiTing/run-chat')
     const { handlers, io, socket } = makeServerHarness()
     const server = new ChatRunSocket(io as any)
     ;(server as any).onConnection(socket)
@@ -154,7 +154,7 @@ describe('ChatRunSocket queued bridge runs', () => {
   })
 
   it('persists normal queued bridge messages when they are dequeued', async () => {
-    const { ChatRunSocket } = await import('../../packages/server/src/services/hermes/run-chat')
+    const { ChatRunSocket } = await import('../../packages/server/src/services/DiTing/run-chat')
     const { io, socket } = makeServerHarness()
     const server = new ChatRunSocket(io as any)
 
@@ -188,7 +188,7 @@ describe('ChatRunSocket queued bridge runs', () => {
       })
     })
 
-    const { ChatRunSocket } = await import('../../packages/server/src/services/hermes/run-chat')
+    const { ChatRunSocket } = await import('../../packages/server/src/services/DiTing/run-chat')
     const { io, namespace } = makeServerHarness()
     const server = new ChatRunSocket(io as any)
 
@@ -220,7 +220,7 @@ describe('ChatRunSocket queued bridge runs', () => {
       })
     })
 
-    const { ChatRunSocket } = await import('../../packages/server/src/services/hermes/run-chat')
+    const { ChatRunSocket } = await import('../../packages/server/src/services/DiTing/run-chat')
     const { io, namespace } = makeServerHarness()
     const server = new ChatRunSocket(io as any)
 
@@ -253,7 +253,7 @@ describe('ChatRunSocket queued bridge runs', () => {
       })
     })
 
-    const { ChatRunSocket } = await import('../../packages/server/src/services/hermes/run-chat')
+    const { ChatRunSocket } = await import('../../packages/server/src/services/DiTing/run-chat')
     const { io } = makeServerHarness()
     const server = new ChatRunSocket(io as any)
 
@@ -268,7 +268,7 @@ describe('ChatRunSocket queued bridge runs', () => {
   })
 
   it('persists the visible plan command when dequeuing expanded plan command runs', async () => {
-    const { ChatRunSocket } = await import('../../packages/server/src/services/hermes/run-chat')
+    const { ChatRunSocket } = await import('../../packages/server/src/services/DiTing/run-chat')
     const { io, socket } = makeServerHarness()
     const server = new ChatRunSocket(io as any)
 
@@ -295,7 +295,7 @@ describe('ChatRunSocket queued bridge runs', () => {
   })
 
   it('queues coding-agent messages while a coding-agent turn is active', async () => {
-    const { ChatRunSocket } = await import('../../packages/server/src/services/hermes/run-chat')
+    const { ChatRunSocket } = await import('../../packages/server/src/services/DiTing/run-chat')
     const { handlers, io, namespace, socket } = makeServerHarness()
     const server = new ChatRunSocket(io as any)
     ;(server as any).onConnection(socket)
@@ -332,7 +332,7 @@ describe('ChatRunSocket queued bridge runs', () => {
   })
 
   it('dequeues coding-agent messages when an external coding-agent run completes', async () => {
-    const { ChatRunSocket } = await import('../../packages/server/src/services/hermes/run-chat')
+    const { ChatRunSocket } = await import('../../packages/server/src/services/DiTing/run-chat')
     const { io, socket } = makeServerHarness()
     const server = new ChatRunSocket(io as any)
     ;(server as any).sessionMap.set('session-1', {
@@ -367,7 +367,7 @@ describe('ChatRunSocket queued bridge runs', () => {
   })
 
   it('checks bridge resume status without cold-starting the profile worker', async () => {
-    const { ChatRunSocket } = await import('../../packages/server/src/services/hermes/run-chat')
+    const { ChatRunSocket } = await import('../../packages/server/src/services/DiTing/run-chat')
     const { handlers, io, socket } = makeServerHarness()
     const server = new ChatRunSocket(io as any)
 
@@ -391,7 +391,7 @@ describe('ChatRunSocket queued bridge runs', () => {
       current_run_id: 'run-1',
       loaded: true,
     })
-    const { ChatRunSocket } = await import('../../packages/server/src/services/hermes/run-chat')
+    const { ChatRunSocket } = await import('../../packages/server/src/services/DiTing/run-chat')
     const { handlers, io, socket } = makeServerHarness()
     const server = new ChatRunSocket(io as any)
 
@@ -413,7 +413,7 @@ describe('ChatRunSocket queued bridge runs', () => {
   })
 
   it('clears chat-run memory state when an external MCU clear removes history', async () => {
-    const { ChatRunSocket } = await import('../../packages/server/src/services/hermes/run-chat')
+    const { ChatRunSocket } = await import('../../packages/server/src/services/DiTing/run-chat')
     const { io, namespace } = makeServerHarness()
     const server = new ChatRunSocket(io as any)
     const abortController = new AbortController()

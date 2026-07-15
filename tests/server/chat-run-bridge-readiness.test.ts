@@ -14,31 +14,31 @@ const bridgeMock = vi.hoisted(() => ({
   statusIfLoaded: vi.fn(),
 }))
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/handle-bridge-run', () => ({
+vi.mock('../../packages/server/src/services/DiTing/run-chat/handle-bridge-run', () => ({
   handleBridgeRun: handleBridgeRunMock,
   resumeBridgeRun: resumeBridgeRunMock,
 }))
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/load-state', () => ({
+vi.mock('../../packages/server/src/services/DiTing/run-chat/load-state', () => ({
   loadSessionStateFromDb: loadSessionStateFromDbMock,
   resolveRunSource: vi.fn((source?: string) => source || 'cli'),
 }))
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/handle-coding-agent-run', () => ({
+vi.mock('../../packages/server/src/services/DiTing/run-chat/handle-coding-agent-run', () => ({
   handleCodingAgentRun: handleCodingAgentRunMock,
 }))
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/session-command', () => ({
+vi.mock('../../packages/server/src/services/DiTing/run-chat/session-command', () => ({
   handleSessionCommand: vi.fn(),
   isSessionCommand: vi.fn(() => false),
   parseSessionCommand: vi.fn(() => null),
 }))
 
-vi.mock('../../packages/server/src/services/hermes/agent-bridge', () => ({
+vi.mock('../../packages/server/src/services/DiTing/agent-bridge', () => ({
   AgentBridgeClient: vi.fn(() => bridgeMock),
 }))
 
-vi.mock('../../packages/server/src/services/hermes/agent-bridge/manager', () => ({
+vi.mock('../../packages/server/src/services/DiTing/agent-bridge/manager', () => ({
   getAgentBridgeManager: vi.fn(() => ({
     ensureReady: ensureReadyMock,
     getRuntimeState: getRuntimeStateMock,
@@ -53,14 +53,14 @@ vi.mock('../../packages/server/src/lib/llm-prompt', () => ({
   getSystemPrompt: vi.fn(() => 'system prompt'),
 }))
 
-vi.mock('../../packages/server/src/db/hermes/session-store', () => ({
+vi.mock('../../packages/server/src/db/DiTing/session-store', () => ({
   getSession: getSessionMock,
   getSessionDetail: vi.fn(() => null),
 }))
 
-vi.mock('../../packages/server/src/services/hermes/hermes-profile', () => ({
+vi.mock('../../packages/server/src/services/DiTing/DiTing-profile', () => ({
   getActiveProfileName: vi.fn(() => 'default'),
-  getProfileDir: vi.fn(() => '/tmp/hermes-default'),
+  getProfileDir: vi.fn(() => '/tmp/DiTing-default'),
   listProfileNamesFromDisk: vi.fn(() => ['default']),
 }))
 
@@ -69,7 +69,7 @@ vi.mock('../../packages/server/src/middleware/user-auth', () => ({
   isAuthEnabled: vi.fn(async () => false),
 }))
 
-vi.mock('../../packages/server/src/db/hermes/users-store', () => ({
+vi.mock('../../packages/server/src/db/DiTing/users-store', () => ({
   userCanAccessProfile: vi.fn(() => true),
 }))
 
@@ -118,13 +118,13 @@ describe('ensureBridgeReadyForChatRun', () => {
     ensureReadyMock.mockResolvedValue({
       reachable: true,
       status: 'ready',
-      endpoint: 'ipc:///tmp/hermes-agent-bridge.sock',
+      endpoint: 'ipc:///tmp/diting-agent-bridge.sock',
     })
-    getRuntimeStateMock.mockReturnValue({ endpoint: 'ipc:///tmp/hermes-agent-bridge.sock' })
+    getRuntimeStateMock.mockReturnValue({ endpoint: 'ipc:///tmp/diting-agent-bridge.sock' })
   })
 
   it('allows reachable bridge readiness', async () => {
-    const { ensureBridgeReadyForChatRun } = await import('../../packages/server/src/services/hermes/run-chat')
+    const { ensureBridgeReadyForChatRun } = await import('../../packages/server/src/services/DiTing/run-chat')
 
     await expect(ensureBridgeReadyForChatRun()).resolves.toEqual({ ok: true })
     expect(ensureReadyMock).toHaveBeenCalledWith({ timeoutMs: 1000, connectRetryMs: 0, recover: false })
@@ -134,10 +134,10 @@ describe('ensureBridgeReadyForChatRun', () => {
     ensureReadyMock.mockResolvedValueOnce({
       reachable: false,
       status: 'unreachable',
-      endpoint: 'ipc:///tmp/hermes-agent-bridge.sock',
-      error: 'connect ECONNREFUSED ipc:///tmp/hermes-agent-bridge.sock',
+      endpoint: 'ipc:///tmp/diting-agent-bridge.sock',
+      error: 'connect ECONNREFUSED ipc:///tmp/diting-agent-bridge.sock',
     })
-    const { ensureBridgeReadyForChatRun } = await import('../../packages/server/src/services/hermes/run-chat')
+    const { ensureBridgeReadyForChatRun } = await import('../../packages/server/src/services/DiTing/run-chat')
 
     await expect(ensureBridgeReadyForChatRun()).resolves.toEqual({
       ok: false,
@@ -152,7 +152,7 @@ describe('ensureBridgeReadyForChatRun', () => {
       endpoint: 'tcp://example.internal:43123',
       error: 'connect ECONNREFUSED example.internal:43123',
     })
-    const { ensureBridgeReadyForChatRun } = await import('../../packages/server/src/services/hermes/run-chat')
+    const { ensureBridgeReadyForChatRun } = await import('../../packages/server/src/services/DiTing/run-chat')
 
     await expect(ensureBridgeReadyForChatRun()).resolves.toEqual({
       ok: false,
@@ -162,7 +162,7 @@ describe('ensureBridgeReadyForChatRun', () => {
 
   it('handles thrown ensureReady failures', async () => {
     ensureReadyMock.mockRejectedValueOnce(new Error('bridge startup timed out'))
-    const { ensureBridgeReadyForChatRun } = await import('../../packages/server/src/services/hermes/run-chat')
+    const { ensureBridgeReadyForChatRun } = await import('../../packages/server/src/services/DiTing/run-chat')
 
     await expect(ensureBridgeReadyForChatRun()).resolves.toEqual({
       ok: false,
@@ -185,9 +185,9 @@ describe('ChatRunSocket bridge readiness gating', () => {
     ensureReadyMock.mockResolvedValue({
       reachable: true,
       status: 'ready',
-      endpoint: 'ipc:///tmp/hermes-agent-bridge.sock',
+      endpoint: 'ipc:///tmp/diting-agent-bridge.sock',
     })
-    getRuntimeStateMock.mockReturnValue({ endpoint: 'ipc:///tmp/hermes-agent-bridge.sock' })
+    getRuntimeStateMock.mockReturnValue({ endpoint: 'ipc:///tmp/diting-agent-bridge.sock' })
     bridgeMock.statusIfLoaded.mockResolvedValue({ ok: true, exists: false, running: false, loaded: false })
     loadSessionStateFromDbMock.mockResolvedValue({
       messages: [],
@@ -202,10 +202,10 @@ describe('ChatRunSocket bridge readiness gating', () => {
     ensureReadyMock.mockResolvedValueOnce({
       reachable: false,
       status: 'unreachable',
-      endpoint: 'ipc:///tmp/hermes-agent-bridge.sock',
+      endpoint: 'ipc:///tmp/diting-agent-bridge.sock',
       error: 'bridge offline',
     })
-    const { ChatRunSocket } = await import('../../packages/server/src/services/hermes/run-chat')
+    const { ChatRunSocket } = await import('../../packages/server/src/services/DiTing/run-chat')
     const { handlers, io, socket } = makeServerHarness()
     const server = new ChatRunSocket(io as any)
 
@@ -225,7 +225,7 @@ describe('ChatRunSocket bridge readiness gating', () => {
   })
 
   it('routes legacy api_server runs through the bridge path', async () => {
-    const { ChatRunSocket } = await import('../../packages/server/src/services/hermes/run-chat')
+    const { ChatRunSocket } = await import('../../packages/server/src/services/DiTing/run-chat')
     const { handlers, io, socket } = makeServerHarness()
     const server = new ChatRunSocket(io as any)
 
@@ -241,8 +241,8 @@ describe('ChatRunSocket bridge readiness gating', () => {
     expect(socket.emit).not.toHaveBeenCalledWith('run.failed', expect.anything())
   })
 
-  it('routes global-agent Hermes runs through the bridge run path while preserving session source', async () => {
-    const { ChatRunSocket } = await import('../../packages/server/src/services/hermes/run-chat')
+  it('routes global-agent DiTing runs through the bridge run path while preserving session source', async () => {
+    const { ChatRunSocket } = await import('../../packages/server/src/services/DiTing/run-chat')
     const { handlers, io, socket } = makeServerHarness()
     const server = new ChatRunSocket(io as any)
 
@@ -264,7 +264,7 @@ describe('ChatRunSocket bridge readiness gating', () => {
   })
 
   it('routes global coding-agent runs through the coding-agent path while preserving session source', async () => {
-    const { ChatRunSocket } = await import('../../packages/server/src/services/hermes/run-chat')
+    const { ChatRunSocket } = await import('../../packages/server/src/services/DiTing/run-chat')
     const { handlers, io, socket } = makeServerHarness()
     const server = new ChatRunSocket(io as any)
 
@@ -297,15 +297,15 @@ describe('ChatRunSocket bridge readiness gating', () => {
       .mockResolvedValueOnce({
         reachable: false,
         status: 'unreachable',
-        endpoint: 'ipc:///tmp/hermes-agent-bridge.sock',
+        endpoint: 'ipc:///tmp/diting-agent-bridge.sock',
         error: 'bridge offline',
       })
       .mockResolvedValueOnce({
         reachable: true,
         status: 'ready',
-        endpoint: 'ipc:///tmp/hermes-agent-bridge.sock',
+        endpoint: 'ipc:///tmp/diting-agent-bridge.sock',
       })
-    const { ChatRunSocket } = await import('../../packages/server/src/services/hermes/run-chat')
+    const { ChatRunSocket } = await import('../../packages/server/src/services/DiTing/run-chat')
     const { emitted, io, socket } = makeServerHarness()
     const server = new ChatRunSocket(io as any)
 
@@ -371,7 +371,7 @@ describe('ChatRunSocket bridge readiness gating', () => {
         current_run_id: 'run-1',
         loaded: true,
       })
-    const { ChatRunSocket } = await import('../../packages/server/src/services/hermes/run-chat')
+    const { ChatRunSocket } = await import('../../packages/server/src/services/DiTing/run-chat')
     const { emitted, handlers, io, socket } = makeServerHarness()
     const server = new ChatRunSocket(io as any)
 
@@ -398,7 +398,7 @@ describe('ChatRunSocket bridge readiness gating', () => {
   })
 
   it('emits a non-terminal reattach warning and preserves stale state when bridge status lookup throws during resume', async () => {
-    bridgeMock.statusIfLoaded.mockRejectedValueOnce(new Error('connect ECONNREFUSED ipc:///tmp/hermes-agent-bridge.sock'))
+    bridgeMock.statusIfLoaded.mockRejectedValueOnce(new Error('connect ECONNREFUSED ipc:///tmp/diting-agent-bridge.sock'))
     loadSessionStateFromDbMock.mockResolvedValueOnce({
       messages: [],
       isWorking: false,
@@ -410,7 +410,7 @@ describe('ChatRunSocket bridge readiness gating', () => {
       events: [{ event: 'run.started', data: { run_id: 'stale-run' } }],
       queue: [],
     })
-    const { ChatRunSocket } = await import('../../packages/server/src/services/hermes/run-chat')
+    const { ChatRunSocket } = await import('../../packages/server/src/services/DiTing/run-chat')
     const { emitted, handlers, io, socket } = makeServerHarness()
     const server = new ChatRunSocket(io as any)
 
@@ -474,7 +474,7 @@ describe('ChatRunSocket bridge readiness gating', () => {
       events: [],
       queue: [],
     })
-    const { ChatRunSocket } = await import('../../packages/server/src/services/hermes/run-chat')
+    const { ChatRunSocket } = await import('../../packages/server/src/services/DiTing/run-chat')
     const { emitted, handlers, io, socket } = makeServerHarness()
     const server = new ChatRunSocket(io as any)
 
@@ -496,7 +496,7 @@ describe('ChatRunSocket bridge readiness gating', () => {
     expect((server as any).bridgeResumePolls.size).toBe(0)
   })
 
-  it('does not query Hermes bridge status when resuming a coding agent session', async () => {
+  it('does not query DiTing bridge status when resuming a coding agent session', async () => {
     getSessionMock.mockImplementation((sessionId?: string) => sessionId
       ? { id: sessionId, profile: 'default', source: 'coding_agent', model: 'codex', provider: 'codex' }
       : undefined)
@@ -511,7 +511,7 @@ describe('ChatRunSocket bridge readiness gating', () => {
       events: [],
       queue: [],
     })
-    const { ChatRunSocket } = await import('../../packages/server/src/services/hermes/run-chat')
+    const { ChatRunSocket } = await import('../../packages/server/src/services/DiTing/run-chat')
     const { emitted, handlers, io, socket } = makeServerHarness()
     const server = new ChatRunSocket(io as any)
 
@@ -551,7 +551,7 @@ describe('ChatRunSocket bridge readiness gating', () => {
       events: [],
       queue: [],
     })
-    const { ChatRunSocket } = await import('../../packages/server/src/services/hermes/run-chat')
+    const { ChatRunSocket } = await import('../../packages/server/src/services/DiTing/run-chat')
     const { emitted, handlers, io, socket } = makeServerHarness()
     const server = new ChatRunSocket(io as any)
 
@@ -580,7 +580,7 @@ describe('ChatRunSocket bridge readiness gating', () => {
     }))
   })
 
-  it('checks Hermes bridge status when resuming an api server session', async () => {
+  it('checks DiTing bridge status when resuming an api server session', async () => {
     getSessionMock.mockImplementation((sessionId?: string) => sessionId
       ? { id: sessionId, profile: 'default', source: 'api_server', model: 'gpt-test', provider: 'openai' }
       : undefined)
@@ -601,7 +601,7 @@ describe('ChatRunSocket bridge readiness gating', () => {
       events: [],
       queue: [],
     })
-    const { ChatRunSocket } = await import('../../packages/server/src/services/hermes/run-chat')
+    const { ChatRunSocket } = await import('../../packages/server/src/services/DiTing/run-chat')
     const { emitted, handlers, io, socket } = makeServerHarness()
     const server = new ChatRunSocket(io as any)
 

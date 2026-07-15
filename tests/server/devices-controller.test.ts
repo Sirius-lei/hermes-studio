@@ -24,8 +24,8 @@ const device: LanDeviceInfo = {
     release: '1',
     arch: 'x64',
   },
-  hermes_agent_version: 'v1',
-  hermes_web_ui_version: '1',
+  DiTing_agent_version: 'v1',
+  DiTing_web_ui_version: '1',
   response_ms: 12,
   last_seen_at: new Date().toISOString(),
 }
@@ -41,8 +41,8 @@ describe('devices controller', () => {
       getDb: () => db,
       getStoragePath: () => ':memory:',
     }))
-    const { initAllHermesTables } = await import('../../packages/server/src/db/hermes/schemas')
-    initAllHermesTables()
+    const { initAllDiTingTables } = await import('../../packages/server/src/db/DiTing/schemas')
+    initAllDiTingTables()
   })
 
   afterEach(() => {
@@ -55,7 +55,7 @@ describe('devices controller', () => {
   })
 
   it('returns the inbound pairing status for a signed device status request', async () => {
-    const { requestInboundDeviceLink, updateInboundStatus } = await import('../../packages/server/src/db/hermes/devices-store')
+    const { requestInboundDeviceLink, updateInboundStatus } = await import('../../packages/server/src/db/DiTing/devices-store')
     requestInboundDeviceLink(device)
     updateInboundStatus(device.id, 'approved')
 
@@ -100,7 +100,7 @@ describe('devices controller', () => {
       },
     }
 
-    const { getDeviceRelation } = await import('../../packages/server/src/db/hermes/devices-store')
+    const { getDeviceRelation } = await import('../../packages/server/src/db/DiTing/devices-store')
     const { requestDeviceLinkController } = await import('../../packages/server/src/controllers/devices')
     await requestDeviceLinkController(ctx)
 
@@ -127,7 +127,7 @@ describe('devices controller', () => {
       },
     }
 
-    const { getDeviceRelation } = await import('../../packages/server/src/db/hermes/devices-store')
+    const { getDeviceRelation } = await import('../../packages/server/src/db/DiTing/devices-store')
     const { requestDeviceLinkController } = await import('../../packages/server/src/controllers/devices')
     await requestDeviceLinkController(ctx)
 
@@ -164,7 +164,7 @@ describe('devices controller', () => {
       },
     }
 
-    const { getDeviceRelation } = await import('../../packages/server/src/db/hermes/devices-store')
+    const { getDeviceRelation } = await import('../../packages/server/src/db/DiTing/devices-store')
     const { requestDeviceLinkController } = await import('../../packages/server/src/controllers/devices')
     await requestDeviceLinkController(ctx)
 
@@ -193,7 +193,7 @@ describe('devices controller', () => {
       },
     }
 
-    const { getDeviceRelation } = await import('../../packages/server/src/db/hermes/devices-store')
+    const { getDeviceRelation } = await import('../../packages/server/src/db/DiTing/devices-store')
     const { requestDeviceLinkController } = await import('../../packages/server/src/controllers/devices')
     await requestDeviceLinkController(ctx)
 
@@ -225,7 +225,7 @@ describe('devices controller', () => {
       },
     }
 
-    const { getDeviceRelation } = await import('../../packages/server/src/db/hermes/devices-store')
+    const { getDeviceRelation } = await import('../../packages/server/src/db/DiTing/devices-store')
     const { requestDeviceLinkController } = await import('../../packages/server/src/controllers/devices')
     await requestDeviceLinkController(ctx)
 
@@ -252,7 +252,7 @@ describe('devices controller', () => {
 
     expect(ctx.body).toEqual({
       code: 'pair-secret',
-      link: 'https://studio.example.com/#/hermes/devices?pairing_code=pair-secret',
+      link: 'https://studio.example.com/#/DiTing/devices?pairing_code=pair-secret',
     })
   })
 
@@ -283,7 +283,7 @@ describe('devices controller', () => {
 
     expect(ctx.body).toEqual({
       code: 'pair-secret',
-      link: 'http://192.168.1.88:8648/#/hermes/devices?pairing_code=pair-secret',
+      link: 'http://192.168.1.88:8648/#/DiTing/devices?pairing_code=pair-secret',
     })
   })
 
@@ -339,8 +339,8 @@ describe('devices controller', () => {
           device_public_key: keyPair.publicKey,
           computer_name: 'local',
           os: { type: 'TestOS', platform: 'linux', release: '1', arch: 'x64' },
-          hermes_agent_version: 'v1',
-          hermes_web_ui_version: '1',
+          DiTing_agent_version: 'v1',
+          DiTing_web_ui_version: '1',
         }),
         createDeviceSignature: async () => 'signature',
       }
@@ -353,7 +353,7 @@ describe('devices controller', () => {
     }))
     vi.stubGlobal('fetch', fetchMock)
 
-    const { requestInboundDeviceLink, updateInboundStatus, getDeviceRelation } = await import('../../packages/server/src/db/hermes/devices-store')
+    const { requestInboundDeviceLink, updateInboundStatus, getDeviceRelation } = await import('../../packages/server/src/db/DiTing/devices-store')
     requestInboundDeviceLink(device)
     updateInboundStatus(device.id, 'approved')
 
@@ -429,8 +429,8 @@ describe('devices controller', () => {
             device_public_key: keyPair.publicKey,
             computer_name: 'local',
             os: { type: 'TestOS', platform: 'darwin', release: '1', arch: 'arm64' },
-            hermes_agent_version: 'v1',
-            hermes_web_ui_version: '1',
+            DiTing_agent_version: 'v1',
+            DiTing_web_ui_version: '1',
           }),
           createDeviceSignature: async () => 'signature',
         }
@@ -446,7 +446,7 @@ describe('devices controller', () => {
       })
       vi.stubGlobal('fetch', fetchMock)
 
-      const { getDeviceRelation } = await import('../../packages/server/src/db/hermes/devices-store')
+      const { getDeviceRelation } = await import('../../packages/server/src/db/DiTing/devices-store')
       const { requestDevicePairing } = await import('../../packages/server/src/controllers/devices')
       const ctx: any = {
         params: { id: fallbackDevice.id },
@@ -498,8 +498,8 @@ describe('devices controller', () => {
           device_public_key: keyPair.publicKey,
           computer_name: 'local',
           os: { type: 'TestOS', platform: 'linux', release: '1', arch: 'x64' },
-          hermes_agent_version: 'v1',
-          hermes_web_ui_version: '1',
+          DiTing_agent_version: 'v1',
+          DiTing_web_ui_version: '1',
         }),
         createDeviceSignature: async () => 'signature',
       }
@@ -517,8 +517,8 @@ describe('devices controller', () => {
             endpoint_kind: 'web',
             http_port: 443,
             os: { type: 'Linux', platform: 'linux', release: '1', arch: 'x64' },
-            hermes_agent_version: 'v1',
-            hermes_web_ui_version: '1',
+            DiTing_agent_version: 'v1',
+            DiTing_web_ui_version: '1',
           }),
         }
       }
@@ -543,12 +543,12 @@ describe('devices controller', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    const { getDeviceRelation } = await import('../../packages/server/src/db/hermes/devices-store')
+    const { getDeviceRelation } = await import('../../packages/server/src/db/DiTing/devices-store')
     const { requestManualDevicePairing } = await import('../../packages/server/src/controllers/devices')
     const ctx: any = {
       request: {
         body: {
-          url: 'https://remote.example.com/#/hermes/devices?pairing_code=pair-secret',
+          url: 'https://remote.example.com/#/DiTing/devices?pairing_code=pair-secret',
         },
       },
     }
@@ -603,8 +603,8 @@ describe('devices controller', () => {
           device_public_key: keyPair.publicKey,
           computer_name: 'local',
           os: { type: 'TestOS', platform: 'linux', release: '1', arch: 'x64' },
-          hermes_agent_version: 'v1',
-          hermes_web_ui_version: '1',
+          DiTing_agent_version: 'v1',
+          DiTing_web_ui_version: '1',
         }),
         createDeviceSignature: async () => 'signature',
       }
@@ -615,7 +615,7 @@ describe('devices controller', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    const { updateOutboundStatus } = await import('../../packages/server/src/db/hermes/devices-store')
+    const { updateOutboundStatus } = await import('../../packages/server/src/db/DiTing/devices-store')
     const { listDevices } = await import('../../packages/server/src/controllers/devices')
     updateOutboundStatus(device.id, 'approved', {
       ...device,

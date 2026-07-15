@@ -17,7 +17,7 @@ const { mockGatewayAutostartDisabledByEnv, mockRestartGateway, mockReconcileGate
   mockDestroyProfile: vi.fn().mockResolvedValue({ destroyed: true }),
 }))
 
-vi.mock('../../packages/server/src/services/hermes/gateway-autostart', () => {
+vi.mock('../../packages/server/src/services/DiTing/gateway-autostart', () => {
   return {
     gatewayAutostartDisabledByEnv: mockGatewayAutostartDisabledByEnv,
     reconcileGatewayManagementTransition: mockReconcileGatewayManagement,
@@ -25,22 +25,22 @@ vi.mock('../../packages/server/src/services/hermes/gateway-autostart', () => {
   }
 })
 
-vi.mock('../../packages/server/src/services/hermes/agent-bridge', () => ({
+vi.mock('../../packages/server/src/services/DiTing/agent-bridge', () => ({
   AgentBridgeClient: class {
     destroyProfile = mockDestroyProfile
   },
 }))
 
-const originalHermesHome = process.env.HERMES_HOME
-const originalWebUiHome = process.env.HERMES_WEB_UI_HOME
+const originalDiTingHome = process.env.DiTing_HOME
+const originalWebUiHome = process.env.DiTing_WEB_UI_HOME
 const tempHomes: string[] = []
-let hermesHome = ''
+let DiTingHome = ''
 
 async function loadController() {
   vi.resetModules()
-  process.env.HERMES_HOME = hermesHome
-  process.env.HERMES_WEB_UI_HOME = hermesHome
-  return import('../../packages/server/src/controllers/hermes/config')
+  process.env.DiTing_HOME = DiTingHome
+  process.env.DiTing_WEB_UI_HOME = DiTingHome
+  return import('../../packages/server/src/controllers/DiTing/config')
 }
 
 function makeCtx(body: unknown, profile?: string): any {
@@ -57,24 +57,24 @@ function makeCtx(body: unknown, profile?: string): any {
 beforeEach(async () => {
   vi.clearAllMocks()
   mockGatewayAutostartDisabledByEnv.mockReturnValue(false)
-  hermesHome = await mkdtemp(join(tmpdir(), 'hermes-config-controller-'))
-  tempHomes.push(hermesHome)
-  await mkdir(hermesHome, { recursive: true })
+  DiTingHome = await mkdtemp(join(tmpdir(), 'DiTing-config-controller-'))
+  tempHomes.push(DiTingHome)
+  await mkdir(DiTingHome, { recursive: true })
 })
 
 afterEach(async () => {
   vi.resetModules()
-  if (originalHermesHome === undefined) delete process.env.HERMES_HOME
-  else process.env.HERMES_HOME = originalHermesHome
-  if (originalWebUiHome === undefined) delete process.env.HERMES_WEB_UI_HOME
-  else process.env.HERMES_WEB_UI_HOME = originalWebUiHome
+  if (originalDiTingHome === undefined) delete process.env.DiTing_HOME
+  else process.env.DiTing_HOME = originalDiTingHome
+  if (originalWebUiHome === undefined) delete process.env.DiTing_WEB_UI_HOME
+  else process.env.DiTing_WEB_UI_HOME = originalWebUiHome
   await Promise.all(tempHomes.splice(0).map(dir => rm(dir, { recursive: true, force: true })))
-  hermesHome = ''
+  DiTingHome = ''
 })
 
 describe('config controller locked file updates', () => {
-  it('deep merges a config section and restarts the gateway through hermes-cli', async () => {
-    await writeFile(join(hermesHome, 'config.yaml'), [
+  it('deep merges a config section and restarts the gateway through DiTing-cli', async () => {
+    await writeFile(join(DiTingHome, 'config.yaml'), [
       'telegram:',
       '  enabled: false',
       '  extra:',
@@ -91,19 +91,19 @@ describe('config controller locked file updates', () => {
     expect(ctx.body).toEqual({ success: true })
     expect(mockRestartGateway).toHaveBeenCalledWith('default')
     expect(mockDestroyProfile).not.toHaveBeenCalled()
-    const config = YAML.load(await readFile(join(hermesHome, 'config.yaml'), 'utf-8')) as any
+    const config = YAML.load(await readFile(join(DiTingHome, 'config.yaml'), 'utf-8')) as any
     expect(config.telegram.enabled).toBe(true)
     expect(config.telegram.extra).toEqual({ mode: 'old', token_mode: 'env' })
     expect(config.model.default).toBe('glm-5.1')
   })
 
   it('does not auto-restart gateway for channel config when gateway auto-start is disabled', async () => {
-    await writeFile(join(hermesHome, 'config.yaml'), [
+    await writeFile(join(DiTingHome, 'config.yaml'), [
       'telegram:',
       '  enabled: false',
       '',
     ].join('\n'), 'utf-8')
-    await writeFile(join(hermesHome, 'config.json'), JSON.stringify({
+    await writeFile(join(DiTingHome, 'config.json'), JSON.stringify({
       gatewayAutoStart: { enabled: false },
     }), 'utf-8')
     const { updateConfig } = await loadController()
@@ -113,13 +113,13 @@ describe('config controller locked file updates', () => {
 
     expect(ctx.body).toEqual({ success: true })
     expect(mockRestartGateway).not.toHaveBeenCalled()
-    const config = YAML.load(await readFile(join(hermesHome, 'config.yaml'), 'utf-8')) as any
+    const config = YAML.load(await readFile(join(DiTingHome, 'config.yaml'), 'utf-8')) as any
     expect(config.telegram.enabled).toBe(true)
   })
 
   it('does not auto-restart gateway for channel config when gateway autostart is disabled by env', async () => {
     mockGatewayAutostartDisabledByEnv.mockReturnValue(true)
-    await writeFile(join(hermesHome, 'config.yaml'), [
+    await writeFile(join(DiTingHome, 'config.yaml'), [
       'telegram:',
       '  enabled: false',
       '',
@@ -135,7 +135,7 @@ describe('config controller locked file updates', () => {
 
 
   it('reads and writes gateway auto-start policy from Web UI app config', async () => {
-    await writeFile(join(hermesHome, 'config.yaml'), [
+    await writeFile(join(DiTingHome, 'config.yaml'), [
       'model:',
       '  default: keep-model',
       '',
@@ -172,13 +172,13 @@ describe('config controller locked file updates', () => {
       exclude: ['scratch', 'missing'],
     })
 
-    const persisted = JSON.parse(await readFile(join(hermesHome, 'config.json'), 'utf-8'))
+    const persisted = JSON.parse(await readFile(join(DiTingHome, 'config.json'), 'utf-8'))
     expect(persisted.gatewayAutoStart).toEqual({
       enabled: true,
       include: ['default', 'reviewer'],
       exclude: ['scratch', 'missing'],
     })
-    const yamlConfig = YAML.load(await readFile(join(hermesHome, 'config.yaml'), 'utf-8')) as any
+    const yamlConfig = YAML.load(await readFile(join(DiTingHome, 'config.yaml'), 'utf-8')) as any
     expect(yamlConfig.gatewayAutoStart).toBeUndefined()
     expect(yamlConfig.multiplex_profiles).toBe(true)
     expect(yamlConfig.gateway).toBeUndefined()
@@ -195,7 +195,7 @@ describe('config controller locked file updates', () => {
   })
 
   it('does not reconcile gateway management when Web UI gateway auto-start is disabled', async () => {
-    await writeFile(join(hermesHome, 'config.yaml'), 'model:\n  default: keep-model\n', 'utf-8')
+    await writeFile(join(DiTingHome, 'config.yaml'), 'model:\n  default: keep-model\n', 'utf-8')
     const { updateConfig } = await loadController()
 
     const ctx = makeCtx({
@@ -219,7 +219,7 @@ describe('config controller locked file updates', () => {
 
   it('does not reconcile gateway management when gateway autostart is disabled by env', async () => {
     mockGatewayAutostartDisabledByEnv.mockReturnValue(true)
-    await writeFile(join(hermesHome, 'config.yaml'), 'model:\n  default: keep-model\n', 'utf-8')
+    await writeFile(join(DiTingHome, 'config.yaml'), 'model:\n  default: keep-model\n', 'utf-8')
     const { updateConfig } = await loadController()
 
     const ctx = makeCtx({
@@ -241,8 +241,8 @@ describe('config controller locked file updates', () => {
     expect(mockReconcileGatewayManagement).not.toHaveBeenCalled()
   })
 
-  it('removes Hermes multiplex gateway config when unified gateway is disabled', async () => {
-    await writeFile(join(hermesHome, 'config.yaml'), [
+  it('removes DiTing multiplex gateway config when unified gateway is disabled', async () => {
+    await writeFile(join(DiTingHome, 'config.yaml'), [
       'gateway:',
       '  multiplex_profiles: true',
       'model:',
@@ -260,14 +260,14 @@ describe('config controller locked file updates', () => {
     await updateConfig(ctx)
 
     expect(ctx.body.gatewayAutoStart.management).toBe('per_profile')
-    const yamlConfig = YAML.load(await readFile(join(hermesHome, 'config.yaml'), 'utf-8')) as any
+    const yamlConfig = YAML.load(await readFile(join(DiTingHome, 'config.yaml'), 'utf-8')) as any
     expect(yamlConfig.gateway).toBeUndefined()
     expect(yamlConfig.multiplex_profiles).toBeUndefined()
     expect(yamlConfig.model.default).toBe('keep-model')
   })
 
   it('clears credential env values and removes matching config fields without losing unrelated env keys', async () => {
-    await writeFile(join(hermesHome, 'config.yaml'), [
+    await writeFile(join(DiTingHome, 'config.yaml'), [
       'platforms:',
       '  weixin:',
       '    token: old-token',
@@ -278,7 +278,7 @@ describe('config controller locked file updates', () => {
       '  default: glm-5.1',
       '',
     ].join('\n'), 'utf-8')
-    await writeFile(join(hermesHome, '.env'), [
+    await writeFile(join(DiTingHome, '.env'), [
       'OPENROUTER_API_KEY=keep',
       'WEIXIN_TOKEN=old-token',
       'WEIXIN_ACCOUNT_ID=old-account',
@@ -290,12 +290,12 @@ describe('config controller locked file updates', () => {
     await updateCredentials(ctx)
 
     expect(ctx.body).toEqual({ success: true })
-    const env = await readFile(join(hermesHome, '.env'), 'utf-8')
+    const env = await readFile(join(DiTingHome, '.env'), 'utf-8')
     expect(env).toContain('OPENROUTER_API_KEY=keep')
     expect(env).not.toContain('WEIXIN_TOKEN=')
     expect(env).not.toContain('WEIXIN_ACCOUNT_ID=')
     expect(env).toContain('WEIXIN_BASE_URL=https://new.example')
-    const config = YAML.load(await readFile(join(hermesHome, 'config.yaml'), 'utf-8')) as any
+    const config = YAML.load(await readFile(join(DiTingHome, 'config.yaml'), 'utf-8')) as any
     expect(config.platforms.weixin.token).toBeUndefined()
     expect(config.platforms.weixin.extra.account_id).toBeUndefined()
     expect(config.platforms.weixin.extra.base_url).toBe('https://old.example')
@@ -303,13 +303,13 @@ describe('config controller locked file updates', () => {
   })
 
   it('does not auto-restart gateway after credential updates when gateway auto-start is disabled', async () => {
-    await writeFile(join(hermesHome, 'config.yaml'), [
+    await writeFile(join(DiTingHome, 'config.yaml'), [
       'platforms:',
       '  weixin:',
       '    token: old-token',
       '',
     ].join('\n'), 'utf-8')
-    await writeFile(join(hermesHome, 'config.json'), JSON.stringify({
+    await writeFile(join(DiTingHome, 'config.json'), JSON.stringify({
       gatewayAutoStart: { enabled: false },
     }), 'utf-8')
     const { updateCredentials } = await loadController()
@@ -319,13 +319,13 @@ describe('config controller locked file updates', () => {
 
     expect(ctx.body).toEqual({ success: true })
     expect(mockRestartGateway).not.toHaveBeenCalled()
-    const env = await readFile(join(hermesHome, '.env'), 'utf-8')
+    const env = await readFile(join(DiTingHome, '.env'), 'utf-8')
     expect(env).toContain('WEIXIN_TOKEN=new-token')
   })
 
   it('does not auto-restart gateway after credential updates when gateway autostart is disabled by env', async () => {
     mockGatewayAutostartDisabledByEnv.mockReturnValue(true)
-    await writeFile(join(hermesHome, 'config.yaml'), 'platforms: {}\n', 'utf-8')
+    await writeFile(join(DiTingHome, 'config.yaml'), 'platforms: {}\n', 'utf-8')
     const { updateCredentials } = await loadController()
     const ctx = makeCtx({ platform: 'weixin', values: { token: 'new-token' } })
 
@@ -336,14 +336,14 @@ describe('config controller locked file updates', () => {
   })
 
   it('writes QQBot credentials to env and overlays them into platform config reads', async () => {
-    await writeFile(join(hermesHome, 'config.yaml'), [
+    await writeFile(join(DiTingHome, 'config.yaml'), [
       'platforms:',
       '  qqbot:',
       '    extra:',
       '      markdown_support: true',
       '',
     ].join('\n'), 'utf-8')
-    await writeFile(join(hermesHome, '.env'), 'OPENROUTER_API_KEY=keep\n', 'utf-8')
+    await writeFile(join(DiTingHome, '.env'), 'OPENROUTER_API_KEY=keep\n', 'utf-8')
     const { updateCredentials, getConfig } = await loadController()
 
     await updateCredentials(makeCtx({
@@ -355,7 +355,7 @@ describe('config controller locked file updates', () => {
       },
     }))
 
-    const env = await readFile(join(hermesHome, '.env'), 'utf-8')
+    const env = await readFile(join(DiTingHome, '.env'), 'utf-8')
     expect(env).toContain('OPENROUTER_API_KEY=keep')
     expect(env).toContain('QQ_APP_ID=qq-app')
     expect(env).toContain('QQ_CLIENT_SECRET=qq-secret')
@@ -372,7 +372,7 @@ describe('config controller locked file updates', () => {
   })
 
   it('round-trips Feishu webhook credentials through env-backed platform settings', async () => {
-    await writeFile(join(hermesHome, 'config.yaml'), [
+    await writeFile(join(DiTingHome, 'config.yaml'), [
       'platforms:',
       '  feishu:',
       '    extra:',
@@ -382,7 +382,7 @@ describe('config controller locked file updates', () => {
       '      verification_token: old-config-verify',
       '',
     ].join('\n'), 'utf-8')
-    await writeFile(join(hermesHome, '.env'), 'OPENROUTER_API_KEY=keep\n', 'utf-8')
+    await writeFile(join(DiTingHome, '.env'), 'OPENROUTER_API_KEY=keep\n', 'utf-8')
     const { updateCredentials, getConfig } = await loadController()
 
     await updateCredentials(makeCtx({
@@ -397,14 +397,14 @@ describe('config controller locked file updates', () => {
       },
     }))
 
-    const env = await readFile(join(hermesHome, '.env'), 'utf-8')
+    const env = await readFile(join(DiTingHome, '.env'), 'utf-8')
     expect(env).toContain('OPENROUTER_API_KEY=keep')
     expect(env).toContain('FEISHU_APP_ID=cli_test_app')
     expect(env).toContain('FEISHU_APP_SECRET=feishu-secret')
     expect(env).toContain('FEISHU_ENCRYPT_KEY=feishu-encrypt')
     expect(env).toContain('FEISHU_VERIFICATION_TOKEN=feishu-verify')
 
-    const migratedConfig = YAML.load(await readFile(join(hermesHome, 'config.yaml'), 'utf-8')) as any
+    const migratedConfig = YAML.load(await readFile(join(DiTingHome, 'config.yaml'), 'utf-8')) as any
     expect(migratedConfig.platforms.feishu.extra.mode).toBe('webhook')
     expect(migratedConfig.platforms.feishu.extra.app_id).toBeUndefined()
     expect(migratedConfig.platforms.feishu.extra.app_secret).toBeUndefined()
@@ -431,13 +431,13 @@ describe('config controller locked file updates', () => {
       },
     }))
 
-    const clearedEnv = await readFile(join(hermesHome, '.env'), 'utf-8')
+    const clearedEnv = await readFile(join(DiTingHome, '.env'), 'utf-8')
     expect(clearedEnv).toContain('OPENROUTER_API_KEY=keep')
     expect(clearedEnv).not.toContain('FEISHU_APP_ID=')
     expect(clearedEnv).not.toContain('FEISHU_APP_SECRET=')
     expect(clearedEnv).not.toContain('FEISHU_ENCRYPT_KEY=')
     expect(clearedEnv).not.toContain('FEISHU_VERIFICATION_TOKEN=')
-    const config = YAML.load(await readFile(join(hermesHome, 'config.yaml'), 'utf-8')) as any
+    const config = YAML.load(await readFile(join(DiTingHome, 'config.yaml'), 'utf-8')) as any
     expect(config.platforms.feishu.extra.mode).toBe('webhook')
     expect(config.platforms.feishu.extra.app_id).toBeUndefined()
     expect(config.platforms.feishu.extra.app_secret).toBeUndefined()
@@ -446,14 +446,14 @@ describe('config controller locked file updates', () => {
   })
 
   it('round-trips Matrix password credentials through env-backed platform settings', async () => {
-    await writeFile(join(hermesHome, 'config.yaml'), [
+    await writeFile(join(DiTingHome, 'config.yaml'), [
       'platforms:',
       '  matrix:',
       '    extra:',
       '      homeserver: https://old.example.org',
       '',
     ].join('\n'), 'utf-8')
-    await writeFile(join(hermesHome, '.env'), 'OPENROUTER_API_KEY=keep\n', 'utf-8')
+    await writeFile(join(DiTingHome, '.env'), 'OPENROUTER_API_KEY=keep\n', 'utf-8')
     const { updateCredentials, getConfig } = await loadController()
 
     await updateCredentials(makeCtx({
@@ -461,36 +461,36 @@ describe('config controller locked file updates', () => {
       values: {
         extra: {
           homeserver: 'https://matrix.example.org',
-          user_id: '@hermes:example.org',
+          user_id: '@DiTing:example.org',
           password: 'matrix-secret',
         },
       },
     }))
 
-    const env = await readFile(join(hermesHome, '.env'), 'utf-8')
+    const env = await readFile(join(DiTingHome, '.env'), 'utf-8')
     expect(env).toContain('OPENROUTER_API_KEY=keep')
     expect(env).toContain('MATRIX_HOMESERVER=https://matrix.example.org')
-    expect(env).toContain('MATRIX_USER_ID=@hermes:example.org')
+    expect(env).toContain('MATRIX_USER_ID=@DiTing:example.org')
     expect(env).toContain('MATRIX_PASSWORD=matrix-secret')
 
     const readCtx = makeCtx({})
     await getConfig(readCtx)
     expect(readCtx.body.platforms.matrix.extra.homeserver).toBe('https://matrix.example.org')
-    expect(readCtx.body.platforms.matrix.extra.user_id).toBe('@hermes:example.org')
+    expect(readCtx.body.platforms.matrix.extra.user_id).toBe('@DiTing:example.org')
     expect(readCtx.body.platforms.matrix.extra.password).toBe('matrix-secret')
   })
 
   it('reads and writes channel settings in the request-scoped profile only', async () => {
-    const researchDir = join(hermesHome, 'profiles', 'research')
+    const researchDir = join(DiTingHome, 'profiles', 'research')
     await mkdir(researchDir, { recursive: true })
-    await writeFile(join(hermesHome, 'config.yaml'), [
+    await writeFile(join(DiTingHome, 'config.yaml'), [
       'telegram:',
       '  require_mention: false',
       'model:',
       '  default: keep-default-model',
       '',
     ].join('\n'), 'utf-8')
-    await writeFile(join(hermesHome, '.env'), [
+    await writeFile(join(DiTingHome, '.env'), [
       'TELEGRAM_BOT_TOKEN=keep-default-token',
       '',
     ].join('\n'), 'utf-8')
@@ -519,12 +519,12 @@ describe('config controller locked file updates', () => {
 
     expect(mockRestartGateway).toHaveBeenCalledWith('research')
     expect(mockDestroyProfile).not.toHaveBeenCalled()
-    const defaultConfig = YAML.load(await readFile(join(hermesHome, 'config.yaml'), 'utf-8')) as any
+    const defaultConfig = YAML.load(await readFile(join(DiTingHome, 'config.yaml'), 'utf-8')) as any
     const researchConfig = YAML.load(await readFile(join(researchDir, 'config.yaml'), 'utf-8')) as any
     expect(defaultConfig.telegram.require_mention).toBe(false)
     expect(researchConfig.telegram.require_mention).toBe(true)
     expect(researchConfig.telegram.free_response_chats).toBe('chat-1')
-    expect(await readFile(join(hermesHome, '.env'), 'utf-8')).toContain('TELEGRAM_BOT_TOKEN=keep-default-token')
+    expect(await readFile(join(DiTingHome, '.env'), 'utf-8')).toContain('TELEGRAM_BOT_TOKEN=keep-default-token')
     expect(await readFile(join(researchDir, '.env'), 'utf-8')).toContain('TELEGRAM_BOT_TOKEN=new-research-token')
 
     const ctx = makeCtx({}, 'research')
@@ -534,9 +534,9 @@ describe('config controller locked file updates', () => {
   })
 
   it('reads and replaces auxiliary model settings in the requested profile', async () => {
-    const researchDir = join(hermesHome, 'profiles', 'research')
+    const researchDir = join(DiTingHome, 'profiles', 'research')
     await mkdir(researchDir, { recursive: true })
-    await writeFile(join(hermesHome, 'config.yaml'), [
+    await writeFile(join(DiTingHome, 'config.yaml'), [
       'model:',
       '  default: root-model',
       'auxiliary:',
@@ -560,7 +560,7 @@ describe('config controller locked file updates', () => {
 
     const { getAuxiliaryModels, updateAuxiliaryModels } = await loadController()
     const readCtx = makeCtx({})
-    readCtx.get = vi.fn((name: string) => name.toLowerCase() === 'x-hermes-profile' ? 'research' : '')
+    readCtx.get = vi.fn((name: string) => name.toLowerCase() === 'x-DiTing-profile' ? 'research' : '')
 
     await getAuxiliaryModels(readCtx)
 
@@ -599,7 +599,7 @@ describe('config controller locked file updates', () => {
         },
       },
     })
-    writeCtx.get = vi.fn((name: string) => name.toLowerCase() === 'x-hermes-profile' ? 'research' : '')
+    writeCtx.get = vi.fn((name: string) => name.toLowerCase() === 'x-DiTing-profile' ? 'research' : '')
 
     await updateAuxiliaryModels(writeCtx)
 
@@ -618,7 +618,7 @@ describe('config controller locked file updates', () => {
         },
       },
     })
-    const rootConfig = YAML.load(await readFile(join(hermesHome, 'config.yaml'), 'utf-8')) as any
+    const rootConfig = YAML.load(await readFile(join(DiTingHome, 'config.yaml'), 'utf-8')) as any
     const researchConfig = YAML.load(await readFile(join(researchDir, 'config.yaml'), 'utf-8')) as any
     expect(rootConfig.auxiliary.compression.model).toBe('root-compressor')
     expect(researchConfig.model.default).toBe('research-model')

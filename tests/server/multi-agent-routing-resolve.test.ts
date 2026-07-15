@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { resolveMultiAgentRoute, type MultiAgentRouteCandidate } from '../../packages/server/src/services/hermes/run-chat/multi-agent-routing'
+import { resolveMultiAgentRoute, type MultiAgentRouteCandidate } from '../../packages/server/src/services/DiTing/run-chat/multi-agent-routing'
 import { generateTaskPlan, generateTaskRouteDecision, streamTaskRouteReasoning } from '../../packages/server/src/services/task-planner'
 
 vi.mock('../../packages/server/src/services/task-planner', () => ({

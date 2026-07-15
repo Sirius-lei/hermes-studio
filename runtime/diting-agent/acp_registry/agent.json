@@ -1,0 +1,16 @@
+{
+  "id": "diting-agent",
+  "name": "DiTing Agent",
+  "version": "0.18.2",
+  "description": "Self-improving open-source AI agent by Nous Research with ACP editor integration, persistent memory, skills, and rich tool support.",
+  "repository": "https://github.com/NousResearch/diting-agent",
+  "website": "https://diting-agent.nousresearch.com/docs/user-guide/features/acp",
+  "authors": ["Nous Research"],
+  "license": "MIT",
+  "distribution": {
+    "uvx": {
+      "package": "diting-agent[acp]==0.18.2",
+      "args": ["diting-acp"]
+    }
+  }
+}

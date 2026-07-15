@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from 'fs'
 import { mkdir, readFile, writeFile } from 'fs/promises'
 import { dirname, resolve } from 'path'
 import { config } from '../config'
-import * as hermesCli from './hermes/hermes-cli'
+import * as DiTingCli from './DiTing/DiTing-cli'
 
 declare const __APP_VERSION__: string
 
@@ -22,8 +22,8 @@ export type PublicSystemInfo = {
     release: string
     arch: string
   }
-  hermes_agent_version: string
-  hermes_web_ui_version: string
+  DiTing_agent_version: string
+  DiTing_web_ui_version: string
 }
 
 type DeviceIdentity = {
@@ -60,14 +60,16 @@ function readPackageInfo(): PackageInfo | null {
   return null
 }
 
-export function getHermesWebUiVersion(): string {
+export function getDiTingWebUiVersion(): string {
   return typeof __APP_VERSION__ !== 'undefined'
     ? __APP_VERSION__
     : readPackageInfo()?.version || ''
 }
 
-export function normalizeHermesAgentVersion(raw: string): string {
-  return raw.split('\n')[0]?.replace(/^Hermes Agent\s+/, '').trim() || ''
+export function normalizeDiTingAgentVersion(raw: string): string {
+  const firstLine = raw.split('\n')[0]?.trim() || ''
+  const versionStart = firstLine.search(/\bv?\d+\.\d+(?:\.\d+)?\b/i)
+  return versionStart >= 0 ? firstLine.slice(versionStart) : firstLine
 }
 
 function isValidDeviceIdentity(value: any): value is DeviceIdentity {
@@ -152,7 +154,7 @@ export function verifyDeviceSignature(input: {
 }
 
 export async function getPublicSystemInfo(): Promise<PublicSystemInfo> {
-  const hermesAgentVersion = normalizeHermesAgentVersion(await hermesCli.getVersion())
+  const DiTingAgentVersion = normalizeDiTingAgentVersion(await DiTingCli.getVersion())
   const identity = await getDeviceIdentity()
 
   return {
@@ -165,7 +167,7 @@ export async function getPublicSystemInfo(): Promise<PublicSystemInfo> {
       release: release(),
       arch: arch(),
     },
-    hermes_agent_version: hermesAgentVersion,
-    hermes_web_ui_version: getHermesWebUiVersion(),
+    DiTing_agent_version: DiTingAgentVersion,
+    DiTing_web_ui_version: getDiTingWebUiVersion(),
   }
 }

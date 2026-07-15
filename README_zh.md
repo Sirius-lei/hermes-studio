@@ -1,22 +1,22 @@
 <p align="center">
-  <strong>Hermes Studio</strong>
+  <strong>DiTing Studio</strong>
   <a href="./README.md">English</a>
 </p>
 
 <p align="center">
-  面向 <a href="https://github.com/NousResearch/hermes-agent">Hermes Agent</a> 的桌面应用、本地运行时和 Web 控制台。<br/>
+  面向 <a href="https://github.com/NousResearch/diting-agent">DiTing Agent</a> 的桌面应用、本地运行时和 Web 控制台。<br/>
   聊天、模型与 Profile 管理、平台渠道接入、任务自动化、<br/>
   文件查看、Coding Agent 和本地运行环境都在一个界面中完成。
 </p>
 
 <p align="center">
-  <a href="https://github.com/EKKOLearnAI/hermes-studio/releases/latest">下载 Hermes Studio 桌面版</a>
+  <a href="https://github.com/EKKOLearnAI/DiTing-studio/releases/latest">下载 DiTing Studio 桌面版</a>
   ·
-  <code>npm install -g hermes-web-ui && hermes-web-ui start</code>
+  <code>npm install -g diting-web-ui && diting-web-ui start</code>
 </p>
 
 <p align="center">
-  <img src="https://github.com/EKKOLearnAI/hermes-studio/blob/main/packages/client/src/assets/image.gif" alt="Hermes Web UI 演示" width="680"/>
+  <img src="https://github.com/EKKOLearnAI/DiTing-studio/blob/main/packages/client/src/assets/image.gif" alt="DiTing Web UI 演示" width="680"/>
 </p>
 
 <p align="center">
@@ -24,22 +24,22 @@
 </p>
 
 <p align="center">
-  <video src="https://github.com/EKKOLearnAI/hermes-studio/blob/main/packages/client/src/assets/video.mp4?raw=true" width="360" controls></video>
+  <video src="https://github.com/EKKOLearnAI/DiTing-studio/blob/main/packages/client/src/assets/video.mp4?raw=true" width="360" controls></video>
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/hermes-web-ui"><img src="https://img.shields.io/npm/v/hermes-web-ui?style=flat-square&color=blue" alt="npm 版本"/></a>
-  <a href="https://github.com/EKKOLearnAI/hermes-studio/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/hermes-web-ui?style=flat-square" alt="许可证"/></a>
-  <a href="https://github.com/EKKOLearnAI/hermes-studio/stargazers"><img src="https://img.shields.io/github/stars/EKKOLearnAI/hermes-studio?style=flat-square" alt="Star"/></a>
+  <a href="https://www.npmjs.com/package/diting-web-ui"><img src="https://img.shields.io/npm/v/diting-web-ui?style=flat-square&color=blue" alt="npm 版本"/></a>
+  <a href="https://github.com/EKKOLearnAI/DiTing-studio/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/diting-web-ui?style=flat-square" alt="许可证"/></a>
+  <a href="https://github.com/EKKOLearnAI/DiTing-studio/stargazers"><img src="https://img.shields.io/github/stars/EKKOLearnAI/DiTing-studio?style=flat-square" alt="Star"/></a>
 </p>
 
 ## 核心能力
 
-| 模块 | Hermes Studio 能做什么 |
+| 模块 | DiTing Studio 能做什么 |
 |---|---|
-| Agent 聊天 | 运行 Hermes Agent 对话，支持流式回复、工具调用轨迹、文件上传下载和本地持久化会话。 |
+| Agent 聊天 | 运行 DiTing Agent 对话，支持流式回复、工具调用轨迹、文件上传下载和本地持久化会话。 |
 | 本地控制台 | 在一个仪表盘中管理 Profile、Provider、模型、凭证、记忆、技能、插件、日志和运行时设置。 |
-| 自动化 | 围绕同一套 Hermes Profile 配置平台渠道、Cron 任务、Kanban 任务、群聊房间和 MCP Server。 |
+| 自动化 | 围绕同一套 DiTing Profile 配置平台渠道、Cron 任务、Kanban 任务、群聊房间和 MCP Server。 |
 | 工作区工具 | 提供文件浏览器、Web 终端、语音输入输出、Coding Agent、设备发现和性能视图。 |
 | 分发形态 | 支持 Windows/macOS/Linux 桌面应用、npm CLI 包和 Docker 镜像。 |
 
@@ -47,9 +47,9 @@
 
 ### AI 聊天
 
-- 聊天前端通过 Socket.IO `/chat-run` 实时流式更新；聊天运行通过 Hermes agent bridge 执行
+- 聊天前端通过 Socket.IO `/chat-run` 实时流式更新；聊天运行通过 DiTing agent bridge 执行
 - 多会话管理 — 创建、重命名、删除、切换会话
-- **自建会话数据库** — Web UI 会话使用本地 SQLite；Hermes state.db 仅作为只读来源用于 Hermes 历史 API
+- **自建会话数据库** — Web UI 会话使用本地 SQLite；DiTing state.db 仅作为只读来源用于 DiTing 历史 API
 - 按来源分组会话（Telegram、Discord、Slack 等），可折叠手风琴面板
 - 活跃会话实时指示器 — 正在进行的会话置顶并显示旋转图标
 - 按最新消息时间排序会话列表
@@ -57,8 +57,8 @@
 - 工具调用详情展开（参数 / 结果）
 - 按 Profile 隔离的文件上传
 - 文件下载支持 — 按解析后的路径下载用户上传文件和 Agent 生成文件，兼容 local、Docker、SSH、Singularity 等多种 terminal backend
-- 会话搜索 — Ctrl+K 搜索 Web UI 本地会话库；不包含只读 Hermes 历史会话
-- 按账号授权 Profile 汇总模型选择器 — 只展示当前账号可访问的 Hermes Profile 中可用的模型
+- 会话搜索 — Ctrl+K 搜索 Web UI 本地会话库；不包含只读 DiTing 历史会话
+- 按账号授权 Profile 汇总模型选择器 — 只展示当前账号可访问的 DiTing Profile 中可用的模型
 - 每个会话显示模型标签和上下文 Token 用量
 
 ### 平台渠道
@@ -76,8 +76,8 @@
 | 微信 | 扫码登录（浏览器扫码，自动保存凭证） |
 | 企业微信 | Bot ID / Secret |
 
-- 凭证管理写入 `~/.hermes/.env`
-- 渠道行为设置写入 `~/.hermes/config.yaml`
+- 凭证管理写入 `~/.diting/.env`
+- 渠道行为设置写入 `~/.diting/config.yaml`
 - 每个平台已配置/未配置状态检测
 
 ### 用量分析
@@ -102,7 +102,7 @@
 
 ### 模型管理
 
-- 从凭证池自动发现模型（`~/.hermes/auth.json`）
+- 从凭证池自动发现模型（`~/.diting/auth.json`）
 - 从每个 Provider 端点获取可用模型（`/v1/models`）
 - 添加、更新、删除 Provider（预设 & 自定义 OpenAI 兼容）
 - OpenAI Codex 和 Nous Portal OAuth 登录
@@ -111,7 +111,7 @@
 
 ### 多配置文件
 
-- 创建、重命名、删除、切换 Hermes 配置文件（Profile）
+- 创建、重命名、删除、切换 DiTing 配置文件（Profile）
 - 克隆现有配置文件或从归档导入（`.tar.gz`）
 - 导出配置文件用于备份或分享
 - 按 Profile 隔离配置、缓存、上传、会话、任务、用量、记忆、技能、插件、Provider 和模型可见性
@@ -121,7 +121,7 @@
 
 - 浏览远程后端文件（local、Docker、SSH、Singularity）
 - 上传、下载、重命名、复制、移动和删除文件
-- 上传文件保存到当前选择/请求的 Hermes Profile 目录下；下载按真实路径解析，支持下载上传目录外的 Agent 产物
+- 上传文件保存到当前选择/请求的 DiTing Profile 目录下；下载按真实路径解析，支持下载上传目录外的 Agent 产物
 - 创建目录
 - 查看文件内容，支持语法高亮
 
@@ -157,7 +157,7 @@
 ### 管理与运行时
 
 - 设备和局域网 Peer 页面，用于本地网络发现和 Peer 工具能力
-- MCP 管理器，用于托管的 `hermes-studio` MCP Server 和 Profile 自动注入
+- MCP 管理器，用于托管的 `DiTing-studio` MCP Server 和 Profile 自动注入
 - Runtime Version 和 Version Preview 工具，用于隔离测试新版本
 - 面向超级管理员的性能监控视图
 
@@ -172,16 +172,16 @@ CLI 维护命令：
 
 ```bash
 # 删除持久化的登录 IP 锁记录
-hermes-web-ui clear-login-locks
+diting-web-ui clear-login-locks
 
 # 删除登录锁并重启正在运行的 Web UI 进程
-hermes-web-ui clear-login-locks --restart
+diting-web-ui clear-login-locks --restart
 
 # 创建或重置默认超级管理员登录名/密码为 admin / 123456
-hermes-web-ui reset-default-login
+diting-web-ui reset-default-login
 ```
 
-`clear-login-locks` 会删除 `${HERMES_WEB_UI_HOME:-~/.hermes-web-ui}/.login-lock.json`。如果服务正在运行，需要重启服务才能清理内存中的锁定状态。`reset-default-login` 会更新 Web UI 账户数据库；如果已存在 `admin` 用户，则会把密码重置为 `123456`，并启用为超级管理员账户。
+`clear-login-locks` 会删除 `${DiTing_WEB_UI_HOME:-~/.diting-web-ui}/.login-lock.json`。如果服务正在运行，需要重启服务才能清理内存中的锁定状态。`reset-default-login` 会更新 Web UI 账户数据库；如果已存在 `admin` 用户，则会把密码重置为 `123456`，并启用为超级管理员账户。
 
 ### 设置
 
@@ -198,7 +198,7 @@ hermes-web-ui reset-default-login
 - 可在聊天和群聊消息中朗读 Assistant 回复。
 - Provider 支持：浏览器 Web Speech、内置 Edge TTS、OpenAI 兼容 `/audio/speech`、自定义 OpenAI 兼容 TTS 端点、MiMo。
 - MiMo 支持预置音色、音色设计提示词、音色复刻参考音频（`.mp3`/`.wav`，最大 10 MB），并可选择鉴权请求头模式（`Authorization`、`api-key` 或两者同时发送）。
-- Edge / OpenAI 兼容 / 自定义 / MiMo 播放统一走 Web UI 后端 `/api/hermes/tts/synthesize`，停止/暂停状态一致，并会在可行时中断进行中的 fetch。
+- Edge / OpenAI 兼容 / 自定义 / MiMo 播放统一走 Web UI 后端 `/api/DiTing/tts/synthesize`，停止/暂停状态一致，并会在可行时中断进行中的 fetch。
 - Provider API Key 和 MiMo 复刻参考音频保存在服务端 TTS 设置中，浏览器只显示脱敏后的 secret 状态。
 - 使用 OpenAI / 自定义 / MiMo 播放前，先在 Settings → Voice 保存 provider 设置。消息播放只发送文本和非敏感播放参数，后端合成时读取当前用户保存的私钥。
 - 聊天输入框支持回合制语音输入：通过麦克风按钮开始/停止一轮录音，转写结果会先填入当前输入框，用户可以编辑后再用普通发送按钮发送。
@@ -217,10 +217,10 @@ hermes-web-ui reset-default-login
 ### 桌面应用与自动更新
 
 - Windows、macOS 和 Linux 原生 Electron 桌面壳
-- 内置 Web UI 运行时，并自动启动本地 Hermes Studio 服务
+- 内置 Web UI 运行时，并自动启动本地 DiTing Studio 服务
 - 桌面自动更新优先使用 Cloudflare 下载端点获取更新元数据和安装包
 - 如果 Cloudflare 更新源不可用，会回退到 GitHub Releases `latest` 资源
-- Windows 升级时会先尝试关闭已有 Hermes Studio 进程，再替换文件
+- Windows 升级时会先尝试关闭已有 DiTing Studio 进程，再替换文件
 
 ---
 
@@ -228,167 +228,167 @@ hermes-web-ui reset-default-login
 
 ### 桌面应用（推荐）
 
-从 [GitHub Releases](https://github.com/EKKOLearnAI/hermes-studio/releases/latest)
-下载最新的 **Hermes Studio** 桌面安装包。
+从 [GitHub Releases](https://github.com/EKKOLearnAI/DiTing-studio/releases/latest)
+下载最新的 **DiTing Studio** 桌面安装包。
 
 桌面版会发布 macOS、Windows 和 Linux 构建；适用时会区分不同 CPU 架构。
-桌面应用内置 Web UI 运行时，Hermes Agent 数据会保存到原生 Hermes 目录：
+桌面应用内置 Web UI 运行时，DiTing Agent 数据会保存到原生 DiTing 目录：
 
-- Windows：`%LOCALAPPDATA%\hermes`（找不到时回退到 `%APPDATA%\hermes`）
-- macOS/Linux：`~/.hermes`
+- Windows：`%LOCALAPPDATA%\DiTing`（找不到时回退到 `%APPDATA%\DiTing`）
+- macOS/Linux：`~/.diting`
 
-桌面壳自身的 Web UI 状态会单独保存到 `~/.hermes-web-ui`，除非设置了
-`HERMES_WEB_UI_HOME`。
+桌面壳自身的 Web UI 状态会单独保存到 `~/.diting-web-ui`，除非设置了
+`DiTing_WEB_UI_HOME`。
 
-打包后的桌面应用启动后，会安装受管命令 shim，避免桌面应用、内置 Hermes Agent CLI
+打包后的桌面应用启动后，会安装受管命令 shim，避免桌面应用、内置 DiTing Agent CLI
 和内置 Web UI CLI 的命令互相冲突：
 
 | 命令 | 说明 |
 |---|---|
-| `hermes-studio` | 打开 Hermes Studio 桌面应用 |
-| `hermes-studio cli ...` | 运行内置 Hermes Agent CLI |
-| `hermes-studio web ...` | 运行内置 `hermes-web-ui` 命令 |
-| `hermes-studio -h` | 显示 wrapper 帮助 |
-| `hermes-studio-mcp` | 运行受管 Web UI MCP bridge |
+| `DiTing-studio` | 打开 DiTing Studio 桌面应用 |
+| `DiTing-studio cli ...` | 运行内置 DiTing Agent CLI |
+| `DiTing-studio web ...` | 运行内置 `diting-web-ui` 命令 |
+| `DiTing-studio -h` | 显示 wrapper 帮助 |
+| `diting-studio-mcp` | 运行受管 Web UI MCP bridge |
 
-使用 `hermes-studio cli -h` 查看 Hermes Agent CLI 帮助，使用
-`hermes-studio web -h` 查看 Web UI CLI 帮助。
+使用 `DiTing-studio cli -h` 查看 DiTing Agent CLI 帮助，使用
+`DiTing-studio web -h` 查看 Web UI CLI 帮助。
 
 桌面自动更新会优先读取 `https://download.ekkolearnai.com/latest`。
 如果该端点不可用，更新器会回退到
-`https://github.com/EKKOLearnAI/hermes-studio/releases/latest/download`。
+`https://github.com/EKKOLearnAI/DiTing-studio/releases/latest/download`。
 
 ### npm 安装
 
 ```bash
-npm install -g hermes-web-ui
-hermes-web-ui start
+npm install -g diting-web-ui
+diting-web-ui start
 ```
 
-打开 **http://localhost:8648**
+打开 **http://localhost:18648**
 
 ### Docker Compose
 
-单容器部署，内置 Hermes Agent 运行时：
+单容器部署，内置 DiTing Agent 运行时：
 
 ```bash
-# 先准备宿主机映射出来的 Hermes 配置目录
-docker compose run --rm hermes-webui prepare-hermes-home
+# 先准备宿主机映射出来的 DiTing 配置目录
+docker compose run --rm diting-webui prepare-diting-home
 
 # 使用预构建镜像（推荐）
-WEBUI_IMAGE=ekkoye8888/hermes-web-ui docker compose up -d
+WEBUI_IMAGE=ekkoye8888/diting-web-ui docker compose up -d
 
 # 或从源码构建
 docker compose up -d --build
 
-docker compose logs -f hermes-webui
+docker compose logs -f diting-webui
 ```
 
 打开 **http://localhost:6060**
 
-- Hermes 持久化数据目录：`./hermes_data`
-- Web UI 认证 Token 存储在 `./hermes_data/hermes-web-ui/.token`
-- 当 `HERMES_DOCKER_REQUIRE_PROFILE_CONFIG=1` 时，首次启动前先编辑 `./hermes_data/config.yaml`
+- DiTing 持久化数据目录：`./diting_data`
+- Web UI 认证 Token 存储在 `./diting_data/diting-web-ui/.token`
+- 当 `DiTing_DOCKER_REQUIRE_PROFILE_CONFIG=1` 时，首次启动前先编辑 `./diting_data/config.yaml`
 - 首次启动并开启认证时，Token 会打印到容器日志中
 - 运行参数全部由 `docker-compose.yml` 环境变量驱动
 
 更详细的说明与排错见：[`docs/docker.md`](./docs/docker.md)
 
-Docker 镜像会把 Hermes Agent runtime 放在同一个容器内，入口脚本会在
-Web UI 启动前自动发现并导出容器内的 Hermes CLI / bridge Python。
+Docker 镜像会把 DiTing Agent runtime 放在同一个容器内，入口脚本会在
+Web UI 启动前自动发现并导出容器内的 DiTing CLI / bridge Python。
 
-### Hermes Agent 运行时发现
+### DiTing Agent 运行时发现
 
 Web UI 启动后端聊天能力时，会优先使用包含 `run_agent.py` 的源码目录，例如
-`~/.hermes/hermes-agent`。如果找不到源码目录，会退回到已安装 `hermes` 命令所使用
-的 Python 环境，再退到系统 Python。因此源码安装和 `pip install hermes-agent` 这类
+`~/.diting/diting-agent`。如果找不到源码目录，会退回到已安装 `DiTing` 命令所使用
+的 Python 环境，再退到系统 Python。因此源码安装和 `pip install diting-agent` 这类
 包安装方式都可以兼容。
 
 ## Web UI 环境变量
 
-这些变量用于配置 Hermes Web UI、本地 Hermes runtime 集成以及开发/预览辅助能力。Provider API Key 和 Hermes Agent 相关设置通常仍通过 Hermes profile 管理；这里列出的变量是进程级覆盖项。
+这些变量用于配置 DiTing Web UI、本地 DiTing runtime 集成以及开发/预览辅助能力。Provider API Key 和 DiTing Agent 相关设置通常仍通过 DiTing profile 管理；这里列出的变量是进程级覆盖项。
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `PORT` | `8648` | Web UI 监听端口。 |
+| `PORT` | `18648` | Web UI 监听端口。 |
 | `BIND_HOST` | `0.0.0.0` | Web UI 绑定地址。如需 IPv6，可显式设置为 `::`。 |
-| `HERMES_WEB_UI_HOME` | `~/.hermes-web-ui` | Web UI 数据目录，用于认证 token、登录凭据、日志、数据库和默认上传目录。兼容支持 `HERMES_WEBUI_STATE_DIR` 作为别名。 |
-| `HERMES_WEBUI_STATE_DIR` | 未设置 | `HERMES_WEB_UI_HOME` 的兼容别名。 |
-| `HERMES_WEB_UI_DISABLE_MCP_AUTOINJECT` | 未设置 | 关闭启动时向 Hermes profile 配置自动注入托管的 `hermes-studio` MCP server。 |
-| `HERMES_WEB_UI_ALLOW_TRANSIENT_MCP_AUTOINJECT` | 未设置 | 当 `HERMES_WEB_UI_HOME` 位于临时目录（例如 Version Preview runtime）时，仍允许托管 MCP 自动注入。 |
-| `UPLOAD_DIR` | `$HERMES_WEB_UI_HOME/upload` | 覆盖上传根目录。文件会保存在按 Profile 隔离的子目录下。 |
+| `DiTing_WEB_UI_HOME` | `~/.diting-web-ui` | Web UI 数据目录，用于认证 token、登录凭据、日志、数据库和默认上传目录。兼容支持 `DiTing_WEBUI_STATE_DIR` 作为别名。 |
+| `DiTing_WEBUI_STATE_DIR` | 未设置 | `DiTing_WEB_UI_HOME` 的兼容别名。 |
+| `DiTing_WEB_UI_DISABLE_MCP_AUTOINJECT` | 未设置 | 关闭启动时向 DiTing profile 配置自动注入托管的 `DiTing-studio` MCP server。 |
+| `DiTing_WEB_UI_ALLOW_TRANSIENT_MCP_AUTOINJECT` | 未设置 | 当 `DiTing_WEB_UI_HOME` 位于临时目录（例如 Version Preview runtime）时，仍允许托管 MCP 自动注入。 |
+| `UPLOAD_DIR` | `$DiTing_WEB_UI_HOME/upload` | 覆盖上传根目录。文件会保存在按 Profile 隔离的子目录下。 |
 | `CORS_ORIGINS` | 仅同 host | HTTP、Socket.IO、WebSocket 跨源 allowlist，支持逗号或空格分隔。只有明确需要旧版 wildcard CORS 时才设置为 `*`。 |
-| `AUTH_TOKEN` | 自动生成 | 显式指定 bearer token。未设置时，Web UI 会在 `HERMES_WEB_UI_HOME` 下自动生成。 |
+| `AUTH_TOKEN` | 自动生成 | 显式指定 bearer token。未设置时，Web UI 会在 `DiTing_WEB_UI_HOME` 下自动生成。 |
 | `AUTH_JWT_SECRET` | `AUTH_TOKEN` | 用户名/密码会话的 JWT 签名密钥覆盖。 |
-| `PROFILE` | `default` | 启动/默认 Hermes profile。运行时请求使用前端当前选择且当前账号有权限访问的 Profile。 |
+| `PROFILE` | `default` | 启动/默认 DiTing profile。运行时请求使用前端当前选择且当前账号有权限访问的 Profile。 |
 | `LOG_LEVEL` | `info` | Server 日志级别。 |
 | `BRIDGE_LOG_LEVEL` | `$LOG_LEVEL` 或 `info` | Bridge 日志级别。 |
 | `MAX_DOWNLOAD_SIZE` | `200MB` | 最大文件下载大小。 |
 | `MAX_EDIT_SIZE` | `10MB` | 最大可编辑文件大小。 |
 | `WORKSPACE_BASE` | 当前用户 Home 目录 | Workspace 浏览根目录。 |
-| `HERMES_HOME` | 平台默认值 | Hermes 数据目录。Windows 使用 `%LOCALAPPDATA%\hermes`；macOS/Linux 使用 `~/.hermes`。 |
-| `HERMES_BIN` | `hermes` | 自定义 Hermes CLI 二进制路径。 |
-| `HERMES_AGENT_ROOT` | 自动发现 | 包含 `run_agent.py` 的 Hermes Agent 源码目录。 |
-| `HERMES_AGENT_BRIDGE_PYTHON` | 自动发现 | 用于启动 agent bridge 的 Python 解释器。 |
-| `HERMES_AGENT_BRIDGE_UV` | 自动发现 | 可用时用于启动 agent bridge 的 `uv` 可执行文件。 |
+| `DiTing_HOME` | 平台默认值 | DiTing 数据目录。Windows 使用 `%LOCALAPPDATA%\DiTing`；macOS/Linux 使用 `~/.diting`。 |
+| `DiTing_BIN` | `diting` | 自定义 DiTing CLI 二进制路径。 |
+| `DiTing_AGENT_ROOT` | 自动发现 | 包含 `run_agent.py` 的 DiTing Agent 源码目录。 |
+| `DiTing_AGENT_BRIDGE_PYTHON` | 自动发现 | 用于启动 agent bridge 的 Python 解释器。 |
+| `DiTing_AGENT_BRIDGE_UV` | 自动发现 | 可用时用于启动 agent bridge 的 `uv` 可执行文件。 |
 | `UV` | 自动发现 | `uv` 可执行文件 fallback。 |
 | `PYTHON` | 自动发现 | agent bridge 的 Python 可执行文件 fallback。 |
-| `HERMES_AGENT_BRIDGE_ENDPOINT` | 平台默认值 | Agent bridge broker endpoint。Windows 默认 `tcp://127.0.0.1:18765`；macOS/Linux 默认 `ipc:///tmp/hermes-agent-bridge.sock`。 |
-| `HERMES_AGENT_BRIDGE_TIMEOUT_MS` | `120000` | Node 请求 bridge broker 的响应超时。 |
-| `HERMES_AGENT_BRIDGE_CONNECT_RETRY_MS` | `5000` | 连接 bridge socket 失败时的短重试窗口。 |
-| `HERMES_AGENT_BRIDGE_STARTUP_TIMEOUT_MS` | `120000` | 等待 Python bridge ready 的超时。 |
-| `HERMES_AGENT_BRIDGE_STOP_ON_SHUTDOWN` | 开启 | Web UI 关闭和重启时是否停止 bridge broker；设为 `0`、`false`、`no` 或 `off` 才会在重启时保留 broker。 |
-| `HERMES_AGENT_BRIDGE_AUTO_RESTART` | 开启 | bridge broker 意外退出后是否自动重启；设为 `0`、`false`、`no` 或 `off` 可关闭。 |
-| `HERMES_AGENT_BRIDGE_RESTART_DELAY_MS` | `1000` | bridge 自动重启退避的基础延迟。 |
-| `HERMES_AGENT_BRIDGE_PLATFORM` | `cli` | 传给 Hermes Agent 的 platform 标识。 |
-| `HERMES_AGENT_BRIDGE_WORKER_TRANSPORT` | 平台默认值 | Profile worker transport。设为 `tcp` 使用 loopback TCP；设为 `ipc`/`unix` 使用 Unix domain socket；默认 Windows TCP、macOS/Linux IPC。 |
-| `HERMES_AGENT_BRIDGE_WORKER_PORT_BASE` | `18780` | TCP worker endpoint 起始端口。 |
-| `HERMES_AGENT_BRIDGE_WARM_PROFILES` | 未设置（Docker 中默认为 `active`） | 启动时预热指定 profile worker。支持 `active`、`default` 或逗号分隔 profile 名。 |
-| `HERMES_AGENT_BRIDGE_WORKER_IDLE_TIMEOUT_SECONDS` | `1800`（Docker 中默认为 `86400`） | worker 空闲多久后由 broker 卸载。 |
-| `HERMES_AGENT_BRIDGE_SESSION_IDLE_TIMEOUT_SECONDS` | `1800`（Docker 中默认为 `86400`） | session 空闲多久后由 worker 卸载。 |
-| `HERMES_BRIDGE_PROVIDER` | profile/默认值 | bridge 运行时的 provider 覆盖。 |
-| `HERMES_BRIDGE_TOOLSETS` | profile/默认值 | bridge 运行时的 toolset 覆盖。 |
-| `HERMES_BRIDGE_MAX_TURNS` | profile/默认值 | bridge 运行时的最大轮数覆盖。 |
-| `HERMES_BRIDGE_SUPPRESS_PLATFORM_HINT` | `cli` | 控制传给 Hermes Agent 的 bridge platform hint suppression。 |
-| `HERMES_OPENROUTER_APP_REFERER` | `https://hermes-studio.ai` | bridge 运行发送给 OpenRouter 的 attribution referer。 |
-| `HERMES_OPENROUTER_APP_TITLE` | `Hermes Web UI` | bridge 运行发送给 OpenRouter 的 attribution title。 |
-| `HERMES_OPENROUTER_APP_CATEGORIES` | `cli-agent,personal-agent` | bridge 运行发送给 OpenRouter 的 attribution categories。 |
-| `HERMES_WEB_UI_MANAGED_GATEWAY` | 默认开启 | 控制 Web UI 托管 Hermes gateway 进程；设为 `0`、`false`、`no` 或 `off` 时改用 `hermes gateway start`。 |
-| `HERMES_WEB_UI_REQUIRE_AGENT_BRIDGE` | 未设置（Docker 中默认为 `1`） | bridge 启动失败时让 Web UI 直接启动失败，适合集成式容器部署。 |
-| `HERMES_WEB_UI_DISABLE_GATEWAY_AUTOSTART` | 未设置 | 跳过启动时的 gateway 检查/自动启动；dashboard-only 部署中如果由其它服务管理 Hermes gateway，可设为 `1`、`true`、`yes` 或 `on`。 |
-| `HERMES_WEB_UI_DISABLE_SKILL_INJECTION` | 未设置 | 跳过启动时的内置 skill 注入；如果内置 skills 由 Hermes Web UI 外部管理，可设为 `1`、`true`、`yes` 或 `on`。启用注入时，Web UI 只更新自己此前安装的 skills 或内容完全相同的既有内置副本；本地修改和用户拥有的同名 skills 会跳过。 |
-| `HERMES_WEB_UI_STOP_GATEWAYS_ON_SHUTDOWN` | 生产环境默认开启 | Web UI 关闭时是否同时停止托管的 gateway 进程；设为 `0` 或 `false` 可让 gateway 分离运行。 |
+| `DiTing_AGENT_BRIDGE_ENDPOINT` | 平台默认值 | Agent bridge broker endpoint。Windows 默认 `tcp://127.0.0.1:28765`；macOS/Linux 默认 `ipc:///tmp/diting-agent-bridge.sock`。 |
+| `DiTing_AGENT_BRIDGE_TIMEOUT_MS` | `120000` | Node 请求 bridge broker 的响应超时。 |
+| `DiTing_AGENT_BRIDGE_CONNECT_RETRY_MS` | `5000` | 连接 bridge socket 失败时的短重试窗口。 |
+| `DiTing_AGENT_BRIDGE_STARTUP_TIMEOUT_MS` | `120000` | 等待 Python bridge ready 的超时。 |
+| `DiTing_AGENT_BRIDGE_STOP_ON_SHUTDOWN` | 开启 | Web UI 关闭和重启时是否停止 bridge broker；设为 `0`、`false`、`no` 或 `off` 才会在重启时保留 broker。 |
+| `DiTing_AGENT_BRIDGE_AUTO_RESTART` | 开启 | bridge broker 意外退出后是否自动重启；设为 `0`、`false`、`no` 或 `off` 可关闭。 |
+| `DiTing_AGENT_BRIDGE_RESTART_DELAY_MS` | `1000` | bridge 自动重启退避的基础延迟。 |
+| `DiTing_AGENT_BRIDGE_PLATFORM` | `cli` | 传给 DiTing Agent 的 platform 标识。 |
+| `DiTing_AGENT_BRIDGE_WORKER_TRANSPORT` | 平台默认值 | Profile worker transport。设为 `tcp` 使用 loopback TCP；设为 `ipc`/`unix` 使用 Unix domain socket；默认 Windows TCP、macOS/Linux IPC。 |
+| `DiTing_AGENT_BRIDGE_WORKER_PORT_BASE` | `28780` | TCP worker endpoint 起始端口。 |
+| `DiTing_AGENT_BRIDGE_WARM_PROFILES` | 未设置（Docker 中默认为 `active`） | 启动时预热指定 profile worker。支持 `active`、`default` 或逗号分隔 profile 名。 |
+| `DiTing_AGENT_BRIDGE_WORKER_IDLE_TIMEOUT_SECONDS` | `1800`（Docker 中默认为 `86400`） | worker 空闲多久后由 broker 卸载。 |
+| `DiTing_AGENT_BRIDGE_SESSION_IDLE_TIMEOUT_SECONDS` | `1800`（Docker 中默认为 `86400`） | session 空闲多久后由 worker 卸载。 |
+| `DiTing_BRIDGE_PROVIDER` | profile/默认值 | bridge 运行时的 provider 覆盖。 |
+| `DiTing_BRIDGE_TOOLSETS` | profile/默认值 | bridge 运行时的 toolset 覆盖。 |
+| `DiTing_BRIDGE_MAX_TURNS` | profile/默认值 | bridge 运行时的最大轮数覆盖。 |
+| `DiTing_BRIDGE_SUPPRESS_PLATFORM_HINT` | `cli` | 控制传给 DiTing Agent 的 bridge platform hint suppression。 |
+| `DiTing_OPENROUTER_APP_REFERER` | `https://DiTing-studio.ai` | bridge 运行发送给 OpenRouter 的 attribution referer。 |
+| `DiTing_OPENROUTER_APP_TITLE` | `DiTing Web UI` | bridge 运行发送给 OpenRouter 的 attribution title。 |
+| `DiTing_OPENROUTER_APP_CATEGORIES` | `cli-agent,personal-agent` | bridge 运行发送给 OpenRouter 的 attribution categories。 |
+| `DiTing_WEB_UI_MANAGED_GATEWAY` | 默认开启 | 控制 Web UI 托管 DiTing gateway 进程；设为 `0`、`false`、`no` 或 `off` 时改用 `DiTing gateway start`。 |
+| `DiTing_WEB_UI_REQUIRE_AGENT_BRIDGE` | 未设置（Docker 中默认为 `1`） | bridge 启动失败时让 Web UI 直接启动失败，适合集成式容器部署。 |
+| `DiTing_WEB_UI_DISABLE_GATEWAY_AUTOSTART` | 未设置 | 跳过启动时的 gateway 检查/自动启动；dashboard-only 部署中如果由其它服务管理 DiTing gateway，可设为 `1`、`true`、`yes` 或 `on`。 |
+| `DiTing_WEB_UI_DISABLE_SKILL_INJECTION` | 未设置 | 跳过启动时的内置 skill 注入；如果内置 skills 由 DiTing Web UI 外部管理，可设为 `1`、`true`、`yes` 或 `on`。启用注入时，Web UI 只更新自己此前安装的 skills 或内容完全相同的既有内置副本；本地修改和用户拥有的同名 skills 会跳过。 |
+| `DiTing_WEB_UI_STOP_GATEWAYS_ON_SHUTDOWN` | 生产环境默认开启 | Web UI 关闭时是否同时停止托管的 gateway 进程；设为 `0` 或 `false` 可让 gateway 分离运行。 |
 | `GATEWAY_HOST` | `127.0.0.1` | 旧 gateway 兼容配置中写入 profile 的默认 gateway host。 |
-| `HERMES_WEB_UI_PREVIEW_REPO` | package repository | Version Preview 使用的 GitHub 仓库。 |
-| `HERMES_WEB_UI_PREVIEW_AGENT_BRIDGE_TRANSPORT` | 平台默认值 | Version Preview broker transport。设为 `tcp` 可让预览环境在 macOS/Linux 上也使用 loopback TCP；未设置时会跟随 `HERMES_AGENT_BRIDGE_WORKER_TRANSPORT=tcp`。 |
-| `HERMES_WEB_UI_PREVIEW_AGENT_BRIDGE_ENDPOINT` | 隔离的预览 endpoint | 直接覆盖 Version Preview 的 broker endpoint。 |
-| `HERMES_WEB_UI_BACKEND_PORT` | `8648` | Vite dev proxy 使用的后端端口。 |
-| `HERMES_WEB_UI_FRONTEND_PORT` | `8649` | 前端 Vite dev server 端口。 |
+| `DiTing_WEB_UI_PREVIEW_REPO` | package repository | Version Preview 使用的 GitHub 仓库。 |
+| `DiTing_WEB_UI_PREVIEW_AGENT_BRIDGE_TRANSPORT` | 平台默认值 | Version Preview broker transport。设为 `tcp` 可让预览环境在 macOS/Linux 上也使用 loopback TCP；未设置时会跟随 `DiTing_AGENT_BRIDGE_WORKER_TRANSPORT=tcp`。 |
+| `DiTing_WEB_UI_PREVIEW_AGENT_BRIDGE_ENDPOINT` | 隔离的预览 endpoint | 直接覆盖 Version Preview 的 broker endpoint。 |
+| `DiTing_WEB_UI_BACKEND_PORT` | `18647` | Vite dev proxy 使用的后端端口。 |
+| `DiTing_WEB_UI_FRONTEND_PORT` | `8649` | 前端 Vite dev server 端口。 |
 
 ### CLI 命令
 
 | 命令 | 说明 |
 |---|---|
-| `hermes-web-ui start` | 后台启动（守护进程模式） |
-| `hermes-web-ui start --port 9000` | 自定义端口启动 |
-| `hermes-web-ui stop` | 停止后台进程 |
-| `hermes-web-ui restart` | 重启后台进程；默认会关闭 bridge broker |
-| `hermes-web-ui status` | 查看运行状态 |
-| `hermes-web-ui update` | 更新到最新版本并重启 |
-| `hermes-web-ui upgrade` | `update` 的别名 |
-| `hermes-web-ui -v` | 显示版本号 |
-| `hermes-web-ui -h` | 显示帮助信息 |
+| `diting-web-ui start` | 后台启动（守护进程模式） |
+| `diting-web-ui start --port 9000` | 自定义端口启动 |
+| `diting-web-ui stop` | 停止后台进程 |
+| `diting-web-ui restart` | 重启后台进程；默认会关闭 bridge broker |
+| `diting-web-ui status` | 查看运行状态 |
+| `diting-web-ui update` | 更新到最新版本并重启 |
+| `diting-web-ui upgrade` | `update` 的别名 |
+| `diting-web-ui -v` | 显示版本号 |
+| `diting-web-ui -h` | 显示帮助信息 |
 
-`restart`、`update` 和 `upgrade` 默认会停止 Agent Bridge broker，避免重启或更新后的服务复用旧 Python bridge 进程。只有明确希望保留 broker 和正在运行的 bridge session 时，才在重启前设置 `HERMES_AGENT_BRIDGE_STOP_ON_SHUTDOWN=0`。
+`restart`、`update` 和 `upgrade` 默认会停止 Agent Bridge broker，避免重启或更新后的服务复用旧 Python bridge 进程。只有明确希望保留 broker 和正在运行的 bridge session 时，才在重启前设置 `DiTing_AGENT_BRIDGE_STOP_ON_SHUTDOWN=0`。
 
-`update` / `upgrade` 会先尝试执行 `npm cache clean --force`，再执行 `npm install -g hermes-web-ui@latest` 并重启。缓存清理是 best-effort；如果清理失败，只提示 warning，升级安装会继续执行。
+`update` / `upgrade` 会先尝试执行 `npm cache clean --force`，再执行 `npm install -g diting-web-ui@latest` 并重启。缓存清理是 best-effort；如果清理失败，只提示 warning，升级安装会继续执行。
 
 ### 自动配置
 
 启动时 BFF 服务器会自动：
 
 - 初始化 Web UI 数据目录、本地数据库和内置技能
-- 启动 `/chat-run` 使用的 Hermes agent bridge
+- 启动 `/chat-run` 使用的 DiTing agent bridge
 - 启动成功后自动打开浏览器
 
 ---
@@ -396,8 +396,8 @@ Web UI 启动后端聊天能力时，会优先使用包含 `run_agent.py` 的源
 ## 开发
 
 ```bash
-git clone https://github.com/EKKOLearnAI/hermes-studio.git
-cd hermes-web-ui
+git clone https://github.com/EKKOLearnAI/DiTing-studio.git
+cd diting-web-ui
 npm install
 npm run dev
 ```
@@ -414,19 +414,19 @@ npm run build   # 构建输出到 dist/
 ## 架构
 
 ```
-浏览器 → BFF (Koa, :8648) → Socket.IO /chat-run
+浏览器 → BFF (Koa, :18648) → Socket.IO /chat-run
                 ↓
-        Hermes agent bridge → Hermes Agent runtime
+        DiTing agent bridge → DiTing Agent runtime
                 ↓
-           Hermes CLI / profiles
+           DiTing CLI / profiles
            profile config.yaml    (渠道/Provider 配置)
            profile auth.json      (凭证池)
            腾讯 iLink API         (微信扫码登录)
 ```
 
-前端采用 **多 Agent 可扩展架构** — 所有 Hermes 相关代码都按命名空间组织在 `hermes/` 目录下（API、组件、视图、Store），可以方便地并行接入新的 Agent。
+前端采用 **多 Agent 可扩展架构** — 所有 DiTing 相关代码都按命名空间组织在 `DiTing/` 目录下（API、组件、视图、Store），可以方便地并行接入新的 Agent。
 
-BFF 层负责：Socket.IO 聊天流式推送、Hermes agent bridge、按 Profile 隔离的上传和按路径解析的下载（多 Backend 支持：local/Docker/SSH/Singularity）、会话 CRUD、分账户分 Profile 管理、配置/凭证管理、微信扫码登录、模型发现、技能/记忆/插件管理、TTS/STT、Coding Agent 代理、MCP/Runtime 管理、日志读取和静态文件服务。
+BFF 层负责：Socket.IO 聊天流式推送、DiTing agent bridge、按 Profile 隔离的上传和按路径解析的下载（多 Backend 支持：local/Docker/SSH/Singularity）、会话 CRUD、分账户分 Profile 管理、配置/凭证管理、微信扫码登录、模型发现、技能/记忆/插件管理、TTS/STT、Coding Agent 代理、MCP/Runtime 管理、日志读取和静态文件服务。
 
 ## 技术栈
 
@@ -436,13 +436,13 @@ BFF 层负责：Socket.IO 聊天流式推送、Hermes agent bridge、按 Profile
 
 ## Star 历史
 
-[![Star 历史图表](https://api.star-history.com/svg?repos=EKKOLearnAI/hermes-studio&type=Date)](https://star-history.com/#EKKOLearnAI/hermes-studio&Date)
+[![Star 历史图表](https://api.star-history.com/svg?repos=EKKOLearnAI/DiTing-studio&type=Date)](https://star-history.com/#EKKOLearnAI/DiTing-studio&Date)
 
-<!-- 如上方图表未加载，可访问 https://star-history.com/#EKKOLearnAI/hermes-studio -->
+<!-- 如上方图表未加载，可访问 https://star-history.com/#EKKOLearnAI/DiTing-studio -->
 
 ## 许可证
 
 [BSL-1.1](./LICENSE)
 
-该许可证覆盖 Hermes Studio、原 Hermes Web UI 名称、`hermes-web-ui` npm 包和
+该许可证覆盖 DiTing Studio、原 DiTing Web UI 名称、`diting-web-ui` npm 包和
 CLI、桌面应用、固件、发布产物、文档以及本仓库内的关联文件。

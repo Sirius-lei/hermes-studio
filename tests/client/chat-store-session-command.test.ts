@@ -16,7 +16,7 @@ const chatApi = vi.hoisted(() => ({
   sessionTitleUpdatedHandlers: [] as Array<(event: any) => void>,
 }))
 
-vi.mock('@/api/hermes/chat', () => ({
+vi.mock('@/api/DiTing/chat', () => ({
   startRunViaSocket: chatApi.startRunViaSocket,
   resumeSession: chatApi.resumeSession,
   registerSessionHandlers: chatApi.registerSessionHandlers,
@@ -43,14 +43,14 @@ vi.mock('@/api/client', () => ({
   hasApiKey: () => false,
 }))
 
-vi.mock('@/api/hermes/sessions', () => ({
+vi.mock('@/api/DiTing/sessions', () => ({
   deleteSession: vi.fn(),
   fetchSession: vi.fn(),
   fetchSessions: vi.fn(),
   setSessionModel: vi.fn(),
 }))
 
-vi.mock('@/api/hermes/download', () => ({
+vi.mock('@/api/DiTing/download', () => ({
   getDownloadUrl: (_path: string, name: string) => `/download/${name}`,
 }))
 
@@ -59,7 +59,7 @@ vi.mock('@/utils/completion-sound', () => ({
   playCompletionSound: vi.fn(),
 }))
 
-import { useChatStore, type Session } from '@/stores/hermes/chat'
+import { useChatStore, type Session } from '@/stores/DiTing/chat'
 
 function makeSession(): Session {
   return {

@@ -26,7 +26,7 @@ import {
   isUnifiedDiffContent,
   normalizeHighlightLanguage,
   renderHighlightedCodeBlock,
-} from '@/components/hermes/chat/highlight'
+} from '@/components/DiTing/chat/highlight'
 
 const UNIFIED_DIFF_SAMPLE = `diff --git a/foo.ts b/foo.ts
 index 1111111..2222222 100644

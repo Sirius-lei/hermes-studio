@@ -43,7 +43,7 @@ describe('useVoiceDialogue', () => {
   it('transcribes recorded audio and sends the normalized transcript', async () => {
     const audio = new Blob(['voice'])
     const sendMessage = vi.fn()
-    const transcribe = vi.fn().mockResolvedValue({ text: '  hello   hermes  ' })
+    const transcribe = vi.fn().mockResolvedValue({ text: '  hello   DiTing  ' })
     const dialogue = useVoiceDialogue({ transcribe, sendMessage })
 
     const { captureId } = await dialogue.beginCapture()
@@ -51,7 +51,7 @@ describe('useVoiceDialogue', () => {
 
     expect(transcribe).toHaveBeenCalledWith(audio)
     expect(sendMessage).toHaveBeenCalledTimes(1)
-    expect(sendMessage).toHaveBeenCalledWith('hello hermes')
+    expect(sendMessage).toHaveBeenCalledWith('hello DiTing')
     expect(dialogue.transcript.value).toBe('')
     expect(dialogue.status.value).toBe('idle')
     expect(dialogue.activeCaptureId.value).toBeNull()

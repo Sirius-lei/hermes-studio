@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 
-const STORAGE_KEY = 'hermes-tts-settings-v2'
+const STORAGE_KEY = 'DiTing-tts-settings-v2'
 
 describe('useVoiceSettings MiMo settings', () => {
   beforeEach(() => {

@@ -28,8 +28,8 @@ import sys
 import threading
 from pathlib import Path
 
-path = Path("packages/server/src/services/hermes/agent-bridge/python/hermes_bridge.py")
-spec = importlib.util.spec_from_file_location("hermes_bridge", path)
+path = Path("packages/server/src/services/DiTing/agent-bridge/python/DiTing_bridge.py")
+spec = importlib.util.spec_from_file_location("DiTing_bridge", path)
 bridge = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = bridge
 spec.loader.exec_module(bridge)

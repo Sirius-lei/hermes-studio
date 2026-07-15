@@ -2,8 +2,8 @@
 import { mount } from '@vue/test-utils'
 import { createTestingPinia } from '@pinia/testing'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import FileList from '@/components/hermes/files/FileList.vue'
-import { useFilesStore } from '@/stores/hermes/files'
+import FileList from '@/components/DiTing/files/FileList.vue'
+import { useFilesStore } from '@/stores/DiTing/files'
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),

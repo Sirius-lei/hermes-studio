@@ -8,13 +8,13 @@ const testState = vi.hoisted(() => ({
   execFile: vi.fn(),
 }))
 
-vi.mock('../../packages/server/src/services/hermes/hermes-profile', () => ({
+vi.mock('../../packages/server/src/services/DiTing/DiTing-profile', () => ({
   getActiveProfileName: () => 'default',
-  getProfileDir: () => testState.profileDir || '/fake/home/.hermes',
+  getProfileDir: () => testState.profileDir || '/fake/home/.diting',
 }))
 
-vi.mock('../../packages/server/src/services/hermes/hermes-path', () => ({
-  getHermesBin: () => '/fake/bin/hermes',
+vi.mock('../../packages/server/src/services/DiTing/DiTing-path', () => ({
+  getDiTingBin: () => '/fake/bin/DiTing',
 }))
 
 vi.mock('child_process', () => ({
@@ -24,7 +24,7 @@ vi.mock('child_process', () => ({
 const mockFetch = vi.fn()
 vi.stubGlobal('fetch', mockFetch)
 
-import { create, pause, remove, resume, run as runJob, update } from '../../packages/server/src/controllers/hermes/jobs'
+import { create, pause, remove, resume, run as runJob, update } from '../../packages/server/src/controllers/DiTing/jobs'
 
 function createMockCtx(overrides: Record<string, any> = {}) {
   const ctx: any = {
@@ -63,12 +63,12 @@ function writeExistingJob(tempDir: string) {
   }))
 }
 
-describe('Hermes jobs controller', () => {
+describe('DiTing jobs controller', () => {
   let tempDir = ''
 
   beforeEach(() => {
     vi.clearAllMocks()
-    tempDir = mkdtempSync(join(tmpdir(), 'hermes-web-ui-jobs-test-'))
+    tempDir = mkdtempSync(join(tmpdir(), 'diting-web-ui-jobs-test-'))
     testState.profileDir = tempDir
     testState.execFile.mockImplementation((_bin, _args, _opts, cb) => {
       cb(null, { stdout: '', stderr: '' })
@@ -109,7 +109,7 @@ describe('Hermes jobs controller', () => {
     expect(mockFetch).not.toHaveBeenCalled()
   })
 
-  it('clears repeat by passing repeat 0 to Hermes CLI', async () => {
+  it('clears repeat by passing repeat 0 to DiTing CLI', async () => {
     writeExistingJob(tempDir)
 
     const ctx = createMockCtx({
@@ -119,17 +119,17 @@ describe('Hermes jobs controller', () => {
 
     expect(ctx.status).toBe(200)
     expect(testState.execFile).toHaveBeenCalledWith(
-      '/fake/bin/hermes',
+      '/fake/bin/DiTing',
       ['cron', 'edit', '--profile', 'default', 'abc123abc123', '--repeat', '0'],
       expect.objectContaining({
-        env: expect.objectContaining({ HERMES_HOME: tempDir }),
+        env: expect.objectContaining({ DiTing_HOME: tempDir }),
         windowsHide: true,
       }),
       expect.any(Function),
     )
   })
 
-  it('passes the selected profile to every Hermes cron command', async () => {
+  it('passes the selected profile to every DiTing cron command', async () => {
     const profileState = { profile: { name: 'research' } }
 
     const createCtx = createMockCtx({
@@ -138,7 +138,7 @@ describe('Hermes jobs controller', () => {
     })
     await create(createCtx)
     expect(testState.execFile).toHaveBeenLastCalledWith(
-      '/fake/bin/hermes',
+      '/fake/bin/DiTing',
       ['cron', 'create', '--profile', 'research', '0 9 * * *', 'daily summary'],
       expect.any(Object),
       expect.any(Function),
@@ -182,7 +182,7 @@ describe('Hermes jobs controller', () => {
       await command.handler(ctx)
 
       expect(testState.execFile).toHaveBeenLastCalledWith(
-        '/fake/bin/hermes',
+        '/fake/bin/DiTing',
         command.args,
         expect.any(Object),
         expect.any(Function),

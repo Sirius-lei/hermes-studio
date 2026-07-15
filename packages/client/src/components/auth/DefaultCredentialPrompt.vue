@@ -16,11 +16,11 @@ const checkedToken = ref("");
 const promptedUserId = ref<number | null>(null);
 
 function dismissalKey(userId: number): string {
-  return `hermes_default_credentials_prompt_dismissed_${userId}`;
+  return `DiTing_default_credentials_prompt_dismissed_${userId}`;
 }
 
 function isDesktopShell(): boolean {
-  return (window as typeof window & { hermesDesktop?: { isDesktop?: boolean } }).hermesDesktop?.isDesktop === true;
+  return (window as typeof window & { DiTingDesktop?: { isDesktop?: boolean } }).DiTingDesktop?.isDesktop === true;
 }
 
 async function checkDefaultCredentials() {
@@ -60,7 +60,7 @@ function remindLater() {
 
 function goToAccountSettings() {
   show.value = false;
-  router.push({ name: "hermes.settings", query: { tab: "account" } });
+  router.push({ name: "DiTing.settings", query: { tab: "account" } });
 }
 
 watch(() => route.fullPath, () => {

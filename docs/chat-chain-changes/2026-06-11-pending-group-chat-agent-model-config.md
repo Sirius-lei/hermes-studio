@@ -5,4 +5,4 @@ feature: Group chat agent model config
 impact: Group chat agents now resolve and pass their profile default model/provider into Agent Bridge runs and context estimates.
 ---
 
-This keeps group-chat agent execution aligned with ordinary Hermes bridge chat model resolution.
+This keeps group-chat agent execution aligned with ordinary DiTing bridge chat model resolution.

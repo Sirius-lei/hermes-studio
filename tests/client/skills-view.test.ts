@@ -11,15 +11,15 @@ const mockProfilesStore = vi.hoisted(() => ({
   fetchProfiles: vi.fn(),
 }))
 
-vi.mock('@/api/hermes/skills', () => ({
+vi.mock('@/api/DiTing/skills', () => ({
   fetchSkills: mockFetchSkills,
 }))
 
-vi.mock('@/api/hermes/write-gate', () => ({
+vi.mock('@/api/DiTing/write-gate', () => ({
   fetchPendingWrites: mockFetchPendingWrites,
 }))
 
-vi.mock('@/stores/hermes/profiles', () => ({
+vi.mock('@/stores/DiTing/profiles', () => ({
   useProfilesStore: () => mockProfilesStore,
 }))
 
@@ -58,7 +58,7 @@ vi.mock('naive-ui', () => ({
   }),
 }))
 
-import SkillsView from '@/views/hermes/SkillsView.vue'
+import SkillsView from '@/views/DiTing/SkillsView.vue'
 
 describe('SkillsView', () => {
   beforeEach(() => {

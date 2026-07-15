@@ -1,6 +1,6 @@
 import type { Server, Socket } from 'socket.io'
 import { authenticateUserToken, isAuthEnabled, type AuthenticatedUser } from '../middleware/user-auth'
-import { listUserProfiles } from '../db/hermes/users-store'
+import { listUserProfiles } from '../db/DiTing/users-store'
 import { logger } from './logger'
 import {
   getWorkflowManager,

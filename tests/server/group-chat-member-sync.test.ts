@@ -26,9 +26,9 @@ vi.mock('../../packages/server/src/services/auth', () => ({
   getToken: vi.fn(async () => 'test-token'),
 }))
 
-import { AgentClients } from '../../packages/server/src/services/hermes/group-chat/agent-clients'
-import { GroupChatServer } from '../../packages/server/src/services/hermes/group-chat'
-import { groupChatRoutes, setGroupChatServer } from '../../packages/server/src/routes/hermes/group-chat'
+import { AgentClients } from '../../packages/server/src/services/DiTing/group-chat/agent-clients'
+import { GroupChatServer } from '../../packages/server/src/services/DiTing/group-chat'
+import { groupChatRoutes, setGroupChatServer } from '../../packages/server/src/routes/DiTing/group-chat'
 
 function routeHandler(path: string, method: string) {
   const layer = (groupChatRoutes as any).stack.find((item: any) => item.path === path && item.methods.includes(method))
@@ -84,7 +84,7 @@ describe('Group Chat member/agent identity sync', () => {
     }
     setGroupChatServer(chatServer as any)
 
-    const handler = routeHandler('/api/hermes/group-chat/rooms/:roomId/agents', 'POST')
+    const handler = routeHandler('/api/DiTing/group-chat/rooms/:roomId/agents', 'POST')
     const ctx: any = {
       params: { roomId: 'room-1' },
       request: { body: { profile: 'default', name: 'Worker' } },
@@ -119,7 +119,7 @@ describe('Group Chat member/agent identity sync', () => {
     }
     setGroupChatServer(chatServer as any)
 
-    const handler = routeHandler('/api/hermes/group-chat/rooms/:roomId/agents', 'POST')
+    const handler = routeHandler('/api/DiTing/group-chat/rooms/:roomId/agents', 'POST')
     const ctx: any = {
       params: { roomId: 'room-1' },
       request: { body: { profile: 'default', name: 'Worker' } },
@@ -155,7 +155,7 @@ describe('Group Chat member/agent identity sync', () => {
     }
     setGroupChatServer(chatServer as any)
 
-    const handler = routeHandler('/api/hermes/group-chat/rooms/:roomId/agents', 'POST')
+    const handler = routeHandler('/api/DiTing/group-chat/rooms/:roomId/agents', 'POST')
     const ctx: any = {
       params: { roomId: 'room-1' },
       request: { body: { profile: 'default', name: 'Worker' } },
@@ -206,7 +206,7 @@ describe('Group Chat member/agent identity sync', () => {
     }
     setGroupChatServer(chatServer as any)
 
-    const handler = routeHandler('/api/hermes/group-chat/rooms/:roomId/agents/:agentId', 'DELETE')
+    const handler = routeHandler('/api/DiTing/group-chat/rooms/:roomId/agents/:agentId', 'DELETE')
     const ctx: any = {
       params: { roomId: 'room-1', agentId: 'row-1' },
       status: 200,
@@ -285,7 +285,7 @@ describe('Group Chat member/agent identity sync', () => {
     }
     setGroupChatServer({ getStorage: () => storage } as any)
 
-    const handler = routeHandler('/api/hermes/group-chat/rooms', 'GET')
+    const handler = routeHandler('/api/DiTing/group-chat/rooms', 'GET')
     const ctx: any = {
       state: { user: { id: 2, username: 'ops', role: 'admin', profiles: ['default', 'research'] } },
       status: 200,
@@ -306,7 +306,7 @@ describe('Group Chat member/agent identity sync', () => {
     }
     setGroupChatServer({ getStorage: () => storage } as any)
 
-    const handler = routeHandler('/api/hermes/group-chat/rooms', 'GET')
+    const handler = routeHandler('/api/DiTing/group-chat/rooms', 'GET')
     const ctx: any = {
       state: { user: { id: 1, username: 'admin', role: 'super_admin' } },
       status: 200,

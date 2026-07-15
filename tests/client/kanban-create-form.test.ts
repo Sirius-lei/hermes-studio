@@ -31,14 +31,14 @@ vi.mock('vue-i18n', () => ({
   }),
 }))
 
-vi.mock('@/stores/hermes/kanban', () => ({
+vi.mock('@/stores/DiTing/kanban', () => ({
   useKanbanStore: () => ({
     assignees: [{ name: 'alice', counts: { todo: 1 } }],
     createTask: mockCreateTask,
   }),
 }))
 
-vi.mock('@/api/hermes/skills', () => ({
+vi.mock('@/api/DiTing/skills', () => ({
   fetchSkills: mockFetchSkills,
 }))
 
@@ -76,7 +76,7 @@ vi.mock('naive-ui', () => ({
   useMessage: () => mockMessage,
 }))
 
-import KanbanCreateForm from '@/components/hermes/kanban/KanbanCreateForm.vue'
+import KanbanCreateForm from '@/components/DiTing/kanban/KanbanCreateForm.vue'
 
 describe('KanbanCreateForm', () => {
   beforeEach(() => {

@@ -1,5 +1,5 @@
-export const SUB_AGENT_STORAGE_KEY = 'hermes.subAgents.frontendDraft.v4'
-export const SUB_AGENT_STORAGE_EVENT = 'hermes:subagents:updated'
+export const SUB_AGENT_STORAGE_KEY = 'DiTing.subAgents.frontendDraft.v4'
+export const SUB_AGENT_STORAGE_EVENT = 'DiTing:subagents:updated'
 
 const MAX_RECENT_INVOCATIONS = 12
 

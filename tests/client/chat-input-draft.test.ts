@@ -3,8 +3,8 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createTestingPinia } from '@pinia/testing'
 import { nextTick } from 'vue'
-import { useChatStore } from '@/stores/hermes/chat'
-import ChatInput from '@/components/hermes/chat/ChatInput.vue'
+import { useChatStore } from '@/stores/DiTing/chat'
+import ChatInput from '@/components/DiTing/chat/ChatInput.vue'
 
 const fetchSkillsMock = vi.hoisted(() => vi.fn())
 
@@ -40,15 +40,15 @@ vi.mock('naive-ui', () => ({
   useMessage: () => ({ error: vi.fn(), success: vi.fn() }),
 }))
 
-vi.mock('@/api/hermes/sessions', () => ({
+vi.mock('@/api/DiTing/sessions', () => ({
   fetchContextLength: vi.fn().mockResolvedValue(256000),
 }))
 
-vi.mock('@/api/hermes/model-context', () => ({
+vi.mock('@/api/DiTing/model-context', () => ({
   setModelContext: vi.fn().mockResolvedValue(undefined),
 }))
 
-vi.mock('@/api/hermes/skills', () => ({
+vi.mock('@/api/DiTing/skills', () => ({
   fetchSkills: fetchSkillsMock,
 }))
 
@@ -99,8 +99,8 @@ describe('ChatInput draft persistence', () => {
     await nextTick()
     wrapperB.unmount()
 
-    expect(localStorage.getItem('hermes_chat_input_draft_v1')).toBeNull()
-    expect(JSON.parse(localStorage.getItem('hermes_chat_input_drafts_v1') || '{}')).toEqual({
+    expect(localStorage.getItem('DiTing_chat_input_draft_v1')).toBeNull()
+    expect(JSON.parse(localStorage.getItem('DiTing_chat_input_drafts_v1') || '{}')).toEqual({
       'session-a': 'draft for session a',
       'session-b': 'draft for session b',
     })
@@ -145,7 +145,7 @@ describe('ChatInput draft persistence', () => {
     await nextTick()
 
     expect(store.sessions[0].reasoningEffort).toBe('high')
-    expect(localStorage.getItem('hermes:reasoning_effort:session-reasoning')).toBe('high')
+    expect(localStorage.getItem('DiTing:reasoning_effort:session-reasoning')).toBe('high')
   })
 
   it('opens the skill picker from /skill and inserts the selected skill command', async () => {
@@ -183,7 +183,7 @@ describe('ChatInput draft persistence', () => {
     expect((textarea.element as HTMLTextAreaElement).value).toBe('/skill github-pr-review ')
   })
 
-  it('hides bridge autocomplete for non-Hermes slash prefixes', async () => {
+  it('hides bridge autocomplete for non-DiTing slash prefixes', async () => {
     const wrapper = mountForSession('session-prefixes')
     const textarea = wrapper.get('textarea')
 

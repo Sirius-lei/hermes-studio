@@ -7,7 +7,7 @@ const estimateUsageTokensFromMessagesMock = vi.fn()
 const buildDbHistoryMock = vi.fn()
 const buildSnapshotAwareHistoryMock = vi.fn()
 
-vi.mock('../../packages/server/src/db/hermes/session-store', () => ({
+vi.mock('../../packages/server/src/db/DiTing/session-store', () => ({
   getSession: getSessionMock,
   createSession: vi.fn(),
   addMessage: vi.fn(),
@@ -15,11 +15,11 @@ vi.mock('../../packages/server/src/db/hermes/session-store', () => ({
   getSessionDetailPaginated: getSessionDetailPaginatedMock,
 }))
 
-vi.mock('../../packages/server/src/db/hermes/usage-store', () => ({
+vi.mock('../../packages/server/src/db/DiTing/usage-store', () => ({
   updateUsage: vi.fn(),
 }))
 
-vi.mock('../../packages/server/src/db/hermes/compression-snapshot', () => ({
+vi.mock('../../packages/server/src/db/DiTing/compression-snapshot', () => ({
   getCompressionSnapshot: getCompressionSnapshotMock,
 }))
 
@@ -32,23 +32,23 @@ vi.mock('../../packages/server/src/services/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }))
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/compression', () => ({
+vi.mock('../../packages/server/src/services/DiTing/run-chat/compression', () => ({
   buildCompressedHistory: vi.fn(),
   buildDbHistory: buildDbHistoryMock,
   buildSnapshotAwareHistory: buildSnapshotAwareHistoryMock,
   getOrCreateSession: vi.fn(),
 }))
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/usage', () => ({
+vi.mock('../../packages/server/src/services/DiTing/run-chat/usage', () => ({
   calcAndUpdateUsage: vi.fn(),
   estimateUsageTokensFromMessages: estimateUsageTokensFromMessagesMock,
 }))
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/message-format', () => ({
+vi.mock('../../packages/server/src/services/DiTing/run-chat/message-format', () => ({
   handleMessage: vi.fn((messages: any[]) => messages),
 }))
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/content-blocks', () => ({
+vi.mock('../../packages/server/src/services/DiTing/run-chat/content-blocks', () => ({
   contentBlocksToString: vi.fn((value: any) => String(value || '')),
   extractTextForPreview: vi.fn((value: any) => String(value || '')),
   isContentBlockArray: vi.fn(() => false),
@@ -59,15 +59,15 @@ vi.mock('../../packages/server/src/lib/llm-prompt', () => ({
   getSystemPrompt: vi.fn(() => 'system prompt'),
 }))
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/sse-utils', () => ({
+vi.mock('../../packages/server/src/services/DiTing/run-chat/sse-utils', () => ({
   readSseFrames: vi.fn(),
 }))
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/response-utils', () => ({
+vi.mock('../../packages/server/src/services/DiTing/run-chat/response-utils', () => ({
   extractResponseText: vi.fn(),
 }))
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/response-stream', () => ({
+vi.mock('../../packages/server/src/services/DiTing/run-chat/response-stream', () => ({
   applyResponseStreamEvent: vi.fn(),
   flushResponseRunToDb: vi.fn(),
 }))
@@ -111,7 +111,7 @@ describe('loadSessionStateFromDb', () => {
   })
 
   it('hydrates contextTokens from the same snapshot-aware history used for bridge runs', async () => {
-    const { loadSessionStateFromDb } = await import('../../packages/server/src/services/hermes/run-chat/load-state')
+    const { loadSessionStateFromDb } = await import('../../packages/server/src/services/DiTing/run-chat/load-state')
 
     const state = await loadSessionStateFromDb('session-1', new Map())
 

@@ -19,8 +19,8 @@ describe('devices store', () => {
       release: '1',
       arch: 'x64',
     },
-    hermes_agent_version: 'v1',
-    hermes_web_ui_version: '1',
+    DiTing_agent_version: 'v1',
+    DiTing_web_ui_version: '1',
     response_ms: 12,
     last_seen_at: new Date().toISOString(),
   }
@@ -33,8 +33,8 @@ describe('devices store', () => {
       getDb: () => db,
       getStoragePath: () => ':memory:',
     }))
-    const { initAllHermesTables } = await import('../../packages/server/src/db/hermes/schemas')
-    initAllHermesTables()
+    const { initAllDiTingTables } = await import('../../packages/server/src/db/DiTing/schemas')
+    initAllDiTingTables()
   })
 
   afterEach(() => {
@@ -49,7 +49,7 @@ describe('devices store', () => {
       getDeviceRelation,
       requestInboundDeviceLink,
       updateInboundStatus,
-    } = await import('../../packages/server/src/db/hermes/devices-store')
+    } = await import('../../packages/server/src/db/DiTing/devices-store')
 
     requestInboundDeviceLink(device)
     expect(getDeviceRelation(device.id)).toMatchObject({
@@ -69,7 +69,7 @@ describe('devices store', () => {
       DuplicateDeviceRequestError,
       getDeviceRelation,
       requestInboundDeviceLink,
-    } = await import('../../packages/server/src/db/hermes/devices-store')
+    } = await import('../../packages/server/src/db/DiTing/devices-store')
 
     requestInboundDeviceLink(device)
     expect(() => requestInboundDeviceLink(device)).toThrow(DuplicateDeviceRequestError)
@@ -86,7 +86,7 @@ describe('devices store', () => {
       listInboundRequestHistory,
       requestInboundDeviceLink,
       updateInboundStatus,
-    } = await import('../../packages/server/src/db/hermes/devices-store')
+    } = await import('../../packages/server/src/db/DiTing/devices-store')
 
     requestInboundDeviceLink(device)
     updateInboundStatus(device.id, 'approved')
@@ -107,7 +107,7 @@ describe('devices store', () => {
       getDeviceRelation,
       listInboundRequestHistory,
       requestInboundDeviceLink,
-    } = await import('../../packages/server/src/db/hermes/devices-store')
+    } = await import('../../packages/server/src/db/DiTing/devices-store')
 
     requestInboundDeviceLink(device)
     expect(deleteDeviceRelation(device.id)).toBe(true)
@@ -120,7 +120,7 @@ describe('devices store', () => {
     const {
       listInboundRequestHistory,
       updateInboundStatus,
-    } = await import('../../packages/server/src/db/hermes/devices-store')
+    } = await import('../../packages/server/src/db/DiTing/devices-store')
 
     updateInboundStatus(device.id, 'blocked', device)
 
@@ -136,7 +136,7 @@ describe('devices store', () => {
       getDeviceRelation,
       listDeviceRelations,
       requestInboundDeviceLink,
-    } = await import('../../packages/server/src/db/hermes/devices-store')
+    } = await import('../../packages/server/src/db/DiTing/devices-store')
 
     requestInboundDeviceLink(device)
     db.prepare('UPDATE devices SET inbound_history_deleted_at = ? WHERE id = ?').run(Date.now(), device.id)

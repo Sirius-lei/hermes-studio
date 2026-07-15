@@ -4,33 +4,33 @@ import { join } from 'path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import YAML from 'js-yaml'
 
-const originalHermesHome = process.env.HERMES_HOME
+const originalDiTingHome = process.env.DiTing_HOME
 const tempHomes: string[] = []
-let hermesHome = ''
+let DiTingHome = ''
 
 async function loadHelpers() {
   vi.resetModules()
-  process.env.HERMES_HOME = hermesHome
+  process.env.DiTing_HOME = DiTingHome
   return import('../../packages/server/src/services/config-helpers')
 }
 
 beforeEach(async () => {
-  hermesHome = await mkdtemp(join(tmpdir(), 'hermes-config-helpers-'))
-  tempHomes.push(hermesHome)
-  await mkdir(hermesHome, { recursive: true })
+  DiTingHome = await mkdtemp(join(tmpdir(), 'DiTing-config-helpers-'))
+  tempHomes.push(DiTingHome)
+  await mkdir(DiTingHome, { recursive: true })
 })
 
 afterEach(async () => {
   vi.resetModules()
-  if (originalHermesHome === undefined) delete process.env.HERMES_HOME
-  else process.env.HERMES_HOME = originalHermesHome
+  if (originalDiTingHome === undefined) delete process.env.DiTing_HOME
+  else process.env.DiTing_HOME = originalDiTingHome
   await Promise.all(tempHomes.splice(0).map(dir => rm(dir, { recursive: true, force: true })))
-  hermesHome = ''
+  DiTingHome = ''
 })
 
 describe('config-helpers locked file updates', () => {
   it('merges concurrent config.yaml updates by re-reading under the file lock', async () => {
-    await writeFile(join(hermesHome, 'config.yaml'), 'model:\n  default: old\n', 'utf-8')
+    await writeFile(join(DiTingHome, 'config.yaml'), 'model:\n  default: old\n', 'utf-8')
     const { updateConfigYaml } = await loadHelpers()
 
     await Promise.all([
@@ -46,14 +46,14 @@ describe('config-helpers locked file updates', () => {
       }),
     ])
 
-    const config = YAML.load(await readFile(join(hermesHome, 'config.yaml'), 'utf-8')) as any
+    const config = YAML.load(await readFile(join(DiTingHome, 'config.yaml'), 'utf-8')) as any
     expect(config.model.default).toBe('glm-5.1')
     expect(config.platforms.api_server.extra.port).toBe(8648)
-    await expect(readFile(join(hermesHome, 'config.yaml.bak'), 'utf-8')).resolves.toContain('model:')
+    await expect(readFile(join(DiTingHome, 'config.yaml.bak'), 'utf-8')).resolves.toContain('model:')
   })
 
   it('serializes concurrent .env updates without losing keys', async () => {
-    await writeFile(join(hermesHome, '.env'), 'OPENROUTER_API_KEY=keep\n', 'utf-8')
+    await writeFile(join(DiTingHome, '.env'), 'OPENROUTER_API_KEY=keep\n', 'utf-8')
     const { saveEnvValue } = await loadHelpers()
 
     await Promise.all([
@@ -61,14 +61,14 @@ describe('config-helpers locked file updates', () => {
       saveEnvValue('MOONSHOT_API_KEY', 'moonshot'),
     ])
 
-    const env = await readFile(join(hermesHome, '.env'), 'utf-8')
+    const env = await readFile(join(DiTingHome, '.env'), 'utf-8')
     expect(env).toContain('OPENROUTER_API_KEY=keep')
     expect(env).toContain('DEEPSEEK_API_KEY=deepseek')
     expect(env).toContain('MOONSHOT_API_KEY=moonshot')
   })
 
   it('rejects invalid .env keys instead of writing keyless lines', async () => {
-    const envPath = join(hermesHome, '.env')
+    const envPath = join(DiTingHome, '.env')
     await writeFile(envPath, 'OPENROUTER_API_KEY=keep\n', 'utf-8')
     const { saveEnvValue } = await loadHelpers()
 
@@ -81,7 +81,7 @@ describe('config-helpers locked file updates', () => {
   })
 
   it('skips writing config.yaml when an updater returns write false', async () => {
-    const configPath = join(hermesHome, 'config.yaml')
+    const configPath = join(DiTingHome, 'config.yaml')
     await writeFile(configPath, 'model:\n  default: old\n', 'utf-8')
     const before = await readFile(configPath, 'utf-8')
     const { updateConfigYaml } = await loadHelpers()

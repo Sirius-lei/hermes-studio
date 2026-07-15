@@ -38,7 +38,7 @@ vi.mock('os', () => ({
   homedir: () => '/Users/tester',
 }))
 
-vi.mock('../../packages/server/src/services/hermes/hermes-kanban', () => ({
+vi.mock('../../packages/server/src/services/DiTing/DiTing-kanban', () => ({
   normalizeBoardSlug: (board?: string | null) => {
     const value = board?.trim().toLowerCase() || 'default'
     if (!/^[a-z0-9][a-z0-9_-]{0,63}$/.test(value)) throw new Error('Invalid kanban board slug')
@@ -69,18 +69,18 @@ vi.mock('../../packages/server/src/services/hermes/hermes-kanban', () => ({
   getAssignees: mockGetAssignees,
 }))
 
-vi.mock('../../packages/server/src/db/hermes/sessions-db', () => ({
+vi.mock('../../packages/server/src/db/DiTing/sessions-db', () => ({
   searchSessionSummariesWithProfile: mockSearchSessions,
   getSessionDetailFromDbWithProfile: mockGetSessionDetail,
   getExactSessionDetailFromDbWithProfile: mockGetExactSessionDetail,
   findLatestExactSessionIdWithProfile: mockFindLatestExactSessionId,
 }))
 
-vi.mock('../../packages/server/src/db/hermes/users-store', () => ({
+vi.mock('../../packages/server/src/db/DiTing/users-store', () => ({
   listUserProfiles: mockListUserProfiles,
 }))
 
-import * as ctrl from '../../packages/server/src/controllers/hermes/kanban'
+import * as ctrl from '../../packages/server/src/controllers/DiTing/kanban'
 
 function ctx(overrides: Record<string, any> = {}) {
   return {
@@ -125,10 +125,10 @@ describe('kanban controller', () => {
     expect(mockArchiveBoard).toHaveBeenCalledWith('project-b')
     expect(archiveCtx.body).toEqual({ ok: true })
 
-    mockGetCapabilities.mockResolvedValue({ source: 'hermes-cli', supports: {}, missing: [] })
+    mockGetCapabilities.mockResolvedValue({ source: 'DiTing-cli', supports: {}, missing: [] })
     const capabilitiesCtx = ctx()
     await ctrl.capabilities(capabilitiesCtx)
-    expect(capabilitiesCtx.body).toEqual({ capabilities: { source: 'hermes-cli', supports: {}, missing: [] } })
+    expect(capabilitiesCtx.body).toEqual({ capabilities: { source: 'DiTing-cli', supports: {}, missing: [] } })
 
     const defaultCtx = ctx({ query: { status: 'ready' } })
     await ctrl.list(defaultCtx)
@@ -490,11 +490,11 @@ describe('kanban controller', () => {
       thread_session_count: 1,
     })
 
-    const fileCtx = ctx({ query: { path: '/Users/tester/.hermes/kanban/workspaces/task/out.txt' } })
+    const fileCtx = ctx({ query: { path: '/Users/tester/.diting/kanban/workspaces/task/out.txt' } })
     await ctrl.readArtifact(fileCtx)
     expect(fileCtx.body).toEqual({
       content: 'artifact-content',
-      path: '/Users/tester/.hermes/kanban/workspaces/task/out.txt',
+      path: '/Users/tester/.diting/kanban/workspaces/task/out.txt',
     })
 
     const createCtx = ctx({

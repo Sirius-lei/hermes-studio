@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildMentionOptions } from '@/components/hermes/group-chat/mention-options'
+import { buildMentionOptions } from '@/components/DiTing/group-chat/mention-options'
 
 describe('group chat mention options', () => {
   const agents = [

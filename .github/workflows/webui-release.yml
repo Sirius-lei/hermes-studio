@@ -51,14 +51,14 @@ jobs:
         run: |
           set -euo pipefail
           version="$(node -p "require('./package.json').version")"
-          asset="hermes-web-ui-${version}.tar.gz"
-          manifest="hermes-web-ui-${version}.json"
-          mkdir -p release/webui /tmp/hermes-web-ui-package/webui
+          asset="DiTing-web-ui-${version}.tar.gz"
+          manifest="DiTing-web-ui-${version}.json"
+          mkdir -p release/webui /tmp/DiTing-web-ui-package/webui
 
-          cp package.json package-lock.json /tmp/hermes-web-ui-package/webui/
-          cp -R bin dist node_modules /tmp/hermes-web-ui-package/webui/
+          cp package.json package-lock.json /tmp/DiTing-web-ui-package/webui/
+          cp -R bin dist node_modules /tmp/DiTing-web-ui-package/webui/
 
-          tar -czf "release/webui/${asset}" -C /tmp/hermes-web-ui-package webui
+          tar -czf "release/webui/${asset}" -C /tmp/DiTing-web-ui-package webui
           sha256="$(shasum -a 256 "release/webui/${asset}" | awk '{print $1}')"
           size="$(stat -c%s "release/webui/${asset}")"
           printf '%s  %s\n' "$sha256" "$asset" > "release/webui/${asset}.sha256"

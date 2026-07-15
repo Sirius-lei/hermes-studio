@@ -12,7 +12,7 @@ const ROOT = resolve(__dirname, '..')
 
 const TARGET_OS = process.env.TARGET_OS || osPlatform()
 const TARGET_ARCH = process.env.TARGET_ARCH || osArch()
-const NODE_VERSION = (process.env.HERMES_DESKTOP_NODE_VERSION || process.env.NODE_VERSION || process.versions.node).replace(/^v/, '')
+const NODE_VERSION = (process.env.DiTing_DESKTOP_NODE_VERSION || process.env.NODE_VERSION || process.versions.node).replace(/^v/, '')
 
 const OS_LABEL = TARGET_OS === 'win32' ? 'win' : TARGET_OS === 'darwin' ? 'mac' : TARGET_OS
 const OUT_DIR = resolve(ROOT, 'resources', 'node', `${OS_LABEL}-${TARGET_ARCH}`)

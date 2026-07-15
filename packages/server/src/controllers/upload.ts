@@ -1,8 +1,8 @@
 import { randomBytes } from 'crypto'
 import { mkdir, writeFile } from 'fs/promises'
 import { join } from 'path'
-import { getActiveProfileName } from '../services/hermes/hermes-profile'
-import { getProfileUploadDir } from '../services/hermes/upload-paths'
+import { getActiveProfileName } from '../services/DiTing/DiTing-profile'
+import { getProfileUploadDir } from '../services/DiTing/upload-paths'
 import { MultipartParseError, parseMultipartBoundary, parseMultipartFilename, splitMultipart } from '../lib/multipart'
 
 const MAX_UPLOAD_SIZE = 50 * 1024 * 1024 // 50MB

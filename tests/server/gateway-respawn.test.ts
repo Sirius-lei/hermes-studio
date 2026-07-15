@@ -19,18 +19,18 @@ class FakeChild extends EventEmitter {
 
 let fakeChildren: FakeChild[] = []
 
-vi.mock('../../packages/server/src/services/hermes/hermes-process', () => ({
-  resolveHermesInvocation: (bin: string) => ({ command: bin, argsPrefix: [] }),
-  execHermesWithBin: vi.fn(),
-  execHermes: vi.fn(),
-  spawnHermesWithBin: vi.fn(() => {
+vi.mock('../../packages/server/src/services/DiTing/DiTing-process', () => ({
+  resolveDiTingInvocation: (bin: string) => ({ command: bin, argsPrefix: [] }),
+  execDiTingWithBin: vi.fn(),
+  execDiTing: vi.fn(),
+  spawnDiTingWithBin: vi.fn(() => {
     const pid = 10000 + fakeChildren.length
     const child = new FakeChild(pid)
     fakeChildren.push(child)
     return child
   }),
-  spawnHermes: vi.fn(),
-  resolveHermesBin: () => 'hermes',
+  spawnDiTing: vi.fn(),
+  resolveDiTingBin: () => 'DiTing',
 }))
 
 afterEach(() => {
@@ -46,10 +46,10 @@ describe('gateway-runner supervision', () => {
     vi.useFakeTimers()
     vi.resetModules()
     const { startGatewayRunManaged } = await import(
-      '../../packages/server/src/services/hermes/gateway-runner'
+      '../../packages/server/src/services/DiTing/gateway-runner'
     )
 
-    const first = startGatewayRunManaged('/usr/bin/hermes', { profileDir: '/tmp/fake-a' })
+    const first = startGatewayRunManaged('/usr/bin/DiTing', { profileDir: '/tmp/fake-a' })
     expect(first.pid).toBe(10000)
     expect(fakeChildren).toHaveLength(1)
 
@@ -71,10 +71,10 @@ describe('gateway-runner supervision', () => {
     vi.useFakeTimers()
     vi.resetModules()
     const { startGatewayRunManaged } = await import(
-      '../../packages/server/src/services/hermes/gateway-runner'
+      '../../packages/server/src/services/DiTing/gateway-runner'
     )
 
-    startGatewayRunManaged('/usr/bin/hermes', { profileDir: '/tmp/flapping' })
+    startGatewayRunManaged('/usr/bin/DiTing', { profileDir: '/tmp/flapping' })
     expect(fakeChildren).toHaveLength(1)
 
     for (let i = 0; i < 3; i += 1) {
@@ -94,10 +94,10 @@ describe('gateway-runner supervision', () => {
     vi.useFakeTimers()
     vi.resetModules()
     const { startGatewayRunManaged } = await import(
-      '../../packages/server/src/services/hermes/gateway-runner'
+      '../../packages/server/src/services/DiTing/gateway-runner'
     )
 
-    startGatewayRunManaged('/usr/bin/hermes', { profileDir: '/tmp/recovered' })
+    startGatewayRunManaged('/usr/bin/DiTing', { profileDir: '/tmp/recovered' })
 
     fakeChildren[0].emit('exit', 1, null)
     await vi.advanceTimersByTimeAsync(2500)
@@ -125,11 +125,11 @@ describe('gateway-runner supervision', () => {
     vi.useFakeTimers()
     vi.resetModules()
     const { startGatewayRunManaged } = await import(
-      '../../packages/server/src/services/hermes/gateway-runner'
+      '../../packages/server/src/services/DiTing/gateway-runner'
     )
 
     // First start: a gateway is running
-    const first = startGatewayRunManaged('/usr/bin/hermes', { profileDir: '/tmp/fake-b' })
+    const first = startGatewayRunManaged('/usr/bin/DiTing', { profileDir: '/tmp/fake-b' })
     expect(first.pid).toBe(10000)
 
     // Simulate `/restart`: old gateway dies, then a new start happens before
@@ -139,7 +139,7 @@ describe('gateway-runner supervision', () => {
 
     // New start (the `/restart` second phase) for the same profile. The
     // pending respawn timer should be cancelled.
-    const second = startGatewayRunManaged('/usr/bin/hermes', { profileDir: '/tmp/fake-b' })
+    const second = startGatewayRunManaged('/usr/bin/DiTing', { profileDir: '/tmp/fake-b' })
     expect(second.pid).toBe(10001)
     expect(fakeChildren).toHaveLength(2)
 
@@ -154,11 +154,11 @@ describe('gateway-runner supervision', () => {
     vi.useFakeTimers()
     vi.resetModules()
     const { startGatewayRunManaged } = await import(
-      '../../packages/server/src/services/hermes/gateway-runner'
+      '../../packages/server/src/services/DiTing/gateway-runner'
     )
 
-    startGatewayRunManaged('/usr/bin/hermes', { profileDir: '/tmp/profile-x' })
-    startGatewayRunManaged('/usr/bin/hermes', { profileDir: '/tmp/profile-y' })
+    startGatewayRunManaged('/usr/bin/DiTing', { profileDir: '/tmp/profile-x' })
+    startGatewayRunManaged('/usr/bin/DiTing', { profileDir: '/tmp/profile-y' })
     expect(fakeChildren).toHaveLength(2)
 
     // profile-x's gateway dies — only its respawn timer should fire
@@ -175,16 +175,16 @@ describe('gateway-runner supervision', () => {
     vi.useFakeTimers()
     vi.resetModules()
     const { startGatewayRunManaged } = await import(
-      '../../packages/server/src/services/hermes/gateway-runner'
+      '../../packages/server/src/services/DiTing/gateway-runner'
     )
 
-    const first = startGatewayRunManaged('/usr/bin/hermes', { profileDir: '/tmp/fake-c' })
+    const first = startGatewayRunManaged('/usr/bin/DiTing', { profileDir: '/tmp/fake-c' })
     fakeChildren[0].emit('exit', 0, 'SIGTERM')
 
     // Issue a fresh start BEFORE the respawn timer fires — this clears the
     // pending respawn. The old child's exit handler then becomes a no-op
     // because `state.current?.pid !== oldPid` after the new start.
-    const second = startGatewayRunManaged('/usr/bin/hermes', { profileDir: '/tmp/fake-c' })
+    const second = startGatewayRunManaged('/usr/bin/DiTing', { profileDir: '/tmp/fake-c' })
     expect(second.pid).not.toBe(first.pid)
 
     // Now the original (now-orphaned) exit listener fires after the timer
@@ -199,10 +199,10 @@ describe('gateway-runner supervision', () => {
     vi.useFakeTimers()
     vi.resetModules()
     const { retireManagedGatewayForProfile, startGatewayRunManaged } = await import(
-      '../../packages/server/src/services/hermes/gateway-runner'
+      '../../packages/server/src/services/DiTing/gateway-runner'
     )
 
-    startGatewayRunManaged('/usr/bin/hermes', { profileDir: '/tmp/delete-me' })
+    startGatewayRunManaged('/usr/bin/DiTing', { profileDir: '/tmp/delete-me' })
     expect(fakeChildren).toHaveLength(1)
 
     const retired = retireManagedGatewayForProfile('/tmp/delete-me', { timeoutMs: 5000 })
@@ -219,11 +219,11 @@ describe('gateway-runner supervision', () => {
     vi.useFakeTimers()
     vi.resetModules()
     const { shutdownManagedGateways, startGatewayRunManaged } = await import(
-      '../../packages/server/src/services/hermes/gateway-runner'
+      '../../packages/server/src/services/DiTing/gateway-runner'
     )
 
-    startGatewayRunManaged('/usr/bin/hermes', { profileDir: '/tmp/shutdown-a' })
-    startGatewayRunManaged('/usr/bin/hermes', { profileDir: '/tmp/shutdown-b' })
+    startGatewayRunManaged('/usr/bin/DiTing', { profileDir: '/tmp/shutdown-a' })
+    startGatewayRunManaged('/usr/bin/DiTing', { profileDir: '/tmp/shutdown-b' })
     expect(fakeChildren).toHaveLength(2)
 
     const shutdown = shutdownManagedGateways({ timeoutMs: 5000 })
@@ -244,10 +244,10 @@ describe('gateway-runner supervision', () => {
     vi.useFakeTimers()
     vi.resetModules()
     const { shutdownManagedGateways, startGatewayRunManaged } = await import(
-      '../../packages/server/src/services/hermes/gateway-runner'
+      '../../packages/server/src/services/DiTing/gateway-runner'
     )
 
-    startGatewayRunManaged('/usr/bin/hermes', { profileDir: '/tmp/shutdown-c' })
+    startGatewayRunManaged('/usr/bin/DiTing', { profileDir: '/tmp/shutdown-c' })
     fakeChildren[0].emit('exit', 1, null)
 
     const result = await shutdownManagedGateways({ timeoutMs: 5000 })
@@ -261,10 +261,10 @@ describe('gateway-runner supervision', () => {
     vi.useFakeTimers()
     vi.resetModules()
     const { shutdownManagedGateways, startGatewayRunManaged } = await import(
-      '../../packages/server/src/services/hermes/gateway-runner'
+      '../../packages/server/src/services/DiTing/gateway-runner'
     )
 
-    startGatewayRunManaged('/usr/bin/hermes', { profileDir: '/tmp/shutdown-d' })
+    startGatewayRunManaged('/usr/bin/DiTing', { profileDir: '/tmp/shutdown-d' })
 
     const shutdown = shutdownManagedGateways({ timeoutMs: 1000 })
     expect(fakeChildren[0].killSignals).toEqual(['SIGTERM'])
@@ -279,10 +279,10 @@ describe('gateway-runner supervision', () => {
     vi.resetModules()
     const killWindowsProcessTree = vi.fn().mockResolvedValue(undefined)
     const { shutdownManagedGateways, startGatewayRunManaged } = await import(
-      '../../packages/server/src/services/hermes/gateway-runner'
+      '../../packages/server/src/services/DiTing/gateway-runner'
     )
 
-    startGatewayRunManaged('/usr/bin/hermes', { profileDir: '/tmp/shutdown-win' })
+    startGatewayRunManaged('/usr/bin/DiTing', { profileDir: '/tmp/shutdown-win' })
 
     await expect(shutdownManagedGateways({
       platform: 'win32',

@@ -34,7 +34,7 @@ vi.mock('../../packages/server/src/db/index', () => ({
   getDb: vi.fn(() => mocks.db),
 }))
 
-vi.mock('../../packages/server/src/db/hermes/compression-snapshot', () => ({
+vi.mock('../../packages/server/src/db/DiTing/compression-snapshot', () => ({
   copyCompressionSnapshot: mocks.copyCompressionSnapshot,
 }))
 
@@ -45,7 +45,7 @@ describe('createBranchedSession', () => {
       id: 'child-session',
       profile: 'default',
       source: 'cli',
-      agent: 'hermes',
+      agent: 'DiTing',
       agent_mode: '',
       agent_session_id: '',
       agent_native_session_id: '',
@@ -76,14 +76,14 @@ describe('createBranchedSession', () => {
   })
 
   it('copies the parent compression snapshot inside the fork transaction', async () => {
-    const { createBranchedSession } = await import('../../packages/server/src/db/hermes/session-store')
+    const { createBranchedSession } = await import('../../packages/server/src/db/DiTing/session-store')
 
     const result = createBranchedSession({
       parent_session_id: 'parent-session',
       id: 'child-session',
       profile: 'default',
       source: 'cli',
-      agent: 'hermes',
+      agent: 'DiTing',
       model: 'openai/gpt-5.4',
       provider: 'openai-codex',
       title: 'Forked child',

@@ -29,7 +29,7 @@ describe('workflow socket client', () => {
   })
 
   it('reuses the pending socket for the same profile', async () => {
-    const { connectWorkflowSocket } = await import('@/api/hermes/workflow-socket')
+    const { connectWorkflowSocket } = await import('@/api/DiTing/workflow-socket')
 
     const first = connectWorkflowSocket('default')
     const second = connectWorkflowSocket('default')
@@ -40,7 +40,7 @@ describe('workflow socket client', () => {
   })
 
   it('recreates the socket when the profile changes', async () => {
-    const { connectWorkflowSocket } = await import('@/api/hermes/workflow-socket')
+    const { connectWorkflowSocket } = await import('@/api/DiTing/workflow-socket')
 
     connectWorkflowSocket('default')
     connectWorkflowSocket('travel')

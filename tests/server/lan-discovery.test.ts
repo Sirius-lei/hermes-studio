@@ -2,7 +2,7 @@ import { readFileSync } from 'fs'
 import { createHash, generateKeyPairSync } from 'crypto'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
-  HERMES_DISCOVERY_PORT,
+  DiTing_DISCOVERY_PORT,
   discoveryPortForHttpPort,
   getDiscoveryHttpPorts,
   getLanEndpointKind,
@@ -29,22 +29,22 @@ const fakeInfo: PublicSystemInfo = {
     release: '1.0.0',
     arch: 'x64',
   },
-  hermes_agent_version: 'v1.2.3',
-  hermes_web_ui_version: '9.9.9',
+  DiTing_agent_version: 'v1.2.3',
+  DiTing_web_ui_version: '9.9.9',
 }
 
 describe('LAN discovery', () => {
-  const originalPorts = process.env.HERMES_LAN_DISCOVERY_HTTP_PORTS
+  const originalPorts = process.env.DiTing_LAN_DISCOVERY_HTTP_PORTS
 
   afterEach(() => {
     resetLanDiscoveryState()
-    if (originalPorts === undefined) delete process.env.HERMES_LAN_DISCOVERY_HTTP_PORTS
-    else process.env.HERMES_LAN_DISCOVERY_HTTP_PORTS = originalPorts
+    if (originalPorts === undefined) delete process.env.DiTing_LAN_DISCOVERY_HTTP_PORTS
+    else process.env.DiTing_LAN_DISCOVERY_HTTP_PORTS = originalPorts
   })
 
   it('maps HTTP ports to UDP discovery ports', () => {
-    expect(HERMES_DISCOVERY_PORT).toBe(48640)
-    expect(discoveryPortForHttpPort(8648)).toBe(48648)
+    expect(DiTing_DISCOVERY_PORT).toBe(48640)
+    expect(discoveryPortForHttpPort(18648)).toBe(58648)
     expect(discoveryPortForHttpPort(8748)).toBe(48748)
   })
 
@@ -59,7 +59,7 @@ describe('LAN discovery', () => {
   })
 
   it('classifies well-known LAN endpoints', () => {
-    expect(getLanEndpointKind(8648)).toBe('web')
+    expect(getLanEndpointKind(18648)).toBe('web')
     expect(getLanEndpointKind(8748)).toBe('desktop')
     expect(getLanEndpointKind(19001)).toBe('custom')
   })
@@ -73,9 +73,9 @@ describe('LAN discovery', () => {
   })
 
   it('uses configured scan ports plus the active server port', () => {
-    process.env.HERMES_LAN_DISCOVERY_HTTP_PORTS = '8648, 8748'
+    process.env.DiTing_LAN_DISCOVERY_HTTP_PORTS = '18648, 8748'
 
-    expect(getDiscoveryHttpPorts(9999)).toEqual([8648, 8748, 9999])
+    expect(getDiscoveryHttpPorts(9999)).toEqual([18648, 8748, 9999])
   })
 
   it('discovers a local responder over UDP', async () => {
@@ -104,8 +104,8 @@ describe('LAN discovery', () => {
       url: `http://127.0.0.1:${httpPort}`,
       endpoint_kind: 'custom',
       computer_name: 'test-machine',
-      hermes_agent_version: 'v1.2.3',
-      hermes_web_ui_version: '9.9.9',
+      DiTing_agent_version: 'v1.2.3',
+      DiTing_web_ui_version: '9.9.9',
     })
   })
 
@@ -185,25 +185,25 @@ describe('LAN discovery', () => {
   it('keeps LAN peer terminals bounded and idle-reclaimable', () => {
     const peerSocketSource = readFileSync('packages/server/src/services/lan-peer-socket.ts', 'utf8')
 
-    expect(peerSocketSource).toContain("boundedEnvInt('HERMES_LAN_PEER_MAX_TERMINALS', 4")
-    expect(peerSocketSource).toContain("boundedEnvInt('HERMES_LAN_PEER_TERMINAL_IDLE_MS', 10 * 60 * 1000")
-    expect(peerSocketSource).toContain("boundedEnvInt('HERMES_LAN_PEER_TERMINAL_BUFFER_BYTES', 1024 * 1024")
+    expect(peerSocketSource).toContain("boundedEnvInt('DiTing_LAN_PEER_MAX_TERMINALS', 4")
+    expect(peerSocketSource).toContain("boundedEnvInt('DiTing_LAN_PEER_TERMINAL_IDLE_MS', 10 * 60 * 1000")
+    expect(peerSocketSource).toContain("boundedEnvInt('DiTing_LAN_PEER_TERMINAL_BUFFER_BYTES', 1024 * 1024")
     expect(peerSocketSource).toContain('Terminal limit reached')
     expect(peerSocketSource).toContain('[lan-peer] closing idle terminal')
     expect(peerSocketSource).toContain('this.disposeTerminalSession(session, { notify: false })')
   })
 
   it('exposes an MCP terminal list tool so agents can recover forgotten terminal ids', () => {
-    const mcpSource = readFileSync('bin/hermes-studio-mcp.mjs', 'utf8')
+    const mcpSource = readFileSync('bin/diting-studio-mcp.mjs', 'utf8')
 
-    expect(mcpSource).toContain("name: 'hermes_studio_lan_devices_list'")
+    expect(mcpSource).toContain("name: 'DiTing_studio_lan_devices_list'")
     expect(mcpSource).toContain('online status')
     expect(mcpSource).toContain('temporary profile token')
-    expect(mcpSource).toContain("'X-Hermes-Profile': profile")
+    expect(mcpSource).toContain("'X-DiTing-Profile': profile")
     expect(mcpSource).toContain('token: args.token')
     expect(mcpSource).toContain('profile: args.profile')
     expect(mcpSource).toContain("join(appHome(), 'profiles', segment, '.model-run-token')")
-    expect(mcpSource).toContain("name: 'hermes_studio_lan_terminal_list'")
+    expect(mcpSource).toContain("name: 'DiTing_studio_lan_terminal_list'")
     expect(mcpSource).toContain('/terminals`, withAuthArgs(args))')
   })
 })

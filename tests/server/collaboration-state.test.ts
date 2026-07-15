@@ -3,7 +3,7 @@ import {
   applySubagentEvent,
   applyTerminalEvent,
   type CollaborationSnapshotState,
-} from '../../packages/server/src/services/hermes/run-chat/collaboration-state'
+} from '../../packages/server/src/services/DiTing/run-chat/collaboration-state'
 
 function makeSnapshot(): CollaborationSnapshotState {
   return {
@@ -29,7 +29,7 @@ function makeSnapshot(): CollaborationSnapshotState {
         status: 'done',
         outcome: 'success',
         dependsOn: [],
-        executor: { type: 'hermes', name: '主智能体' },
+        executor: { type: 'DiTing', name: '主智能体' },
         summary: '已理解需求',
       },
       {
@@ -39,7 +39,7 @@ function makeSnapshot(): CollaborationSnapshotState {
         status: 'done',
         outcome: 'success',
         dependsOn: ['understand'],
-        executor: { type: 'hermes', name: '主智能体' },
+        executor: { type: 'DiTing', name: '主智能体' },
         summary: '已确认路径',
       },
       {
@@ -59,7 +59,7 @@ function makeSnapshot(): CollaborationSnapshotState {
         status: 'todo',
         outcome: 'unknown',
         dependsOn: ['query_case'],
-        executor: { type: 'hermes', name: '主智能体' },
+        executor: { type: 'DiTing', name: '主智能体' },
         summary: '等待查询节点完成',
       },
       {
@@ -69,7 +69,7 @@ function makeSnapshot(): CollaborationSnapshotState {
         status: 'todo',
         outcome: 'unknown',
         dependsOn: ['summarize_case'],
-        executor: { type: 'hermes', name: '主智能体' },
+        executor: { type: 'DiTing', name: '主智能体' },
         summary: '等待汇总',
       },
     ],

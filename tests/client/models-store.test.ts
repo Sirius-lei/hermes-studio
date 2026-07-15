@@ -10,11 +10,11 @@ const mockSystemApi = vi.hoisted(() => ({
   removeCustomProvider: vi.fn(),
 }))
 
-vi.mock('@/api/hermes/system', () => mockSystemApi)
+vi.mock('@/api/DiTing/system', () => mockSystemApi)
 vi.mock('@/api/client', () => ({ hasApiKey: () => true }))
 
-import { useAppStore } from '@/stores/hermes/app'
-import { useModelsStore } from '@/stores/hermes/models'
+import { useAppStore } from '@/stores/DiTing/app'
+import { useModelsStore } from '@/stores/DiTing/models'
 
 describe('Models Store', () => {
   beforeEach(() => {

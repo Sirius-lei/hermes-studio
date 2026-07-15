@@ -18,12 +18,12 @@ vi.mock('naive-ui', () => ({
   }),
 }))
 
-vi.mock('@/api/hermes/download', () => ({
+vi.mock('@/api/DiTing/download', () => ({
   getDownloadUrl: (_path: string, name: string) => `/download/${name}`,
 }))
 
-import GroupMessageItem from '@/components/hermes/group-chat/GroupMessageItem.vue'
-import type { ChatMessage } from '@/api/hermes/group-chat'
+import GroupMessageItem from '@/components/DiTing/group-chat/GroupMessageItem.vue'
+import type { ChatMessage } from '@/api/DiTing/group-chat'
 
 function mountToolMessage(message: Partial<ChatMessage>) {
   return mount(GroupMessageItem, {

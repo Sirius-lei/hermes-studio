@@ -3,10 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { defineComponent, h } from 'vue'
-import FileList from '@/components/hermes/files/FileList.vue'
-import FileTree from '@/components/hermes/files/FileTree.vue'
-import { useFilesStore } from '@/stores/hermes/files'
-import { listFiles } from '@/api/hermes/files'
+import FileList from '@/components/DiTing/files/FileList.vue'
+import FileTree from '@/components/DiTing/files/FileTree.vue'
+import { useFilesStore } from '@/stores/DiTing/files'
+import { listFiles } from '@/api/DiTing/files'
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),
@@ -17,11 +17,11 @@ vi.mock('naive-ui', async (importOriginal) => ({
   useMessage: () => ({ error: vi.fn() }),
 }))
 
-vi.mock('@/api/hermes/files', () => ({
+vi.mock('@/api/DiTing/files', () => ({
   listFiles: vi.fn(),
 }))
 
-vi.mock('@/api/hermes/download', () => ({
+vi.mock('@/api/DiTing/download', () => ({
   downloadFile: vi.fn(),
 }))
 

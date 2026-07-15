@@ -20,7 +20,7 @@ vi.mock('../../packages/server/src/services/coding-agents', () => ({
   sendCodingAgentRunInput: sendCodingAgentRunInputMock,
 }))
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/model-run-prompt', () => ({
+vi.mock('../../packages/server/src/services/DiTing/run-chat/model-run-prompt', () => ({
   writeModelRunProfileToken: writeModelRunProfileTokenMock,
 }))
 
@@ -28,7 +28,7 @@ vi.mock('../../packages/server/src/lib/llm-prompt', () => ({
   getSystemPrompt: getSystemPromptMock,
 }))
 
-vi.mock('../../packages/server/src/db/hermes/session-store', () => ({
+vi.mock('../../packages/server/src/db/DiTing/session-store', () => ({
   getSession: getSessionMock,
 }))
 
@@ -46,7 +46,7 @@ describe('handleCodingAgentRun', () => {
     startCodingAgentRunMock.mockResolvedValue({ agentSessionId: 'agent-session-2' })
     sendCodingAgentRunInputMock.mockResolvedValue({ runId: 'agent-session-2' })
 
-    const { handleCodingAgentRun } = await import('../../packages/server/src/services/hermes/run-chat/handle-coding-agent-run')
+    const { handleCodingAgentRun } = await import('../../packages/server/src/services/DiTing/run-chat/handle-coding-agent-run')
     const state = {
       messages: [],
       isWorking: false,
@@ -95,7 +95,7 @@ describe('handleCodingAgentRun', () => {
     startCodingAgentRunMock.mockResolvedValue({ agentSessionId: 'agent-session-2' })
     sendCodingAgentRunInputMock.mockResolvedValue({ runId: 'agent-session-2' })
 
-    const { handleCodingAgentRun } = await import('../../packages/server/src/services/hermes/run-chat/handle-coding-agent-run')
+    const { handleCodingAgentRun } = await import('../../packages/server/src/services/DiTing/run-chat/handle-coding-agent-run')
     const state = {
       messages: [],
       isWorking: false,
@@ -137,7 +137,7 @@ describe('handleCodingAgentRun', () => {
     startCodingAgentRunMock.mockResolvedValue({ agentSessionId: 'agent-session-1' })
     sendCodingAgentRunInputMock.mockResolvedValue({ runId: 'agent-session-1' })
 
-    const { handleCodingAgentRun } = await import('../../packages/server/src/services/hermes/run-chat/handle-coding-agent-run')
+    const { handleCodingAgentRun } = await import('../../packages/server/src/services/DiTing/run-chat/handle-coding-agent-run')
     const state = {
       messages: [],
       isWorking: false,
@@ -165,13 +165,13 @@ describe('handleCodingAgentRun', () => {
     expect(sendCodingAgentRunInputMock).toHaveBeenCalledWith('session-1', 'hello codex', 'system prompt')
   })
 
-  it('passes the Hermes system prompt on every scoped Claude Code run', async () => {
+  it('passes the DiTing system prompt on every scoped Claude Code run', async () => {
     managerMock.runIdForSession.mockReturnValue(undefined)
     managerMock.isSessionLaunchCompatible.mockReturnValue(true)
     startCodingAgentRunMock.mockResolvedValue({ agentSessionId: 'agent-session-1' })
     sendCodingAgentRunInputMock.mockResolvedValue({ runId: 'agent-session-1' })
 
-    const { handleCodingAgentRun } = await import('../../packages/server/src/services/hermes/run-chat/handle-coding-agent-run')
+    const { handleCodingAgentRun } = await import('../../packages/server/src/services/DiTing/run-chat/handle-coding-agent-run')
     const state = {
       messages: [],
       isWorking: false,
@@ -201,11 +201,11 @@ describe('handleCodingAgentRun', () => {
     writeModelRunProfileTokenMock.mockResolvedValue(undefined)
     getSystemPromptMock.mockReturnValue([
       'system prompt',
-      'Hermes Studio MCP usage: call hermes_studio_api_openapi_get before calling unfamiliar Web UI endpoints.',
-      'Use hermes_studio_api_request with method, relative path, and JSON body/query fields.',
+      'DiTing Studio MCP usage: call DiTing_studio_api_openapi_get before calling unfamiliar Web UI endpoints.',
+      'Use DiTing_studio_api_request with method, relative path, and JSON body/query fields.',
     ].join('\n'))
 
-    const { handleCodingAgentRun } = await import('../../packages/server/src/services/hermes/run-chat/handle-coding-agent-run')
+    const { handleCodingAgentRun } = await import('../../packages/server/src/services/DiTing/run-chat/handle-coding-agent-run')
     const state = {
       messages: [],
       isWorking: false,
@@ -233,15 +233,15 @@ describe('handleCodingAgentRun', () => {
     expect(sendCodingAgentRunInputMock).toHaveBeenCalledWith(
       'session-1',
       'hello codex',
-      expect.stringContaining('system prompt\nHermes Studio MCP usage'),
+      expect.stringContaining('system prompt\nDiTing Studio MCP usage'),
     )
     const prompt = sendCodingAgentRunInputMock.mock.calls.at(-1)?.[2]
-    expect(prompt).toContain('hermes_studio_api_request')
+    expect(prompt).toContain('DiTing_studio_api_request')
     expect(prompt).not.toContain('run-token')
-    expect(prompt).not.toContain('[Current Hermes profile:')
-    expect(prompt).not.toContain('Current Hermes Web UI model run token')
-    expect(prompt).not.toContain('Hermes Web UI LAN device capabilities are MCP tools')
+    expect(prompt).not.toContain('[Current DiTing profile:')
+    expect(prompt).not.toContain('Current DiTing Web UI model run token')
+    expect(prompt).not.toContain('DiTing Web UI LAN device capabilities are MCP tools')
     expect(prompt).not.toContain('list_mcp_resources')
-    expect(prompt).not.toContain('mcp__hermes-studio__')
+    expect(prompt).not.toContain('mcp__DiTing-studio__')
   })
 })

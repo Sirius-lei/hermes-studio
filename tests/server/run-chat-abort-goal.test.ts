@@ -10,7 +10,7 @@ const codingAgentRunManagerMock = vi.hoisted(() => ({
   stop: vi.fn(() => false),
 }))
 
-vi.mock('../../packages/server/src/db/hermes/session-store', () => ({
+vi.mock('../../packages/server/src/db/DiTing/session-store', () => ({
   updateSessionStats: updateSessionStatsMock,
 }))
 
@@ -18,19 +18,19 @@ vi.mock('../../packages/server/src/services/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }))
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/bridge-message', () => ({
+vi.mock('../../packages/server/src/services/DiTing/run-chat/bridge-message', () => ({
   flushBridgePendingToDb: flushBridgePendingToDbMock,
 }))
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/response-stream', () => ({
+vi.mock('../../packages/server/src/services/DiTing/run-chat/response-stream', () => ({
   flushResponseRunToDb: flushResponseRunToDbMock,
 }))
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/compression', () => ({
+vi.mock('../../packages/server/src/services/DiTing/run-chat/compression', () => ({
   replaceState: replaceStateMock,
 }))
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/usage', () => ({
+vi.mock('../../packages/server/src/services/DiTing/run-chat/usage', () => ({
   calcAndUpdateUsage: calcAndUpdateUsageMock,
 }))
 
@@ -60,7 +60,7 @@ describe('run chat abort goal handling', () => {
   })
 
   it('pauses an active goal and clears hidden goal continuations when aborting a CLI run', async () => {
-    const { handleAbort } = await import('../../packages/server/src/services/hermes/run-chat/abort')
+    const { handleAbort } = await import('../../packages/server/src/services/DiTing/run-chat/abort')
     const { emit, nsp, socket } = makeHarness()
     const state = {
       messages: [],
@@ -97,7 +97,7 @@ describe('run chat abort goal handling', () => {
   })
 
   it('releases local working state when a CLI interrupt does not sync before timeout', async () => {
-    const { handleAbort } = await import('../../packages/server/src/services/hermes/run-chat/abort')
+    const { handleAbort } = await import('../../packages/server/src/services/DiTing/run-chat/abort')
     const { emit, nsp, socket } = makeHarness()
     const state = {
       messages: [],
@@ -142,7 +142,7 @@ describe('run chat abort goal handling', () => {
   })
 
   it('stops a coding-agent run even when chat-run state was not marked working', async () => {
-    const { handleAbort } = await import('../../packages/server/src/services/hermes/run-chat/abort')
+    const { handleAbort } = await import('../../packages/server/src/services/DiTing/run-chat/abort')
     const { emit, nsp, socket } = makeHarness()
     const sessionMap = new Map()
     codingAgentRunManagerMock.hasSession.mockReturnValue(true)

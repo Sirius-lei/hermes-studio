@@ -4,7 +4,7 @@ import {
   contextTokensWithCachedOverhead,
   estimateUsageTokensFromMessages,
   updateMessageContextTokenUsage,
-} from '../../packages/server/src/services/hermes/run-chat/usage'
+} from '../../packages/server/src/services/DiTing/run-chat/usage'
 
 describe('run-chat usage token estimates', () => {
   it('counts message content instead of serialized message payloads', () => {

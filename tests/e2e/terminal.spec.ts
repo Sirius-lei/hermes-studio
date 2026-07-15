@@ -1,12 +1,12 @@
 import { expect, test } from '@playwright/test'
-import { authenticate, mockHermesApi, mockTerminalWebSocket, TEST_ACCESS_KEY } from './fixtures'
+import { authenticate, mockDiTingApi, mockTerminalWebSocket, TEST_ACCESS_KEY } from './fixtures'
 
 test('opens terminal websocket session and forwards user input', async ({ page }) => {
   await authenticate(page, TEST_ACCESS_KEY, 'research')
-  const api = await mockHermesApi(page)
+  const api = await mockDiTingApi(page)
   await mockTerminalWebSocket(page)
 
-  await page.goto('/#/hermes/terminal')
+  await page.goto('/#/DiTing/terminal')
 
   await expect(page.getByText('Sessions')).toBeVisible()
   await expect(page.locator('.session-item-title', { hasText: 'zsh #1' })).toBeVisible()
@@ -22,7 +22,7 @@ test('opens terminal websocket session and forwards user input', async ({ page }
   })
   const initialState = await terminalState.jsonValue() as any
   const terminalUrl = new URL(initialState.url)
-  expect(terminalUrl.pathname).toBe('/api/hermes/terminal')
+  expect(terminalUrl.pathname).toBe('/api/DiTing/terminal')
   expect(terminalUrl.searchParams.get('token')).toBe(TEST_ACCESS_KEY)
 
   await page.locator('.terminal-header .header-actions button').last().click()

@@ -3,10 +3,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createTestingPinia } from '@pinia/testing'
 import { defineComponent } from 'vue'
-import { useChatStore } from '@/stores/hermes/chat'
-import VoiceDialogueControls from '@/components/hermes/chat/VoiceDialogueControls.vue'
-import ChatInput from '@/components/hermes/chat/ChatInput.vue'
-import VoiceTranscriptOverlay from '@/components/hermes/chat/VoiceTranscriptOverlay.vue'
+import { useChatStore } from '@/stores/DiTing/chat'
+import VoiceDialogueControls from '@/components/DiTing/chat/VoiceDialogueControls.vue'
+import ChatInput from '@/components/DiTing/chat/ChatInput.vue'
+import VoiceTranscriptOverlay from '@/components/DiTing/chat/VoiceTranscriptOverlay.vue'
 
 const {
   micStartMock,
@@ -83,11 +83,11 @@ vi.mock('naive-ui', () => ({
   useMessage: () => ({ error: vi.fn(), success: vi.fn() }),
 }))
 
-vi.mock('@/api/hermes/sessions', () => ({
+vi.mock('@/api/DiTing/sessions', () => ({
   fetchContextLength: vi.fn().mockResolvedValue(256000),
 }))
 
-vi.mock('@/api/hermes/model-context', () => ({
+vi.mock('@/api/DiTing/model-context', () => ({
   setModelContext: vi.fn().mockResolvedValue(undefined),
 }))
 
@@ -111,7 +111,7 @@ vi.mock('@/composables/useSpeech', () => ({
   }),
 }))
 
-vi.mock('@/api/hermes/stt', () => ({
+vi.mock('@/api/DiTing/stt', () => ({
   transcribeSpeech: transcribeSpeechMock,
 }))
 
@@ -215,7 +215,7 @@ describe('VoiceDialogueControls', () => {
     })
     browserStopMock.mockImplementation(async () => {
       browserRecognitionStatus.value = 'idle'
-      return 'hello hermes'
+      return 'hello DiTing'
     })
     browserCancelMock.mockImplementation(() => {
       browserRecognitionStatus.value = 'idle'
@@ -228,7 +228,7 @@ describe('VoiceDialogueControls', () => {
     })
     speechStopMock.mockImplementation(() => undefined)
     transcribeSpeechMock.mockResolvedValue({
-      text: 'hello hermes',
+      text: 'hello DiTing',
       provider: 'openai',
       model: 'whisper-1',
       durationMs: 1,
@@ -289,14 +289,14 @@ describe('VoiceDialogueControls', () => {
     const wrapper = mount(VoiceTranscriptOverlay, {
       props: {
         status: 'capturing',
-        transcript: 'hello hermes',
+        transcript: 'hello DiTing',
         error: 'Mic permission denied',
       },
     })
 
     const overlay = wrapper.get('[data-testid="voice-transcript-overlay"]')
     expect(overlay.text()).toContain('chat.voiceInput.statusLabel chat.voiceInput.status.capturing')
-    expect(overlay.text()).toContain('chat.voiceInput.transcriptLabel hello hermes')
+    expect(overlay.text()).toContain('chat.voiceInput.transcriptLabel hello DiTing')
     expect(overlay.text()).toContain('chat.voiceInput.errorLabel Mic permission denied')
   })
 
@@ -338,7 +338,7 @@ describe('VoiceDialogueControls', () => {
     const wrapper = mount(VoiceTranscriptOverlay, {
       props: {
         status: 'sending',
-        transcript: 'hello hermes',
+        transcript: 'hello DiTing',
         events,
         debug: true,
       },
@@ -433,7 +433,7 @@ describe('VoiceDialogueControls', () => {
       status: { value: 'capturing' },
       activeCaptureId: { value: 'capture-1' },
       activeTurnId: { value: null },
-      transcript: { value: 'hello hermes' },
+      transcript: { value: 'hello DiTing' },
       error: { value: null },
       isBusy: { value: true },
       beginCapture: vi.fn(),
@@ -472,7 +472,7 @@ describe('VoiceDialogueControls', () => {
       status: { value: 'capturing' },
       activeCaptureId: { value: 'capture-1' },
       activeTurnId: { value: null },
-      transcript: { value: 'hello hermes' },
+      transcript: { value: 'hello DiTing' },
       error: { value: null },
       isBusy: { value: true },
       beginCapture: vi.fn(),
@@ -564,7 +564,7 @@ describe('VoiceDialogueControls', () => {
       prompt: 'keep punctuation',
     })
     expect(chatStore.sendMessage).not.toHaveBeenCalled()
-    expect((wrapper.get('textarea').element as HTMLTextAreaElement).value).toBe('hello hermes')
+    expect((wrapper.get('textarea').element as HTMLTextAreaElement).value).toBe('hello DiTing')
   })
 
   it('uses Doubao as a server-backed STT provider without client-side credentials', async () => {

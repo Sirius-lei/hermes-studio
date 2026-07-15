@@ -1,5 +1,5 @@
 {
-  "name": "HStudio ESP32-C3 Wi-Fi Setup Firmware",
+  "name": "DiTing ESP32-C3 Wi-Fi Setup Firmware",
   "version": "esp32-c3-wifi-setup-oled",
   "buildDate": "2026-06-18",
   "chip": "esp32c3",
@@ -16,17 +16,17 @@
   },
   "features": [
     "Wi-Fi setup portal",
-    "Open HStudio-WIFI setup access point",
+    "Open DiTing-WIFI setup access point",
     "Pre-AP Wi-Fi network scan dropdown",
     "Manual Wi-Fi SSID fallback",
     "Provisioning success page with LAN IP redirect",
     "Saved Wi-Fi reconnect",
     "LAN device tab",
-    "Fixed-port UDP Hermes endpoint discovery",
+    "Fixed-port UDP DiTing endpoint discovery",
     "Separate Web UI and desktop endpoint listing",
     "MCU login form for discovered endpoints",
     "Profile selection after MCU login",
-    "Socket.IO client connection to selected Hermes Web UI",
+    "Socket.IO client connection to selected DiTing Web UI",
     "OLED status UI and idle animation"
   ]
 }

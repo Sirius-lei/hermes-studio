@@ -9,8 +9,8 @@ import {
   type WorkflowCreateInput,
   type WorkflowRecord,
   type WorkflowUpdateInput,
-} from '../db/hermes/workflow-store'
-import { getExactSessionDetailFromDbWithProfile } from '../db/hermes/sessions-db'
+} from '../db/DiTing/workflow-store'
+import { getExactSessionDetailFromDbWithProfile } from '../db/DiTing/sessions-db'
 import {
   createWorkflowRun,
   createWorkflowRunNodeSession,
@@ -23,28 +23,28 @@ import {
   updateWorkflowRunNodeSession,
   type WorkflowRunNodeSessionRecord,
   type WorkflowRunRecord,
-} from '../db/hermes/workflow-run-store'
-import { deleteSession, getSession, getSessionDetail } from '../db/hermes/session-store'
-import { deleteUsage } from '../db/hermes/usage-store'
-import { getChatRunServer } from '../routes/hermes/chat-run'
-import type { ContentBlock } from './hermes/run-chat'
+} from '../db/DiTing/workflow-run-store'
+import { deleteSession, getSession, getSessionDetail } from '../db/DiTing/session-store'
+import { deleteUsage } from '../db/DiTing/usage-store'
+import { getChatRunServer } from '../routes/DiTing/chat-run'
+import type { ContentBlock } from './DiTing/run-chat'
 import type { AuthenticatedUser } from '../middleware/user-auth'
 import { resolveWorkflowSkillContent } from './workflow-skill-resolver'
 import { codingAgentRunManager } from './agent-runner/coding-agent-run-manager'
-import { deleteSessionForProfile } from './hermes/hermes-cli'
-import { listProfileNamesFromDisk } from './hermes/hermes-profile'
+import { deleteSessionForProfile } from './DiTing/DiTing-cli'
+import { listProfileNamesFromDisk } from './DiTing/DiTing-profile'
 import { logger } from './logger'
 
 export type { WorkflowCreateInput, WorkflowRecord, WorkflowUpdateInput }
 
 export type WorkflowRuntimeState = 'idle' | 'queued' | 'running' | 'completed' | 'failed' | 'canceled'
 export type WorkflowRunType = 'workflow'
-export type WorkflowNodeAgent = 'hermes' | 'claude-code' | 'codex'
+export type WorkflowNodeAgent = 'DiTing' | 'claude-code' | 'codex'
 
 export interface WorkflowNodeRunTarget {
   type: WorkflowRunType
   source: 'workflow'
-  agent: 'hermes' | 'claude' | 'codex'
+  agent: 'DiTing' | 'claude' | 'codex'
   codingAgentId?: 'claude-code' | 'codex'
 }
 
@@ -139,7 +139,7 @@ export function resolveWorkflowNodeRunTarget(agent?: string | null): WorkflowNod
   return {
     type: 'workflow',
     source: 'workflow',
-    agent: 'hermes',
+    agent: 'DiTing',
   }
 }
 
@@ -157,7 +157,7 @@ function normalizeNode(raw: unknown): WorkflowNodeSnapshot | null {
     type: typeof record.type === 'string' && record.type ? record.type : 'agent',
     data: {
       title: typeof data.title === 'string' && data.title.trim() ? data.title.trim() : id,
-      agent: typeof data.agent === 'string' && data.agent.trim() ? data.agent.trim() : 'hermes',
+      agent: typeof data.agent === 'string' && data.agent.trim() ? data.agent.trim() : 'DiTing',
       provider: typeof data.provider === 'string' ? data.provider.trim() : '',
       model: typeof data.model === 'string' ? data.model.trim() : '',
       apiMode: typeof data.apiMode === 'string' ? data.apiMode.trim() : '',
@@ -203,18 +203,18 @@ function isWorkflowCodingAgentSession(session?: { source?: string | null; agent?
   return agent === 'claude' || agent === 'codex' || Boolean(session?.agent_session_id)
 }
 
-async function deleteHermesSessionIfPresent(sessionId: string, profile: string): Promise<void> {
+async function deleteDiTingSessionIfPresent(sessionId: string, profile: string): Promise<void> {
   const targetProfile = profile || 'default'
   if (!listProfileNamesFromDisk().includes(targetProfile)) return
   try {
-    const hermesSession = await getExactSessionDetailFromDbWithProfile(sessionId, targetProfile)
-    if (!hermesSession) return
+    const DiTingSession = await getExactSessionDetailFromDbWithProfile(sessionId, targetProfile)
+    if (!DiTingSession) return
     const deleted = await deleteSessionForProfile(sessionId, targetProfile)
     if (!deleted) {
-      logger.warn({ sessionId, profile: targetProfile }, '[workflow] failed to delete Hermes session for workflow run node')
+      logger.warn({ sessionId, profile: targetProfile }, '[workflow] failed to delete DiTing session for workflow run node')
     }
   } catch (err) {
-    logger.warn({ err, sessionId, profile: targetProfile }, '[workflow] skipped Hermes session delete for workflow run node')
+    logger.warn({ err, sessionId, profile: targetProfile }, '[workflow] skipped DiTing session delete for workflow run node')
   }
 }
 
@@ -319,8 +319,8 @@ export class WorkflowManager extends EventEmitter<WorkflowManagerEvents> {
     const existing = getSession(sessionId)
     if (isWorkflowCodingAgentSession(existing)) {
       codingAgentRunManager.stop(sessionId, { reportClosed: false })
-    } else if (agent === 'hermes') {
-      await deleteHermesSessionIfPresent(sessionId, profile || existing?.profile || 'default')
+    } else if (agent === 'DiTing') {
+      await deleteDiTingSessionIfPresent(sessionId, profile || existing?.profile || 'default')
     }
     if (existing) {
       deleteSession(sessionId)
@@ -501,7 +501,7 @@ export class WorkflowManager extends EventEmitter<WorkflowManagerEvents> {
             session_id: nodeSessionId,
             profile,
             agent: target.agent,
-            agent_mode: node.data.agent === 'hermes' ? '' : 'scoped',
+            agent_mode: node.data.agent === 'DiTing' ? '' : 'scoped',
             status: 'running',
             sequence: sequence++,
             started_at: Date.now(),
@@ -524,7 +524,7 @@ export class WorkflowManager extends EventEmitter<WorkflowManagerEvents> {
             workspace: workflow.workspace,
             model: node.data.model || undefined,
             provider: node.data.provider || undefined,
-            mode: node.data.agent === 'hermes' ? undefined : 'scoped',
+            mode: node.data.agent === 'DiTing' ? undefined : 'scoped',
             coding_agent_id: target.codingAgentId,
             agent_id: target.codingAgentId,
             apiMode: node.data.apiMode || undefined,
@@ -803,7 +803,7 @@ export class WorkflowManager extends EventEmitter<WorkflowManagerEvents> {
             session_id: nodeSessionId,
             profile,
             agent: target.agent,
-            agent_mode: node.data.agent === 'hermes' ? '' : 'scoped',
+            agent_mode: node.data.agent === 'DiTing' ? '' : 'scoped',
             status: 'running',
             sequence: sequence++,
             started_at: Date.now(),
@@ -825,7 +825,7 @@ export class WorkflowManager extends EventEmitter<WorkflowManagerEvents> {
             workspace: run.workspace,
             model: node.data.model || undefined,
             provider: node.data.provider || undefined,
-            mode: node.data.agent === 'hermes' ? undefined : 'scoped',
+            mode: node.data.agent === 'DiTing' ? undefined : 'scoped',
             coding_agent_id: target.codingAgentId,
             agent_id: target.codingAgentId,
             apiMode: node.data.apiMode || undefined,
@@ -938,7 +938,7 @@ export class WorkflowManager extends EventEmitter<WorkflowManagerEvents> {
           profile: args.profile,
           skillName,
         })
-        if (!skill) throw new Error(`Skill "${skillName}" not found for ${args.node.data.agent || 'hermes'}`)
+        if (!skill) throw new Error(`Skill "${skillName}" not found for ${args.node.data.agent || 'DiTing'}`)
         parts.push(`\n[Skill: ${skill.name}]\n${skill.content}`)
       }
     }

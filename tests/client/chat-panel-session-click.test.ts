@@ -3,14 +3,14 @@ import { describe, expect, it } from 'vitest'
 
 describe('ChatPanel session clicks', () => {
   it('switches the store when the route is already on the clicked session', () => {
-    const source = readFileSync('packages/client/src/components/hermes/chat/ChatPanel.vue', 'utf8')
+    const source = readFileSync('packages/client/src/components/DiTing/chat/ChatPanel.vue', 'utf8')
 
     expect(source).toContain('if (chatStore.activeSessionId !== sessionId)')
     expect(source).toContain('await chatStore.switchSession(sessionId)')
   })
 
   it('allows session model switching for coding agent sessions', () => {
-    const source = readFileSync('packages/client/src/components/hermes/chat/ChatPanel.vue', 'utf8')
+    const source = readFileSync('packages/client/src/components/DiTing/chat/ChatPanel.vue', 'utf8')
 
     expect(source).toContain('contextSession.value?.source === "coding_agent"')
     expect(source).toContain('isSessionModelScopedCodingAgent')
@@ -23,7 +23,7 @@ describe('ChatPanel session clicks', () => {
   })
 
   it('uses the active sidebar model as the new chat default for the active profile', () => {
-    const source = readFileSync('packages/client/src/components/hermes/chat/ChatPanel.vue', 'utf8')
+    const source = readFileSync('packages/client/src/components/DiTing/chat/ChatPanel.vue', 'utf8')
 
     expect(source).toContain('const selectedProvider = appStore.selectedProvider || ""')
     expect(source).toContain('const selectedModel = appStore.selectedModel || ""')

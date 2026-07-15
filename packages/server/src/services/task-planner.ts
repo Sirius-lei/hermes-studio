@@ -1,4 +1,4 @@
-import { resolveAvailableModelForProfile } from '../controllers/hermes/models'
+import { resolveAvailableModelForProfile } from '../controllers/DiTing/models'
 import { readSseFrames } from './agent-runner/sse'
 
 export interface TaskPlannerAgentCandidate {
@@ -380,7 +380,7 @@ export async function generateTaskPlan(input: {
           {
             role: 'system',
             content: [
-              '你是 Hermes 通用任务规划器。',
+              '你是 DiTing 通用任务规划器。',
               '你的职责是把用户需求拆解成可执行任务清单，并为每个任务推荐合适的子智能体。',
               '这不是编码专用流程，任务可以是业务、运营、资料整理、分析、流程执行或开发。',
               '你不是最终回答模型，不要在规划阶段替用户回答或拒答。',
@@ -458,8 +458,8 @@ export async function generateTaskRouteDecision(input: {
           {
             role: 'system',
             content: [
-              '你是 Hermes 通用任务门户的路由决策器。',
-              '你的职责是先判断用户请求应该直接回答、由 Hermes 调用内置能力执行，还是交给某个子智能体处理。',
+              '你是 DiTing 通用任务门户的路由决策器。',
+              '你的职责是先判断用户请求应该直接回答、由 DiTing 调用内置能力执行，还是交给某个子智能体处理。',
               '你不是最终回答模型，不要在路由阶段替用户回答、拒答或输出安全建议。',
               '如果请求涉及查询、检索、统计、报表、数据库、业务系统或外部工具，而 available_agents 中存在对应能力，优先选择 subagent。',
               '合规、授权、隐私、缺少参数或数据源不可用等问题应写入 constraints，由后续执行方校验或向用户澄清；不要因此把可执行任务改成 direct。',
@@ -467,7 +467,7 @@ export async function generateTaskRouteDecision(input: {
               'JSON 字段必须包含 intent, category, execution_mode, need_clarify, selected_agent_id, selected_agent_name, confidence, reason, todo, constraints。',
               'execution_mode 只能是 direct, skill, subagent, clarify。',
               'direct 表示普通对话或直接回答，不需要拆解任务。',
-              'skill 表示由 Hermes 主智能体执行，必要时调用内置 skills 或 tools。',
+              'skill 表示由 DiTing 主智能体执行，必要时调用内置 skills 或 tools。',
               'subagent 表示主要执行权应交给一个子智能体。',
               'clarify 表示信息不足，必须先向用户澄清，不要虚构执行计划。',
               '如果选择 subagent，selected_agent_id 和 selected_agent_name 必须来自 available_agents；没有合适对象时不要硬选。',
@@ -540,12 +540,12 @@ export async function generateTaskReplanDecision(input: {
           {
             role: 'system',
             content: [
-              '你是 Hermes 多智能体协作中的重规划决策器。',
+              '你是 DiTing 多智能体协作中的重规划决策器。',
               '你会收到原始用户需求、当前任务计划，以及某个子智能体刚刚返回的阶段成果。',
               '你的职责是判断：主智能体是否还需要继续执行剩余步骤。',
               '如果阶段成果已经足够支撑最终答复，continue_execution 必须是 false，todo 返回空数组。',
               '如果还需要主智能体验证、整合、补查、二次处理、调用工具或组织最终结果，continue_execution 必须是 true，并输出 1 到 5 条剩余 todo。',
-              '这一步只决定 Hermes 主链路是否继续，不要再指派新的子智能体。',
+              '这一步只决定 DiTing 主链路是否继续，不要再指派新的子智能体。',
               '只输出一个 JSON 对象，不要输出 Markdown、解释文字或代码块。',
               'JSON 字段必须包含 continue_execution, reason, todo, constraints, response_strategy。',
               'response_strategy 用一句话描述主智能体接下来应该如何处理阶段成果。',
@@ -617,7 +617,7 @@ export async function streamTaskRouteReasoning(input: {
           {
             role: 'system',
             content: [
-              '你是 Hermes 通用任务门户的规划分析器。',
+              '你是 DiTing 通用任务门户的规划分析器。',
               '请先对用户请求进行简短分析，说明你正在识别目标、约束、执行路径和潜在的子智能体匹配方向。',
               '你不是最终回答模型，不要在分析阶段替用户回答或拒答。',
               '如果 available_agents 中存在匹配能力，把权限、合规、缺参等内容作为执行约束，不要阻断路由分析。',

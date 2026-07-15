@@ -3,18 +3,18 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
-import ChatView from '@/views/hermes/ChatView.vue'
-import { useAppStore } from '@/stores/hermes/app'
-import { useChatStore, type Session } from '@/stores/hermes/chat'
-import { useProfilesStore } from '@/stores/hermes/profiles'
-import { useSettingsStore } from '@/stores/hermes/settings'
+import ChatView from '@/views/DiTing/ChatView.vue'
+import { useAppStore } from '@/stores/DiTing/app'
+import { useChatStore, type Session } from '@/stores/DiTing/chat'
+import { useProfilesStore } from '@/stores/DiTing/profiles'
+import { useSettingsStore } from '@/stores/DiTing/settings'
 
-vi.mock('@/components/hermes/chat/ChatPanel.vue', () => ({
+vi.mock('@/components/DiTing/chat/ChatPanel.vue', () => ({
   default: { template: '<div data-testid="chat-panel" />' },
 }))
 
 const mockRoute = {
-  name: 'hermes.session',
+  name: 'DiTing.session',
   params: {},
   query: {},
 }
@@ -24,7 +24,7 @@ vi.mock('vue-router', () => ({
   useRouter: () => ({ replace: vi.fn() }),
 }))
 
-vi.mock('@/api/hermes/chat', () => ({
+vi.mock('@/api/DiTing/chat', () => ({
   startRunViaSocket: vi.fn(),
   resumeSession: vi.fn(),
   registerSessionHandlers: vi.fn(),
@@ -37,7 +37,7 @@ vi.mock('@/api/hermes/chat', () => ({
   onSessionTitleUpdated: vi.fn(() => vi.fn()),
 }))
 
-vi.mock('@/api/hermes/sessions', () => ({
+vi.mock('@/api/DiTing/sessions', () => ({
   fetchSessions: vi.fn(),
   fetchSessionMessagesPage: vi.fn(),
   deleteSession: vi.fn(),
@@ -48,7 +48,7 @@ vi.mock('@/api/client', () => ({
   getActiveProfileName: () => 'default',
 }))
 
-vi.mock('@/api/hermes/download', () => ({
+vi.mock('@/api/DiTing/download', () => ({
   getDownloadUrl: (_path: string, name: string) => `/download/${name}`,
 }))
 

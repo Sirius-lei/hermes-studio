@@ -1,10 +1,10 @@
 import { ref, watch } from 'vue'
-import { fetchSttSettings } from '@/api/hermes/stt-settings'
+import { fetchSttSettings } from '@/api/DiTing/stt-settings'
 import type {
   FetchSttSettingsResponse,
   SttProvider,
   SttProviderSettingsResponse,
-} from '@/api/hermes/stt-settings'
+} from '@/api/DiTing/stt-settings'
 
 interface SttSettingsData {
   provider: SttProvider
@@ -17,7 +17,7 @@ interface SttSettingsData {
   customPrompt: string
 }
 
-const STORAGE_KEY = 'hermes-stt-settings-v1'
+const STORAGE_KEY = 'DiTing-stt-settings-v1'
 
 function browserSttAvailable(): boolean {
   if (typeof window === 'undefined') return false
@@ -168,7 +168,7 @@ export function clearSttSettingsAuthState() {
 }
 
 if (typeof window !== 'undefined') {
-  window.addEventListener('hermes-auth-cleared', clearSttSettingsAuthState)
+  window.addEventListener('DiTing-auth-cleared', clearSttSettingsAuthState)
 }
 
 watch(

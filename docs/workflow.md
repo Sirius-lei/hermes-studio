@@ -1,22 +1,22 @@
 # Workflow Page
 
-This document records the current Workflow page implementation in Hermes Web UI.
+This document records the current Workflow page implementation in DiTing Web UI.
 The page is still a front-end workflow builder plus persistence layer. Workflow
 execution is intentionally not wired yet.
 
 ## Entry Points
 
-- Client route: `/hermes/workflow`
-- Client view: `packages/client/src/views/hermes/WorkflowView.vue`
+- Client route: `/DiTing/workflow`
+- Client view: `packages/client/src/views/DiTing/WorkflowView.vue`
 - Agent node component:
-  `packages/client/src/components/hermes/workflow/WorkflowAgentNode.vue`
-- Client API helper: `packages/client/src/api/hermes/workflows.ts`
-- Server routes: `packages/server/src/routes/hermes/workflows.ts`
-- Server controller: `packages/server/src/controllers/hermes/workflows.ts`
+  `packages/client/src/components/DiTing/workflow/WorkflowAgentNode.vue`
+- Client API helper: `packages/client/src/api/DiTing/workflows.ts`
+- Server routes: `packages/server/src/routes/DiTing/workflows.ts`
+- Server controller: `packages/server/src/controllers/DiTing/workflows.ts`
 - Server service singleton: `packages/server/src/services/workflow-manager.ts`
 - Server socket: `packages/server/src/services/workflow-socket.ts`
-- Store: `packages/server/src/db/hermes/workflow-store.ts`
-- Schema: `packages/server/src/db/hermes/schemas.ts`
+- Store: `packages/server/src/db/DiTing/workflow-store.ts`
+- Schema: `packages/server/src/db/DiTing/schemas.ts`
 
 The Workflow page is opened from the same left page sidebar used by chat,
 history, and group chat. The workflow list also lives in the left sidebar.
@@ -30,7 +30,7 @@ history, and group chat. The workflow list also lives in the left sidebar.
   - profile
   - optional workspace directory
 - If no workspace is selected, the server creates a default workspace:
-  `~/.hermes-web-ui/workflow/<profile>/<workflowId>`.
+  `~/.diting-web-ui/workflow/<profile>/<workflowId>`.
 - The workflow sidebar supports:
   - profile filter
   - batch mode
@@ -50,7 +50,7 @@ history, and group chat. The workflow list also lives in the left sidebar.
 Workflow nodes are custom agent nodes. Each node has:
 
 - title
-- agent selector: `hermes`, `claude-code`, `codex`
+- agent selector: `DiTing`, `claude-code`, `codex`
 - provider/model selector
 - API mode selector for coding agents
 - skills tag input
@@ -170,13 +170,13 @@ nodes and edges.
 
 Routes:
 
-- `GET /api/hermes/workflows`
-- `GET /api/hermes/workflows?profile=<profile>`
-- `POST /api/hermes/workflows`
-- `GET /api/hermes/workflows/:id`
-- `PATCH /api/hermes/workflows/:id`
-- `DELETE /api/hermes/workflows/:id`
-- `POST /api/hermes/workflows/batch-delete`
+- `GET /api/DiTing/workflows`
+- `GET /api/DiTing/workflows?profile=<profile>`
+- `POST /api/DiTing/workflows`
+- `GET /api/DiTing/workflows/:id`
+- `PATCH /api/DiTing/workflows/:id`
+- `DELETE /api/DiTing/workflows/:id`
+- `POST /api/DiTing/workflows/batch-delete`
 
 Socket namespace:
 
@@ -239,17 +239,17 @@ runtime paths.
   They are read from the shared `messages` table through the node's
   `sessions.id`.
 - Chat sessions created for workflow nodes use `sessions.source = "workflow"`
-  so normal chat and Hermes history lists stay clean.
+  so normal chat and DiTing history lists stay clean.
 - The `workflow_run_messages` table is no longer used.
 - Workflow runtime status can be pushed over the `/workflow` socket through
   `workflow.status.updated`.
 - Workflow node agent mapping is defined in the server workflow manager:
-  - Hermes nodes are workflow sessions but execute through the existing
-    bridge/API-server path because the upstream Hermes bridge does not
+  - DiTing nodes are workflow sessions but execute through the existing
+    bridge/API-server path because the upstream DiTing bridge does not
     understand `workflow` as an execution source.
   - Claude Code and Codex nodes are workflow sessions but execute through the
     existing coding-agent path with the matching `coding_agent_id`.
-- `POST /api/hermes/workflows/:id/run` starts a run asynchronously.
+- `POST /api/DiTing/workflows/:id/run` starts a run asynchronously.
 - `packages/server/src/services/workflow-manager.ts` owns immediate execution,
   run status, stop/delete behavior, run snapshots, and node session cleanup.
 - Each run persists a `workflow_runs` row and a
@@ -265,7 +265,7 @@ runtime paths.
   the workflow page.
 - Selecting a run shows the workflow snapshot. Nodes in snapshot mode are
   read-only and can open their associated session transcript.
-- Hermes workflow nodes auto-respond to tool approval requests with the
+- DiTing workflow nodes auto-respond to tool approval requests with the
   one-time `once` choice. Normal single-chat approvals still require the user
   to respond from the chat UI.
 
@@ -275,7 +275,7 @@ runtime paths.
 upstream agent backend.
 
 - Persisted node sessions use `sessions.source = "workflow"`.
-- Hermes nodes still execute through the existing bridge/API-server path.
+- DiTing nodes still execute through the existing bridge/API-server path.
 - Claude Code and Codex nodes still execute through the existing coding-agent
   path.
 - The executor decides the concrete run path from the node's selected agent.

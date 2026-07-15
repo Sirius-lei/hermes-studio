@@ -10,7 +10,7 @@ export interface MockedRequest {
   postData: string | null
 }
 
-interface MockHermesApiOptions {
+interface MockDiTingApiOptions {
   tokenValidationStatus?: number
   initialProfileName?: 'default' | 'research'
   sessions?: unknown[]
@@ -90,7 +90,7 @@ function recordRequest(request: Request): MockedRequest {
   }
 }
 
-export async function mockHermesApi(page: Page, options: MockHermesApiOptions = {}) {
+export async function mockDiTingApi(page: Page, options: MockDiTingApiOptions = {}) {
   const requests: MockedRequest[] = []
   const unexpectedRequests: MockedRequest[] = []
   const tokenValidationStatus = options.tokenValidationStatus ?? 200
@@ -160,27 +160,37 @@ export async function mockHermesApi(page: Page, options: MockHermesApiOptions = 
       return
     }
 
-    if (pathname === '/api/hermes/sessions') {
+    if (pathname === '/api/DiTing/sessions') {
       await route.fulfill(jsonResponse({ sessions: options.sessions ?? [] }, tokenValidationStatus))
       return
     }
 
-    if (pathname === '/api/hermes/sessions/hermes') {
+    if (pathname === '/api/DiTing/sessions/DiTing') {
       await route.fulfill(jsonResponse({ sessions: [] }))
       return
     }
 
-    if (pathname === '/api/hermes/sessions/context-length') {
+    if (pathname === '/api/DiTing/sessions/context-length') {
       await route.fulfill(jsonResponse({ context_length: 256000 }))
       return
     }
 
-    if (pathname === '/api/hermes/files/list') {
+    if (pathname === '/api/DiTing/sub-agents') {
+      await route.fulfill(jsonResponse({ agents: [] }))
+      return
+    }
+
+    if (pathname === '/api/agent/profile') {
+      await route.fulfill(jsonResponse({ error: 'Runtime unavailable in e2e' }, 404))
+      return
+    }
+
+    if (pathname === '/api/DiTing/files/list') {
       await route.fulfill(jsonResponse({ entries: [], path: '' }))
       return
     }
 
-    if (pathname === '/api/hermes/auth/copilot/check-token') {
+    if (pathname === '/api/DiTing/auth/copilot/check-token') {
       await route.fulfill(jsonResponse({ has_token: false, source: null, enabled: false }))
       return
     }
@@ -190,7 +200,7 @@ export async function mockHermesApi(page: Page, options: MockHermesApiOptions = 
       return
     }
 
-    if (pathname === '/api/hermes/available-models') {
+    if (pathname === '/api/DiTing/available-models') {
       await route.fulfill(jsonResponse({
         default: 'test-model',
         default_provider: 'test-provider',
@@ -202,17 +212,17 @@ export async function mockHermesApi(page: Page, options: MockHermesApiOptions = 
       return
     }
 
-    if (pathname === '/api/hermes/provider-models') {
+    if (pathname === '/api/DiTing/provider-models') {
       await route.fulfill(jsonResponse({ models: ['proxy-model-a', 'proxy-model-b'] }))
       return
     }
 
-    if (pathname === '/api/hermes/config/auxiliary-models') {
+    if (pathname === '/api/DiTing/config/auxiliary-models') {
       await route.fulfill(jsonResponse({ tasks: sampleAuxiliaryModelTasks, auxiliary: {} }))
       return
     }
 
-    if (pathname === '/api/hermes/profiles') {
+    if (pathname === '/api/DiTing/profiles') {
       await route.fulfill(jsonResponse({
         profiles: [
           { name: 'default', active: activeProfileName === 'default', model: 'test-model', gateway: 'test', alias: 'Default' },
@@ -222,7 +232,7 @@ export async function mockHermesApi(page: Page, options: MockHermesApiOptions = 
       return
     }
 
-    if (pathname === '/api/hermes/profiles/runtime-statuses') {
+    if (pathname === '/api/DiTing/profiles/runtime-statuses') {
       await route.fulfill(jsonResponse({
         profiles: [
           {
@@ -240,7 +250,7 @@ export async function mockHermesApi(page: Page, options: MockHermesApiOptions = 
       return
     }
 
-    if (pathname === '/api/hermes/profiles/active') {
+    if (pathname === '/api/DiTing/profiles/active') {
       if (request.method() !== 'PUT') {
         await route.fulfill(jsonResponse({ error: 'Method not allowed' }, 405))
         return
@@ -264,7 +274,7 @@ export async function mockHermesApi(page: Page, options: MockHermesApiOptions = 
       return
     }
 
-    if (pathname === '/api/hermes/config') {
+    if (pathname === '/api/DiTing/config') {
       await route.fulfill(jsonResponse({
         display: { streaming: true, show_reasoning: true, show_cost: true },
         agent: {},
@@ -276,7 +286,7 @@ export async function mockHermesApi(page: Page, options: MockHermesApiOptions = 
       return
     }
 
-    if (pathname === '/api/hermes/jobs') {
+    if (pathname === '/api/DiTing/jobs') {
       await route.fulfill(jsonResponse({ jobs: [sampleJob] }))
       return
     }
@@ -296,9 +306,9 @@ export async function mockHermesApi(page: Page, options: MockHermesApiOptions = 
 export async function authenticate(page: Page, accessKey = TEST_ACCESS_KEY, profileName?: string) {
   await page.addInitScript((state: { storedToken: string; storedProfileName?: string }) => {
     const { storedToken, storedProfileName } = state
-    window.localStorage.setItem('hermes_api_key', storedToken)
-    if (storedProfileName && !window.localStorage.getItem('hermes_active_profile_name')) {
-      window.localStorage.setItem('hermes_active_profile_name', storedProfileName)
+    window.localStorage.setItem('DiTing_api_key', storedToken)
+    if (storedProfileName && !window.localStorage.getItem('DiTing_active_profile_name')) {
+      window.localStorage.setItem('DiTing_active_profile_name', storedProfileName)
     }
   }, { storedToken: accessKey, storedProfileName: profileName })
 }

@@ -26,17 +26,17 @@ vi.mock('../../packages/server/src/services/auth', () => ({
   getToken: vi.fn(async () => 'test-token'),
 }))
 
-import { ContextEngine } from '../../packages/server/src/services/hermes/context-engine/compressor'
+import { ContextEngine } from '../../packages/server/src/services/DiTing/context-engine/compressor'
 import type {
   GatewayCaller,
   MessageFetcher,
   StoredMessage,
-} from '../../packages/server/src/services/hermes/context-engine/types'
-import { AgentClients } from '../../packages/server/src/services/hermes/group-chat/agent-clients'
+} from '../../packages/server/src/services/DiTing/context-engine/types'
+import { AgentClients } from '../../packages/server/src/services/DiTing/group-chat/agent-clients'
 import {
   buildProjectedGroupChatHistory,
   projectGroupChatMessage,
-} from '../../packages/server/src/services/hermes/group-chat/context-projection'
+} from '../../packages/server/src/services/DiTing/group-chat/context-projection'
 
 function makeMessage(overrides: Partial<StoredMessage>): StoredMessage {
   return {

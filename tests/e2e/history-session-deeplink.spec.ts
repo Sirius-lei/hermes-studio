@@ -103,11 +103,11 @@ async function mockHistoryApi(page: Page) {
 
     if (pathname === '/health') return json({ status: 'ok' })
     if (pathname === '/api/auth/status') return json({ hasPasswordLogin: false, username: null })
-    if (pathname === '/api/hermes/available-models') return json({ default: 'test-model', default_provider: 'test-provider', groups: [], allProviders: [], model_aliases: {}, model_visibility: {} })
-    if (pathname === '/api/hermes/profiles') return json({ profiles: [{ name: 'default', active: true, model: 'test-model', gateway: 'test' }] })
-    if (pathname === '/api/hermes/sessions/hermes') return json({ sessions: historySessions })
+    if (pathname === '/api/DiTing/available-models') return json({ default: 'test-model', default_provider: 'test-provider', groups: [], allProviders: [], model_aliases: {}, model_visibility: {} })
+    if (pathname === '/api/DiTing/profiles') return json({ profiles: [{ name: 'default', active: true, model: 'test-model', gateway: 'test' }] })
+    if (pathname === '/api/DiTing/sessions/DiTing') return json({ sessions: historySessions })
 
-    const detailMatch = pathname.match(/^\/api\/hermes\/sessions\/hermes\/([^/]+)$/)
+    const detailMatch = pathname.match(/^\/api\/DiTing\/sessions\/DiTing\/([^/]+)$/)
     if (detailMatch) {
       const detail = detailFor(decodeURIComponent(detailMatch[1]))
       return detail ? json({ session: detail }) : json({ error: 'Session not found' }, 404)
@@ -124,30 +124,30 @@ test.describe('history session deep links', () => {
   })
 
   test('route session id opens selected history session', async ({ page }) => {
-    await page.goto('/#/hermes/history/session/hist-beta')
+    await page.goto('/#/DiTing/history/session/hist-beta')
 
     await expect(page.getByText('Beta History Session').first()).toBeVisible()
     await expect(page.getByText('Answer from Beta History Session')).toBeVisible()
-    await expect(page).toHaveURL(/#\/hermes\/history\/session\/hist-beta$/)
+    await expect(page).toHaveURL(/#\/DiTing\/history\/session\/hist-beta$/)
   })
 
   test('clicking another history session updates URL and reload preserves it', async ({ page }) => {
-    await page.goto('/#/hermes/history/session/hist-alpha')
+    await page.goto('/#/DiTing/history/session/hist-alpha')
     await expect(page.getByText('Answer from Alpha History Session')).toBeVisible()
 
     await page.getByText('Beta History Session').first().click()
-    await expect(page).toHaveURL(/#\/hermes\/history\/session\/hist-beta\?profile=default$/)
+    await expect(page).toHaveURL(/#\/DiTing\/history\/session\/hist-beta\?profile=default$/)
     await expect(page.getByText('Answer from Beta History Session')).toBeVisible()
 
     await page.reload()
-    await expect(page).toHaveURL(/#\/hermes\/history\/session\/hist-beta\?profile=default$/)
+    await expect(page).toHaveURL(/#\/DiTing\/history\/session\/hist-beta\?profile=default$/)
     await expect(page.getByText('Answer from Beta History Session')).toBeVisible()
   })
 
   test('unknown route session id falls back to base history route', async ({ page }) => {
-    await page.goto('/#/hermes/history/session/missing-session')
+    await page.goto('/#/DiTing/history/session/missing-session')
 
-    await expect(page).toHaveURL(/#\/hermes\/history$/)
+    await expect(page).toHaveURL(/#\/DiTing\/history$/)
     await expect(page.getByText('Alpha History Session').first()).toBeVisible()
   })
 })

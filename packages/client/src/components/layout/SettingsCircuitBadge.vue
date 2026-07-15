@@ -32,7 +32,7 @@ import { NTooltip } from 'naive-ui'
   -->
   <NTooltip trigger="hover" placement="top">
     <template #trigger>
-      <a class="settings-circuit-link" href="https://hermes-studio.ai/docs/hermes-esp32-intro/index.html" target="_blank" rel="noopener noreferrer" aria-label="小方盒" @click.stop>
+      <a class="settings-circuit-link" href="https://DiTing-studio.ai/docs/DiTing-esp32-intro/index.html" target="_blank" rel="noopener noreferrer" aria-label="小方盒" @click.stop>
         <svg class="settings-circuit-badge settings-circuit-badge--pcb" viewBox="0 0 36 22" fill="none" aria-hidden="true">
           <rect class="settings-pcb-board" x="3" y="3" width="30" height="16" rx="3" />
           <path class="settings-pcb-copper" d="M7 7h6v4h7v-3h9" />

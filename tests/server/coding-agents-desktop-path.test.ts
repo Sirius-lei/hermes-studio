@@ -49,7 +49,7 @@ vi.mock('fs', async (importOriginal) => {
 const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform')
 const originalPath = process.env.PATH
 const originalShell = process.env.SHELL
-const originalHermesDesktop = process.env.HERMES_DESKTOP
+const originalDiTingDesktop = process.env.DiTing_DESKTOP
 
 function setPlatform(platform: NodeJS.Platform) {
   Object.defineProperty(process, 'platform', { value: platform })
@@ -58,7 +58,7 @@ function setPlatform(platform: NodeJS.Platform) {
 beforeEach(() => {
   execState.calls.length = 0
   setPlatform('darwin')
-  process.env.HERMES_DESKTOP = 'true'
+  process.env.DiTing_DESKTOP = 'true'
   process.env.SHELL = '/bin/zsh'
   process.env.PATH = '/usr/bin'
 })
@@ -68,8 +68,8 @@ afterEach(() => {
   process.env.PATH = originalPath
   if (typeof originalShell === 'undefined') delete process.env.SHELL
   else process.env.SHELL = originalShell
-  if (typeof originalHermesDesktop === 'undefined') delete process.env.HERMES_DESKTOP
-  else process.env.HERMES_DESKTOP = originalHermesDesktop
+  if (typeof originalDiTingDesktop === 'undefined') delete process.env.DiTing_DESKTOP
+  else process.env.DiTing_DESKTOP = originalDiTingDesktop
   vi.resetModules()
 })
 

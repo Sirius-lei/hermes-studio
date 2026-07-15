@@ -105,18 +105,18 @@ describe('stt transcribe controller', () => {
     }
     vi.doUnmock('../../packages/server/src/db/index')
     vi.doUnmock('../../packages/server/src/config')
-    vi.doUnmock('../../packages/server/src/services/hermes/stt-providers/audio-convert')
-    vi.doUnmock('../../packages/server/src/services/hermes/stt-providers')
+    vi.doUnmock('../../packages/server/src/services/DiTing/stt-providers/audio-convert')
+    vi.doUnmock('../../packages/server/src/services/DiTing/stt-providers')
     vi.doUnmock('../../packages/server/src/services/global-agent/server')
     vi.resetModules()
   })
 
   async function initControllerAndStore() {
-    const schemas = await import('../../packages/server/src/db/hermes/schemas')
-    schemas.initAllHermesTables()
+    const schemas = await import('../../packages/server/src/db/DiTing/schemas')
+    schemas.initAllDiTingTables()
     return {
-      ctrl: await import('../../packages/server/src/controllers/hermes/stt'),
-      store: await import('../../packages/server/src/db/hermes/stt-settings-store'),
+      ctrl: await import('../../packages/server/src/controllers/DiTing/stt'),
+      store: await import('../../packages/server/src/db/DiTing/stt-settings-store'),
     }
   }
 
@@ -268,10 +268,10 @@ describe('stt transcribe controller', () => {
     await ctrl.missingProfileAudio(ctx)
 
     expect(ctx.status).toBe(302)
-    expect(ctx.headers.Location).toBe('https://ekko-hermes-studio.oss-cn-beijing.aliyuncs.com/current-profile-stt-not-configured-xiaohe.s16le.pcm')
-    expect(ctx.headers['X-Hermes-STT-Configured']).toBe('false')
+    expect(ctx.headers.Location).toBe('https://ekko-DiTing-studio.oss-cn-beijing.aliyuncs.com/current-profile-stt-not-configured-xiaohe.s16le.pcm')
+    expect(ctx.headers['X-DiTing-STT-Configured']).toBe('false')
     expect(ctx.body).toEqual({
-      url: 'https://ekko-hermes-studio.oss-cn-beijing.aliyuncs.com/current-profile-stt-not-configured-xiaohe.s16le.pcm',
+      url: 'https://ekko-DiTing-studio.oss-cn-beijing.aliyuncs.com/current-profile-stt-not-configured-xiaohe.s16le.pcm',
     })
   })
 
@@ -478,11 +478,11 @@ describe('stt transcribe controller', () => {
         fileName: 'audio.wav',
       })),
     }
-    tempDir = mkdtempSync(join(tmpdir(), 'hermes-mcu-stt-test-'))
+    tempDir = mkdtempSync(join(tmpdir(), 'DiTing-mcu-stt-test-'))
     vi.doMock('../../packages/server/src/config', () => ({
       config: { appHome: tempDir },
     }))
-    vi.doMock('../../packages/server/src/services/hermes/stt-providers/audio-convert', () => audioConvertMock)
+    vi.doMock('../../packages/server/src/services/DiTing/stt-providers/audio-convert', () => audioConvertMock)
 
     mockFetch
       .mockResolvedValueOnce({
@@ -513,7 +513,7 @@ describe('stt transcribe controller', () => {
       {
         'content-type': 'audio/wav',
         authorization: 'Bearer user-token',
-        'x-hermes-mcu-interaction-id': 'voice-1',
+        'x-DiTing-mcu-interaction-id': 'voice-1',
       },
     )
 
@@ -536,8 +536,8 @@ describe('stt transcribe controller', () => {
     vi.doMock('../../packages/server/src/services/global-agent/server', () => ({
       getActiveGlobalAgentServer: () => ({ emitMcuEvent }),
     }))
-    vi.doMock('../../packages/server/src/services/hermes/stt-providers', async (importOriginal) => ({
-      ...await importOriginal<typeof import('../../packages/server/src/services/hermes/stt-providers')>(),
+    vi.doMock('../../packages/server/src/services/DiTing/stt-providers', async (importOriginal) => ({
+      ...await importOriginal<typeof import('../../packages/server/src/services/DiTing/stt-providers')>(),
       transcribeWithProvider: vi.fn(async () => {
         throw new Error('provider unavailable')
       }),
@@ -559,8 +559,8 @@ describe('stt transcribe controller', () => {
       {
         'content-type': 'audio/wav',
         authorization: 'Bearer user-token',
-        'x-hermes-mcu-interaction-id': 'voice-1',
-        'x-hermes-mcu-device-id': 'device-1',
+        'x-DiTing-mcu-interaction-id': 'voice-1',
+        'x-DiTing-mcu-device-id': 'device-1',
       },
     )
 
@@ -574,7 +574,7 @@ describe('stt transcribe controller', () => {
       interactionId: 'voice-1',
       segmentId: 'voice-1-stt-failed',
       text: '当前语音转文字失败了，请配置下语音转文字再使用哦',
-      url: 'https://ekko-hermes-studio.oss-cn-beijing.aliyuncs.com/stt-transcribe-failed-xiaohe.s16le.pcm',
+      url: 'https://ekko-DiTing-studio.oss-cn-beijing.aliyuncs.com/stt-transcribe-failed-xiaohe.s16le.pcm',
       mimeType: 'audio/x-pcm',
       format: 's16le',
       sampleRate: 16000,
@@ -653,11 +653,11 @@ describe('route registration ordering', () => {
     const ttsProtectedMiddleware = async () => {}
     const sttProtectedMiddleware = async () => {}
 
-    vi.doMock('../../packages/server/src/routes/hermes/tts', () => ({
+    vi.doMock('../../packages/server/src/routes/DiTing/tts', () => ({
       ttsRoutes: { routes: vi.fn(() => ttsPublicMiddleware) },
       ttsProtectedRoutes: { routes: vi.fn(() => ttsProtectedMiddleware) },
     }))
-    vi.doMock('../../packages/server/src/routes/hermes/stt', () => ({
+    vi.doMock('../../packages/server/src/routes/DiTing/stt', () => ({
       sttProtectedRoutes: { routes: vi.fn(() => sttProtectedMiddleware) },
     }))
 

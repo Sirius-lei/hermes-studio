@@ -16,7 +16,7 @@ const mockSettingsStore = vi.hoisted(() => ({
   saveSection: vi.fn(),
 }))
 
-vi.mock('@/stores/hermes/settings', () => ({
+vi.mock('@/stores/DiTing/settings', () => ({
   useSettingsStore: () => mockSettingsStore,
 }))
 
@@ -44,7 +44,7 @@ vi.mock('naive-ui', async () => {
   }
 })
 
-import DisplaySettings from '@/components/hermes/settings/DisplaySettings.vue'
+import DisplaySettings from '@/components/DiTing/settings/DisplaySettings.vue'
 
 describe('DisplaySettings', () => {
   it('does not expose the unwired busy input mode toggle', () => {

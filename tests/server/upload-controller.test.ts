@@ -13,12 +13,12 @@ vi.mock('fs/promises', async () => {
   }
 })
 
-vi.mock('../../packages/server/src/services/hermes/hermes-profile', () => ({
+vi.mock('../../packages/server/src/services/DiTing/DiTing-profile', () => ({
   getActiveProfileName: vi.fn(() => 'default'),
 }))
 
-vi.mock('../../packages/server/src/services/hermes/upload-paths', () => ({
-  getProfileUploadDir: vi.fn((profile: string) => `/tmp/hermes-web-ui/upload/${profile}`),
+vi.mock('../../packages/server/src/services/DiTing/upload-paths', () => ({
+  getProfileUploadDir: vi.fn((profile: string) => `/tmp/diting-web-ui/upload/${profile}`),
 }))
 
 function multipartBody(
@@ -62,10 +62,10 @@ describe('upload controller', () => {
 
     await handleUpload(ctx)
 
-    expect(mkdirMock).toHaveBeenCalledWith('/tmp/hermes-web-ui/upload/research', { recursive: true })
+    expect(mkdirMock).toHaveBeenCalledWith('/tmp/diting-web-ui/upload/research', { recursive: true })
     expect(writeFileMock).toHaveBeenCalledOnce()
     const [savedPath, data] = writeFileMock.mock.calls[0]
-    expect(normalizePath(savedPath)).toMatch(/^\/tmp\/hermes-web-ui\/upload\/research\/[a-f0-9]+\.txt$/)
+    expect(normalizePath(savedPath)).toMatch(/^\/tmp\/diting-web-ui\/upload\/research\/[a-f0-9]+\.txt$/)
     expect(data.toString('utf-8')).toBe('hello')
     expect(ctx.body.files[0]).toMatchObject({ name: 'note.txt', path: savedPath })
   })
@@ -87,7 +87,7 @@ describe('upload controller', () => {
 
     expect(writeFileMock).toHaveBeenCalledOnce()
     const [savedPath, data] = writeFileMock.mock.calls[0]
-    expect(normalizePath(savedPath)).toMatch(/^\/tmp\/hermes-web-ui\/upload\/research\/[a-f0-9]+\.txt$/)
+    expect(normalizePath(savedPath)).toMatch(/^\/tmp\/diting-web-ui\/upload\/research\/[a-f0-9]+\.txt$/)
     expect(data.toString('utf-8')).toBe('hello')
     expect(ctx.body.files[0]).toMatchObject({ name: 'daily report.txt', path: savedPath })
   })

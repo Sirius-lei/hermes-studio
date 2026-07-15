@@ -15,9 +15,9 @@ const mockProfilesApi = vi.hoisted(() => ({
   deleteProfileAvatar: vi.fn(),
 }))
 
-vi.mock('@/api/hermes/profiles', () => mockProfilesApi)
+vi.mock('@/api/DiTing/profiles', () => mockProfilesApi)
 
-import { useProfilesStore } from '@/stores/hermes/profiles'
+import { useProfilesStore } from '@/stores/DiTing/profiles'
 
 describe('Profiles Store', () => {
   beforeEach(() => {
@@ -167,12 +167,12 @@ describe('Profiles Store', () => {
     // activeProfileName should be updated immediately
     expect(store.activeProfileName).toBe('dev')
     // localStorage should also be updated
-    expect(localStorage.getItem('hermes_active_profile_name')).toBe('dev')
+    expect(localStorage.getItem('DiTing_active_profile_name')).toBe('dev')
   })
 
   it('switchProfile does not update state when API fails', async () => {
     const initialName = 'default'
-    localStorage.setItem('hermes_active_profile_name', initialName)
+    localStorage.setItem('DiTing_active_profile_name', initialName)
 
     mockProfilesApi.switchProfile.mockResolvedValue(false)  // API failed
 
@@ -185,12 +185,12 @@ describe('Profiles Store', () => {
     // activeProfileName should NOT change
     expect(store.activeProfileName).toBe(initialName)
     // localStorage should NOT change
-    expect(localStorage.getItem('hermes_active_profile_name')).toBe(initialName)
+    expect(localStorage.getItem('DiTing_active_profile_name')).toBe(initialName)
   })
 
   it('switchProfile keeps activeProfileName even if fetchProfiles fails', async () => {
     const initialName = 'default'
-    localStorage.setItem('hermes_active_profile_name', initialName)
+    localStorage.setItem('DiTing_active_profile_name', initialName)
 
     mockProfilesApi.switchProfile.mockResolvedValue(true)
     mockProfilesApi.fetchProfiles.mockRejectedValue(new Error('Network error'))
@@ -204,12 +204,12 @@ describe('Profiles Store', () => {
     // activeProfileName should be updated even though fetchProfiles failed
     expect(store.activeProfileName).toBe('dev')
     // localStorage should be updated
-    expect(localStorage.getItem('hermes_active_profile_name')).toBe('dev')
+    expect(localStorage.getItem('DiTing_active_profile_name')).toBe('dev')
   })
 
   it('switchProfile keeps the local selected profile independent of backend active flags', async () => {
     const initialName = 'default'
-    localStorage.setItem('hermes_active_profile_name', initialName)
+    localStorage.setItem('DiTing_active_profile_name', initialName)
 
     mockProfilesApi.switchProfile.mockResolvedValue(true)
     mockProfilesApi.fetchProfiles.mockResolvedValue([
@@ -223,6 +223,6 @@ describe('Profiles Store', () => {
 
     expect(result).toBe(true)
     expect(store.activeProfileName).toBe('dev')
-    expect(localStorage.getItem('hermes_active_profile_name')).toBe('dev')
+    expect(localStorage.getItem('DiTing_active_profile_name')).toBe('dev')
   })
 })

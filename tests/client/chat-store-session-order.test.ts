@@ -1,17 +1,17 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { useChatStore } from '@/stores/hermes/chat'
-import { fetchSessions } from '@/api/hermes/sessions'
+import { useChatStore } from '@/stores/DiTing/chat'
+import { fetchSessions } from '@/api/DiTing/sessions'
 
-vi.mock('@/api/hermes/sessions', () => ({
+vi.mock('@/api/DiTing/sessions', () => ({
   fetchSessions: vi.fn(),
   fetchSessionMessagesPage: vi.fn(),
   deleteSession: vi.fn(),
   setSessionModel: vi.fn(),
 }))
 
-vi.mock('@/api/hermes/chat', () => ({
+vi.mock('@/api/DiTing/chat', () => ({
   startRunViaSocket: vi.fn(),
   resumeSession: vi.fn((_sessionId: string, cb: (data: any) => void) => {
     cb({ session_id: _sessionId, isWorking: false, messages: [] })
@@ -30,7 +30,7 @@ vi.mock('@/api/client', () => ({
   getActiveProfileName: () => 'default',
 }))
 
-vi.mock('@/api/hermes/download', () => ({
+vi.mock('@/api/DiTing/download', () => ({
   getDownloadUrl: (_path: string, name: string) => `/download/${name}`,
 }))
 

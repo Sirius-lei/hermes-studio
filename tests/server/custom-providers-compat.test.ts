@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   getCompatibleCustomProviders,
   normalizeCustomProviderEntry,
-} from '../../packages/server/src/services/hermes/custom-providers-compat'
+} from '../../packages/server/src/services/DiTing/custom-providers-compat'
 
 describe('normalizeCustomProviderEntry', () => {
   it('returns null for non-objects', () => {
@@ -183,7 +183,7 @@ describe('getCompatibleCustomProviders', () => {
         { name: 'shared', base_url: 'https://list.example.com', model: 'list-model' },
       ],
       providers: {
-        // Same provider_key as the list entry's name — list entry wins per Hermes Agent semantics.
+        // Same provider_key as the list entry's name — list entry wins per DiTing Agent semantics.
         shared: { api: 'https://dict.example.com', default_model: 'dict-model' },
       },
     }
@@ -208,7 +208,7 @@ describe('getCompatibleCustomProviders', () => {
   })
 
   it('returns empty array when custom_providers is malformed', () => {
-    // Matches Hermes Agent: a non-list custom_providers value bails out entirely.
+    // Matches DiTing Agent: a non-list custom_providers value bails out entirely.
     expect(getCompatibleCustomProviders({ custom_providers: 'broken' })).toEqual([])
   })
 

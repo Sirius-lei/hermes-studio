@@ -54,7 +54,7 @@ function insertAssistantToolCalls(db: DatabaseSync, sessionId: string, timestamp
     .run(sessionId, 'assistant', '', JSON.stringify(toolCalls), timestamp)
 }
 
-describe('Hermes skill usage analytics DB aggregation', () => {
+describe('DiTing skill usage analytics DB aggregation', () => {
   beforeEach(() => {
     vi.resetModules()
     dbMock.current = createWebUiDb()
@@ -73,19 +73,19 @@ describe('Hermes skill usage analytics DB aggregation', () => {
     insertToolResult(db, {
       sessionId: 'recent-chat',
       timestamp: now - 50,
-      content: '[skill_view] name=hermes-agent (64,764 chars)',
+      content: '[skill_view] name=diting-agent (64,764 chars)',
     })
     insertToolResult(db, {
       sessionId: 'recent-chat',
       timestamp: now - 45,
       toolName: 'skill_view',
-      content: '[skill_view] name=hermes-agent (64,764 chars)',
+      content: '[skill_view] name=diting-agent (64,764 chars)',
     })
     insertToolResult(db, {
       sessionId: 'recent-chat',
       timestamp: now - 40,
       toolName: 'skill_manage',
-      content: JSON.stringify({ success: true, message: "Patched SKILL.md in skill 'hermes-agent' (1 replacement)." }),
+      content: JSON.stringify({ success: true, message: "Patched SKILL.md in skill 'diting-agent' (1 replacement)." }),
     })
     insertToolResult(db, {
       sessionId: 'recent-chat',
@@ -149,7 +149,7 @@ describe('Hermes skill usage analytics DB aggregation', () => {
       content: '[skill_view] name=other-profile-skill (1 chars)',
     })
 
-    const mod = await import('../../packages/server/src/db/hermes/sessions-db')
+    const mod = await import('../../packages/server/src/db/DiTing/sessions-db')
     const result = await mod.getSkillUsageStatsFromDb(7, now, 'default')
 
     expect(result).toEqual({
@@ -167,7 +167,7 @@ describe('Hermes skill usage analytics DB aggregation', () => {
           manage_count: 1,
           total_count: 7,
           skills: [
-            { skill: 'hermes-agent', view_count: 2, manage_count: 1, total_count: 3 },
+            { skill: 'diting-agent', view_count: 2, manage_count: 1, total_count: 3 },
             { skill: 'api-server-skill', view_count: 1, manage_count: 0, total_count: 1 },
             { skill: 'github-pr-workflow', view_count: 1, manage_count: 0, total_count: 1 },
             { skill: 'github-project-analysis', view_count: 1, manage_count: 0, total_count: 1 },
@@ -177,7 +177,7 @@ describe('Hermes skill usage analytics DB aggregation', () => {
       ],
       top_skills: [
         {
-          skill: 'hermes-agent',
+          skill: 'diting-agent',
           view_count: 2,
           manage_count: 1,
           total_count: 3,

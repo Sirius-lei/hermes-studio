@@ -2,7 +2,7 @@ import { logger } from './logger'
 import { closeDb } from '../db'
 import { stopPreviewRuntime } from '../controllers/update'
 import { codingAgentRunManager } from './agent-runner/coding-agent-run-manager'
-import { shutdownManagedGateways } from './hermes/gateway-runner'
+import { shutdownManagedGateways } from './DiTing/gateway-runner'
 import { stopOutboundRelayClient } from './global-agent/outbound-relay-client'
 
 const DEFAULT_SHUTDOWN_FORCE_EXIT_MS = 15_000
@@ -14,25 +14,25 @@ function envPositiveInt(name: string): number | undefined {
 }
 
 export function getShutdownForceExitMs(): number {
-  const override = envPositiveInt('HERMES_WEB_UI_SHUTDOWN_FORCE_EXIT_MS')
+  const override = envPositiveInt('DiTing_WEB_UI_SHUTDOWN_FORCE_EXIT_MS')
   if (override) return override
-  const desktop = String(process.env.HERMES_DESKTOP || '').trim().toLowerCase() === 'true'
+  const desktop = String(process.env.DiTing_DESKTOP || '').trim().toLowerCase() === 'true'
   return desktop ? DEFAULT_DESKTOP_SHUTDOWN_FORCE_EXIT_MS : DEFAULT_SHUTDOWN_FORCE_EXIT_MS
 }
 
 export function shouldStopAgentBridgeOnShutdown(_signal: string): boolean {
-  const raw = String(process.env.HERMES_AGENT_BRIDGE_STOP_ON_SHUTDOWN || '').trim().toLowerCase()
+  const raw = String(process.env.DiTing_AGENT_BRIDGE_STOP_ON_SHUTDOWN || '').trim().toLowerCase()
   if (['1', 'true', 'yes', 'on'].includes(raw)) return true
   if (['0', 'false', 'no', 'off'].includes(raw)) return false
 
   // Restart now defaults to a fresh bridge so package/runtime upgrades do not
   // attach to stale brokers. Operators can opt back into restart resume with
-  // HERMES_AGENT_BRIDGE_STOP_ON_SHUTDOWN=0.
+  // DiTing_AGENT_BRIDGE_STOP_ON_SHUTDOWN=0.
   return true
 }
 
 export function shouldStopManagedGatewaysOnShutdown(env: NodeJS.ProcessEnv = process.env): boolean {
-  const raw = String(env.HERMES_WEB_UI_STOP_GATEWAYS_ON_SHUTDOWN || '').trim().toLowerCase()
+  const raw = String(env.DiTing_WEB_UI_STOP_GATEWAYS_ON_SHUTDOWN || '').trim().toLowerCase()
   if (['1', 'true', 'yes', 'on'].includes(raw)) return true
   if (['0', 'false', 'no', 'off'].includes(raw)) return false
 

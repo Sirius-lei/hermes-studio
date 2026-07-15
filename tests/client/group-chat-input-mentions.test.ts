@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createTestingPinia } from '@pinia/testing'
 import { nextTick } from 'vue'
-import GroupChatInput from '@/components/hermes/group-chat/GroupChatInput.vue'
-import { useGroupChatStore } from '@/stores/hermes/group-chat'
+import GroupChatInput from '@/components/DiTing/group-chat/GroupChatInput.vue'
+import { useGroupChatStore } from '@/stores/DiTing/group-chat'
 
 vi.mock('vue-i18n', () => ({
   useI18n: () => ({ t: (key: string) => key }),

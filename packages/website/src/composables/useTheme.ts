@@ -2,7 +2,7 @@ import { ref } from 'vue'
 
 export type ThemeMode = 'light' | 'dark' | 'system'
 
-const STORAGE_KEY = 'hermes_website_theme'
+const STORAGE_KEY = 'DiTing_website_theme'
 
 const mode = ref<ThemeMode>('light')
 const isDark = ref(false)

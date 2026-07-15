@@ -31,11 +31,11 @@ find_first_executable() {
 
 find_agent_root() {
   for candidate in \
-    "${HERMES_AGENT_ROOT:-}" \
-    /opt/hermes/hermes-agent \
-    /opt/hermes-agent \
-    /usr/local/lib/hermes-agent \
-    "${HERMES_HOME}/hermes-agent"
+    "${DiTing_AGENT_ROOT:-}" \
+    /opt/diting/diting-agent \
+    /opt/diting-agent \
+    /usr/local/lib/diting-agent \
+    "${DiTing_HOME}/diting-agent"
   do
     if [ -n "$candidate" ] && [ -f "$candidate/run_agent.py" ]; then
       printf '%s\n' "$candidate"
@@ -69,7 +69,7 @@ copy_if_missing() {
 }
 
 profile_name_from_file() {
-  active_file="$HERMES_HOME/active_profile"
+  active_file="$DiTing_HOME/active_profile"
   if [ -f "$active_file" ]; then
     active_name="$(tr -d '\r' <"$active_file" | head -n 1 | tr -d '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
     if [ -n "$active_name" ]; then
@@ -81,8 +81,8 @@ profile_name_from_file() {
 }
 
 current_profile_name() {
-  if [ -n "${HERMES_ACTIVE_PROFILE:-}" ]; then
-    printf '%s\n' "$HERMES_ACTIVE_PROFILE"
+  if [ -n "${DiTing_ACTIVE_PROFILE:-}" ]; then
+    printf '%s\n' "$DiTing_ACTIVE_PROFILE"
     return 0
   fi
   if profile_name_from_file >/dev/null 2>&1; then
@@ -95,9 +95,9 @@ current_profile_name() {
 profile_dir_for_name() {
   name="${1:-default}"
   if [ -z "$name" ] || [ "$name" = "default" ]; then
-    printf '%s\n' "$HERMES_HOME"
+    printf '%s\n' "$DiTing_HOME"
   else
-    printf '%s/profiles/%s\n' "$HERMES_HOME" "$name"
+    printf '%s/profiles/%s\n' "$DiTing_HOME" "$name"
   fi
 }
 
@@ -105,27 +105,27 @@ ensure_active_profile_file() {
   profile_name="$(current_profile_name)"
   profile_dir="$(profile_dir_for_name "$profile_name")"
   mkdir -p "$profile_dir"
-  printf '%s\n' "$profile_name" >"$HERMES_HOME/active_profile"
-  export HERMES_ACTIVE_PROFILE="$profile_name"
+  printf '%s\n' "$profile_name" >"$DiTing_HOME/active_profile"
+  export DiTing_ACTIVE_PROFILE="$profile_name"
 }
 
-prepare_hermes_home() {
+prepare_DiTing_home() {
   examples_dir="$(resolve_examples_dir || true)"
   profile_name="$(current_profile_name)"
   profile_dir="$(profile_dir_for_name "$profile_name")"
 
-  mkdir -p "$HERMES_HOME" "$HERMES_WEB_UI_HOME" "$UPLOAD_DIR" "$HERMES_HOME/profiles" "$profile_dir"
+  mkdir -p "$DiTing_HOME" "$DiTing_WEB_UI_HOME" "$UPLOAD_DIR" "$DiTing_HOME/profiles" "$profile_dir"
   ensure_active_profile_file
 
   if [ -n "$examples_dir" ]; then
-    copy_if_missing "$examples_dir/HERMES_HOME.README.md" "$HERMES_HOME/DOCKER_SETUP.md"
+    copy_if_missing "$examples_dir/DiTing_HOME.README.md" "$DiTing_HOME/DOCKER_SETUP.md"
     copy_if_missing "$examples_dir/config.yaml.example" "$profile_dir/config.yaml.example"
     copy_if_missing "$examples_dir/auth.json.example" "$profile_dir/auth.json.example"
   else
     log "warning: docker example templates were not found; only directory scaffolding was created"
   fi
 
-  log "prepared Hermes home at ${HERMES_HOME}"
+  log "prepared DiTing home at ${DiTing_HOME}"
   log "active profile: ${profile_name}"
   log "profile directory: ${profile_dir}"
   if [ ! -f "$profile_dir/config.yaml" ]; then
@@ -141,89 +141,89 @@ validate_runtime_profile() {
   profile_dir="$(profile_dir_for_name "$profile_name")"
   config_path="$profile_dir/config.yaml"
 
-  if flag_enabled "${HERMES_DOCKER_REQUIRE_PROFILE_CONFIG:-0}" && [ ! -f "$config_path" ]; then
-    log "error: missing Hermes profile config: $config_path"
-    log "run: docker compose run --rm hermes-webui prepare-hermes-home"
-    log "then create config.yaml from config.yaml.example under the mapped Hermes home before starting the service"
+  if flag_enabled "${DiTing_DOCKER_REQUIRE_PROFILE_CONFIG:-0}" && [ ! -f "$config_path" ]; then
+    log "error: missing DiTing profile config: $config_path"
+    log "run: docker compose run --rm diting-webui prepare-diting-home"
+    log "then create config.yaml from config.yaml.example under the mapped DiTing home before starting the service"
     exit 1
   fi
 
   if [ ! -f "$config_path" ]; then
-    log "warning: config.yaml not found for profile ${profile_name}; Hermes runtime may start without a usable model configuration"
+    log "warning: config.yaml not found for profile ${profile_name}; DiTing runtime may start without a usable model configuration"
   fi
 }
 
 set_default_if_empty HOME /home/agent
 set_default_if_empty PORT 6060
 set_default_if_empty BIND_HOST 0.0.0.0
-set_default_if_empty HERMES_HOME /home/agent/.hermes
-set_default_if_empty HERMES_WEB_UI_HOME /home/agent/.hermes-web-ui
-set_default_if_empty HERMES_WEB_UI_MANAGED_GATEWAY 1
-set_default_if_empty HERMES_WEB_UI_REQUIRE_AGENT_BRIDGE 1
-set_default_if_empty HERMES_ACTIVE_PROFILE default
-set_default_if_empty HERMES_DOCKER_REQUIRE_PROFILE_CONFIG 0
-set_default_if_empty HERMES_AGENT_BRIDGE_ENDPOINT tcp://127.0.0.1:18765
-set_default_if_empty HERMES_AGENT_BRIDGE_AUTO_RESTART 1
-set_default_if_empty HERMES_AGENT_BRIDGE_WORKER_TRANSPORT tcp
-set_default_if_empty HERMES_AGENT_BRIDGE_WORKER_PORT_BASE 18780
-set_default_if_empty HERMES_AGENT_BRIDGE_STARTUP_TIMEOUT_MS 120000
-set_default_if_empty HERMES_AGENT_BRIDGE_WARM_PROFILES active
-set_default_if_empty HERMES_AGENT_BRIDGE_WORKER_IDLE_TIMEOUT_SECONDS 86400
-set_default_if_empty HERMES_AGENT_BRIDGE_SESSION_IDLE_TIMEOUT_SECONDS 86400
-set_default_if_empty UPLOAD_DIR "${HERMES_WEB_UI_HOME}/upload"
+set_default_if_empty DiTing_HOME /home/agent/.diting
+set_default_if_empty DiTing_WEB_UI_HOME /home/agent/.diting-web-ui
+set_default_if_empty DiTing_WEB_UI_MANAGED_GATEWAY 1
+set_default_if_empty DiTing_WEB_UI_REQUIRE_AGENT_BRIDGE 1
+set_default_if_empty DiTing_ACTIVE_PROFILE default
+set_default_if_empty DiTing_DOCKER_REQUIRE_PROFILE_CONFIG 0
+set_default_if_empty DiTing_AGENT_BRIDGE_ENDPOINT tcp://127.0.0.1:28765
+set_default_if_empty DiTing_AGENT_BRIDGE_AUTO_RESTART 1
+set_default_if_empty DiTing_AGENT_BRIDGE_WORKER_TRANSPORT tcp
+set_default_if_empty DiTing_AGENT_BRIDGE_WORKER_PORT_BASE 28780
+set_default_if_empty DiTing_AGENT_BRIDGE_STARTUP_TIMEOUT_MS 120000
+set_default_if_empty DiTing_AGENT_BRIDGE_WARM_PROFILES active
+set_default_if_empty DiTing_AGENT_BRIDGE_WORKER_IDLE_TIMEOUT_SECONDS 86400
+set_default_if_empty DiTing_AGENT_BRIDGE_SESSION_IDLE_TIMEOUT_SECONDS 86400
+set_default_if_empty UPLOAD_DIR "${DiTing_WEB_UI_HOME}/upload"
 
-if [ -z "${HERMES_BIN:-}" ]; then
-  if hermes_bin="$(find_first_executable /opt/hermes/.venv/bin/hermes /usr/local/bin/hermes "$(command -v hermes 2>/dev/null || true)")"; then
-    export HERMES_BIN="$hermes_bin"
+if [ -z "${DiTing_BIN:-}" ]; then
+  if DiTing_bin="$(find_first_executable /opt/diting/.venv/bin/diting /usr/local/bin/diting "$(command -v diting 2>/dev/null || true)")"; then
+    export DiTing_BIN="$DiTing_bin"
   else
-    log "warning: Hermes CLI binary not found in expected locations"
+    log "warning: DiTing CLI binary not found in expected locations"
   fi
 fi
 
-if [ -z "${HERMES_AGENT_ROOT:-}" ]; then
+if [ -z "${DiTing_AGENT_ROOT:-}" ]; then
   if agent_root="$(find_agent_root)"; then
-    export HERMES_AGENT_ROOT="$agent_root"
+    export DiTing_AGENT_ROOT="$agent_root"
   fi
 fi
 
-if [ -z "${HERMES_AGENT_BRIDGE_PYTHON:-}" ]; then
-  if bridge_python="$(find_first_executable /opt/hermes/.venv/bin/python3 /opt/hermes/.venv/bin/python /usr/bin/python3 "$(command -v python3 2>/dev/null || true)" "$(command -v python 2>/dev/null || true)")"; then
-    export HERMES_AGENT_BRIDGE_PYTHON="$bridge_python"
+if [ -z "${DiTing_AGENT_BRIDGE_PYTHON:-}" ]; then
+  if bridge_python="$(find_first_executable /opt/diting/.venv/bin/python3 /opt/diting/.venv/bin/python /usr/bin/python3 "$(command -v python3 2>/dev/null || true)" "$(command -v python 2>/dev/null || true)")"; then
+    export DiTing_AGENT_BRIDGE_PYTHON="$bridge_python"
   else
-    log "warning: no Python interpreter found for Hermes agent bridge"
+    log "warning: no Python interpreter found for DiTing agent bridge"
   fi
 fi
 
-mkdir -p "$HERMES_HOME" "$HERMES_WEB_UI_HOME" "$UPLOAD_DIR"
+mkdir -p "$DiTing_HOME" "$DiTing_WEB_UI_HOME" "$UPLOAD_DIR"
 
 case "${1:-}" in
-  prepare-hermes-home)
+  prepare-diting-home)
     shift || true
     if [ $# -gt 0 ] && [ -n "${1:-}" ]; then
-      export HERMES_ACTIVE_PROFILE="$1"
+      export DiTing_ACTIVE_PROFILE="$1"
     fi
-    prepare_hermes_home
+    prepare_DiTing_home
     exit 0
     ;;
 esac
 
-prepare_hermes_home
+prepare_DiTing_home
 validate_runtime_profile
 
-log "starting Hermes Studio container"
+log "starting DiTing Studio container"
 log "web ui: bind=${BIND_HOST} port=${PORT}"
-log "hermes home: ${HERMES_HOME}"
-log "web ui home: ${HERMES_WEB_UI_HOME}"
-log "active profile: ${HERMES_ACTIVE_PROFILE}"
-log "hermes bin: ${HERMES_BIN:-unresolved}"
-log "agent root: ${HERMES_AGENT_ROOT:-unresolved}"
-log "bridge python: ${HERMES_AGENT_BRIDGE_PYTHON:-unresolved}"
-log "bridge endpoint: ${HERMES_AGENT_BRIDGE_ENDPOINT}"
-log "bridge auto restart: ${HERMES_AGENT_BRIDGE_AUTO_RESTART}"
-log "bridge transport: ${HERMES_AGENT_BRIDGE_WORKER_TRANSPORT}"
-log "bridge warm profiles: ${HERMES_AGENT_BRIDGE_WARM_PROFILES}"
-log "bridge worker idle timeout: ${HERMES_AGENT_BRIDGE_WORKER_IDLE_TIMEOUT_SECONDS}s"
-log "bridge session idle timeout: ${HERMES_AGENT_BRIDGE_SESSION_IDLE_TIMEOUT_SECONDS}s"
-log "runtime mode: integrated Hermes Agent via managed gateway + agent bridge"
+log "DiTing home: ${DiTing_HOME}"
+log "web ui home: ${DiTing_WEB_UI_HOME}"
+log "active profile: ${DiTing_ACTIVE_PROFILE}"
+log "DiTing bin: ${DiTing_BIN:-unresolved}"
+log "agent root: ${DiTing_AGENT_ROOT:-unresolved}"
+log "bridge python: ${DiTing_AGENT_BRIDGE_PYTHON:-unresolved}"
+log "bridge endpoint: ${DiTing_AGENT_BRIDGE_ENDPOINT}"
+log "bridge auto restart: ${DiTing_AGENT_BRIDGE_AUTO_RESTART}"
+log "bridge transport: ${DiTing_AGENT_BRIDGE_WORKER_TRANSPORT}"
+log "bridge warm profiles: ${DiTing_AGENT_BRIDGE_WARM_PROFILES}"
+log "bridge worker idle timeout: ${DiTing_AGENT_BRIDGE_WORKER_IDLE_TIMEOUT_SECONDS}s"
+log "bridge session idle timeout: ${DiTing_AGENT_BRIDGE_SESSION_IDLE_TIMEOUT_SECONDS}s"
+log "runtime mode: integrated DiTing Agent via managed gateway + agent bridge"
 
 exec "$@"

@@ -9,11 +9,11 @@ const mockProfilesStore = vi.hoisted(() => ({
   fetchProfiles: vi.fn(),
 }))
 
-vi.mock('@/api/hermes/skills', () => ({
+vi.mock('@/api/DiTing/skills', () => ({
   fetchSkillUsageStats: fetchSkillUsageStatsMock,
 }))
 
-vi.mock('@/stores/hermes/profiles', () => ({
+vi.mock('@/stores/DiTing/profiles', () => ({
   useProfilesStore: () => mockProfilesStore,
 }))
 
@@ -39,7 +39,7 @@ vi.mock('naive-ui', async () => {
   }
 })
 
-import SkillsUsageView from '@/views/hermes/SkillsUsageView.vue'
+import SkillsUsageView from '@/views/DiTing/SkillsUsageView.vue'
 
 const sevenDayStats = {
   period_days: 7,
@@ -65,12 +65,12 @@ const sevenDayStats = {
       manage_count: 1,
       total_count: 3,
       skills: [
-        { skill: 'hermes-agent', view_count: 2, manage_count: 1, total_count: 3 },
+        { skill: 'diting-agent', view_count: 2, manage_count: 1, total_count: 3 },
       ],
     },
   ],
   top_skills: [
-    { skill: 'hermes-agent', view_count: 2, manage_count: 1, total_count: 3, percentage: 75, last_used_at: 1_700_000_000 },
+    { skill: 'diting-agent', view_count: 2, manage_count: 1, total_count: 3, percentage: 75, last_used_at: 1_700_000_000 },
     { skill: 'github-pr-workflow', view_count: 1, manage_count: 0, total_count: 1, percentage: 25, last_used_at: null },
   ],
 }
@@ -92,11 +92,11 @@ describe('SkillsUsageView', () => {
     expect(wrapper.text()).toContain('skillsUsage.title')
     expect(wrapper.find('[data-testid="skills-usage-chart"]').exists()).toBe(true)
     expect(wrapper.findAll('.skill-bar-col')).toHaveLength(2)
-    expect(wrapper.findAll('.skill-bar-segment[data-skill="hermes-agent"]')).toHaveLength(1)
+    expect(wrapper.findAll('.skill-bar-segment[data-skill="diting-agent"]')).toHaveLength(1)
     expect(wrapper.findAll('.skill-bar-segment[data-skill="github-pr-workflow"]')).toHaveLength(1)
     expect(wrapper.find('[data-testid="skills-usage-legend"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="skills-usage-stats"]').text()).toContain('4')
-    expect(wrapper.text()).toContain('hermes-agent')
+    expect(wrapper.text()).toContain('diting-agent')
     expect(wrapper.text()).toContain('github-pr-workflow')
     expect(wrapper.text()).toContain('75.0%')
   })

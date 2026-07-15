@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { defineComponent, nextTick } from 'vue'
-import type { ChatMessage } from '@/api/hermes/group-chat'
+import type { ChatMessage } from '@/api/DiTing/group-chat'
 
 const mockScrollToBottom = vi.hoisted(() => vi.fn())
 const mockCaptureScrollPosition = vi.hoisted(() => vi.fn())
@@ -30,11 +30,11 @@ vi.mock('@/api/auth', () => ({
   fetchCurrentUser: vi.fn(),
 }))
 
-vi.mock('@/api/hermes/download', () => ({
+vi.mock('@/api/DiTing/download', () => ({
   getDownloadUrl: vi.fn((path: string) => `/download?path=${path}`),
 }))
 
-vi.mock('@/api/hermes/group-chat', () => ({
+vi.mock('@/api/DiTing/group-chat', () => ({
   connectGroupChat: vi.fn(),
   disconnectGroupChat: vi.fn(),
   getSocket: vi.fn(),
@@ -52,7 +52,7 @@ vi.mock('@/api/hermes/group-chat', () => ({
   clearRoomContext: vi.fn(),
 }))
 
-vi.mock('@/components/hermes/chat/VirtualMessageList.vue', () => ({
+vi.mock('@/components/DiTing/chat/VirtualMessageList.vue', () => ({
   default: defineComponent({
     name: 'VirtualMessageList',
     props: {
@@ -77,7 +77,7 @@ vi.mock('@/components/hermes/chat/VirtualMessageList.vue', () => ({
   }),
 }))
 
-vi.mock('@/components/hermes/group-chat/GroupMessageItem.vue', () => ({
+vi.mock('@/components/DiTing/group-chat/GroupMessageItem.vue', () => ({
   default: defineComponent({
     name: 'GroupMessageItem',
     props: { message: { type: Object, required: true } },
@@ -85,8 +85,8 @@ vi.mock('@/components/hermes/group-chat/GroupMessageItem.vue', () => ({
   }),
 }))
 
-import GroupMessageList from '@/components/hermes/group-chat/GroupMessageList.vue'
-import { useGroupChatStore } from '@/stores/hermes/group-chat'
+import GroupMessageList from '@/components/DiTing/group-chat/GroupMessageList.vue'
+import { useGroupChatStore } from '@/stores/DiTing/group-chat'
 
 function makeMessage(id: string): ChatMessage {
   return {

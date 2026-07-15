@@ -30,10 +30,10 @@ async function mockGroupChatApi(page: Page) {
 
     if (pathname === '/health') return json({ status: 'ok' })
     if (pathname === '/api/auth/status') return json({ hasPasswordLogin: false, username: null })
-    if (pathname === '/api/hermes/profiles') return json({ profiles: [{ name: 'default', active: true, model: 'test-model', gateway: 'test' }] })
-    if (pathname === '/api/hermes/group-chat/rooms') return json({ rooms })
+    if (pathname === '/api/DiTing/profiles') return json({ profiles: [{ name: 'default', active: true, model: 'test-model', gateway: 'test' }] })
+    if (pathname === '/api/DiTing/group-chat/rooms') return json({ rooms })
 
-    const detailMatch = pathname.match(/^\/api\/hermes\/group-chat\/rooms\/([^/]+)$/)
+    const detailMatch = pathname.match(/^\/api\/DiTing\/group-chat\/rooms\/([^/]+)$/)
     if (detailMatch) {
       const roomId = decodeURIComponent(detailMatch[1])
       const room = rooms.find(r => r.id === roomId)
@@ -111,23 +111,23 @@ async function setup(page: Page, path: string) {
 
 test.describe('group chat room deep links', () => {
   test('route room id opens selected room', async ({ page }) => {
-    await setup(page, '/#/hermes/group-chat/room/room-beta')
+    await setup(page, '/#/DiTing/group-chat/room/room-beta')
 
     await expect(page.locator('.room-title-text', { hasText: 'Beta Room' })).toBeVisible()
     await expect(page.getByText('Beta room message')).toBeVisible()
-    await expect(page).toHaveURL(/#\/hermes\/group-chat\/room\/room-beta$/)
+    await expect(page).toHaveURL(/#\/DiTing\/group-chat\/room\/room-beta$/)
   })
 
   test('clicking another room updates URL and reload preserves it', async ({ page }) => {
-    await setup(page, '/#/hermes/group-chat/room/room-alpha')
+    await setup(page, '/#/DiTing/group-chat/room/room-alpha')
     await expect(page.getByText('Alpha room message')).toBeVisible()
 
     await page.getByText('Beta Room').click()
-    await expect(page).toHaveURL(/#\/hermes\/group-chat\/room\/room-beta$/)
+    await expect(page).toHaveURL(/#\/DiTing\/group-chat\/room\/room-beta$/)
     await expect(page.getByText('Beta room message')).toBeVisible()
 
     await page.reload()
-    await expect(page).toHaveURL(/#\/hermes\/group-chat\/room\/room-beta$/)
+    await expect(page).toHaveURL(/#\/DiTing\/group-chat\/room\/room-beta$/)
     await expect(page.getByText('Beta room message')).toBeVisible()
   })
 
@@ -135,8 +135,8 @@ test.describe('group chat room deep links', () => {
     const first = await context.newPage()
     const second = await context.newPage()
 
-    await setup(first, '/#/hermes/group-chat/room/room-alpha')
-    await setup(second, '/#/hermes/group-chat/room/room-beta')
+    await setup(first, '/#/DiTing/group-chat/room/room-alpha')
+    await setup(second, '/#/DiTing/group-chat/room/room-beta')
 
     await expect(first.getByText('Alpha room message')).toBeVisible()
     await expect(first.getByText('Beta room message')).toHaveCount(0)
@@ -145,9 +145,9 @@ test.describe('group chat room deep links', () => {
   })
 
   test('unknown route room id falls back to the first available room', async ({ page }) => {
-    await setup(page, '/#/hermes/group-chat/room/missing-room')
+    await setup(page, '/#/DiTing/group-chat/room/missing-room')
 
-    await expect(page).toHaveURL(/#\/hermes\/group-chat\/room\/room-alpha$/)
+    await expect(page).toHaveURL(/#\/DiTing\/group-chat\/room\/room-alpha$/)
     await expect(page.locator('.room-title-text', { hasText: 'Alpha Room' })).toBeVisible()
   })
 })

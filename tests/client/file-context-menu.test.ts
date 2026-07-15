@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import type { FileEntry } from '@/api/hermes/files'
+import type { FileEntry } from '@/api/DiTing/files'
 
 const mockMessage = vi.hoisted(() => ({
   error: vi.fn(),
@@ -52,7 +52,7 @@ vi.mock('naive-ui', async () => {
   }
 })
 
-vi.mock('@/api/hermes/download', () => ({
+vi.mock('@/api/DiTing/download', () => ({
   downloadFile: downloadFileMock,
 }))
 
@@ -64,8 +64,8 @@ vi.mock('@/utils/file-path', () => ({
   getClipboardPathForEntry: (entry: FileEntry) => entry.path,
 }))
 
-import FileContextMenu from '@/components/hermes/files/FileContextMenu.vue'
-import { useFilesStore } from '@/stores/hermes/files'
+import FileContextMenu from '@/components/DiTing/files/FileContextMenu.vue'
+import { useFilesStore } from '@/stores/DiTing/files'
 
 describe('FileContextMenu', () => {
   beforeEach(() => {

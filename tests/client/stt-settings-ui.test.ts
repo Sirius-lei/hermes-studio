@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, nextTick, ref } from 'vue'
 import { mount, flushPromises } from '@vue/test-utils'
 
-const STT_STORAGE_KEY = 'hermes-stt-settings-v1'
+const STT_STORAGE_KEY = 'DiTing-stt-settings-v1'
 
 const mockFetchSttSettings = vi.fn()
 const mockSaveSttSettings = vi.fn()
@@ -368,7 +368,7 @@ vi.mock('naive-ui', () => ({
   }),
 }))
 
-vi.mock('@/api/hermes/stt-settings', () => ({
+vi.mock('@/api/DiTing/stt-settings', () => ({
   fetchSttSettings: mockFetchSttSettings,
   saveSttSettings: mockSaveSttSettings,
   saveActiveSttProvider: mockSaveActiveSttProvider,
@@ -377,7 +377,7 @@ vi.mock('@/api/hermes/stt-settings', () => ({
   deleteSttBaseUrlPreset: mockDeleteSttBaseUrlPreset,
 }))
 
-vi.mock('@/api/hermes/stt', () => ({
+vi.mock('@/api/DiTing/stt', () => ({
   transcribeSpeech: mockTranscribeSpeech,
 }))
 
@@ -391,7 +391,7 @@ vi.mock('@/composables/useMicRecorder', () => ({
   }),
 }))
 
-vi.mock('@/api/hermes/tts-settings', () => ({
+vi.mock('@/api/DiTing/tts-settings', () => ({
   fetchTtsSettings: mockFetchTtsSettings,
   saveTtsSettings: mockSaveTtsSettings,
   clearTtsSecret: mockClearTtsSecret,
@@ -399,11 +399,11 @@ vi.mock('@/api/hermes/tts-settings', () => ({
   deleteTtsBaseUrlPreset: mockDeleteTtsBaseUrlPreset,
 }))
 
-vi.mock('@/api/hermes/system', () => ({
+vi.mock('@/api/DiTing/system', () => ({
   fetchProviderModels: mockFetchProviderModels,
 }))
 
-vi.mock('@/api/hermes/voice-provider-probe', () => ({
+vi.mock('@/api/DiTing/voice-provider-probe', () => ({
   probeVoiceProvider: mockProbeVoiceProvider,
 }))
 
@@ -505,7 +505,7 @@ function installSpeechSynthesis() {
 }
 
 async function importVoiceSettingsComponent() {
-  const mod = await import('../../packages/client/src/components/hermes/settings/VoiceSettings.vue')
+  const mod = await import('../../packages/client/src/components/DiTing/settings/VoiceSettings.vue')
   return mod.default
 }
 

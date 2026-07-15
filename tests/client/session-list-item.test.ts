@@ -2,15 +2,15 @@
 import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { defineComponent } from 'vue'
-import SessionListItem from '@/components/hermes/chat/SessionListItem.vue'
+import SessionListItem from '@/components/DiTing/chat/SessionListItem.vue'
 
-vi.mock('@/stores/hermes/app', () => ({
+vi.mock('@/stores/DiTing/app', () => ({
   useAppStore: () => ({
     profileModelGroups: [],
   }),
 }))
 
-vi.mock('@/stores/hermes/profiles', () => ({
+vi.mock('@/stores/DiTing/profiles', () => ({
   useProfilesStore: () => ({ profiles: [] }),
 }))
 
@@ -138,7 +138,7 @@ describe('SessionListItem', () => {
   it('renders the default primary-agent badge for native sessions', () => {
     const wrapper = mount(SessionListItem, {
       props: {
-        session: { ...session, source: 'cli', agent: 'hermes' },
+        session: { ...session, source: 'cli', agent: 'DiTing' },
         active: false,
         pinned: false,
         canDelete: true,

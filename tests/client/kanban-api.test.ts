@@ -36,7 +36,7 @@ import {
   getStats,
   getAssignees,
   buildKanbanEventsWebSocketUrl,
-} from '../../packages/client/src/api/hermes/kanban'
+} from '../../packages/client/src/api/DiTing/kanban'
 
 describe('Kanban API', () => {
   beforeEach(() => {
@@ -49,10 +49,10 @@ describe('Kanban API', () => {
   it('builds board-scoped kanban event websocket URLs with auth token', () => {
     mockGetBaseUrlValue.mockReturnValue('https://wui.example.test')
     mockGetApiKey.mockReturnValue('token value')
-    localStorage.setItem('hermes_active_profile_name', 'research')
+    localStorage.setItem('DiTing_active_profile_name', 'research')
 
-    expect(buildKanbanEventsWebSocketUrl({ board: 'project-a' })).toBe('wss://wui.example.test/api/hermes/kanban/events?board=project-a&token=token+value&profile=research')
-    expect(buildKanbanEventsWebSocketUrl()).toBe('wss://wui.example.test/api/hermes/kanban/events?board=default&token=token+value&profile=research')
+    expect(buildKanbanEventsWebSocketUrl({ board: 'project-a' })).toBe('wss://wui.example.test/api/DiTing/kanban/events?board=project-a&token=token+value&profile=research')
+    expect(buildKanbanEventsWebSocketUrl()).toBe('wss://wui.example.test/api/DiTing/kanban/events?board=default&token=token+value&profile=research')
   })
 
   it('serializes board, list filters, and archived inclusion into query params', async () => {
@@ -60,7 +60,7 @@ describe('Kanban API', () => {
 
     const result = await listTasks({ board: 'default', status: 'blocked', assignee: 'alice', tenant: 'ops', includeArchived: true })
 
-    expect(mockRequest).toHaveBeenCalledWith('/api/hermes/kanban?board=default&status=blocked&assignee=alice&tenant=ops&includeArchived=true')
+    expect(mockRequest).toHaveBeenCalledWith('/api/DiTing/kanban?board=default&status=blocked&assignee=alice&tenant=ops&includeArchived=true')
     expect(result).toEqual([{ id: 'task-1' }])
   })
 
@@ -77,10 +77,10 @@ describe('Kanban API', () => {
     await getTask('task-1')
 
     expect(mockRequest.mock.calls.map(call => call[0])).toEqual([
-      '/api/hermes/kanban?board=default',
-      '/api/hermes/kanban/stats?board=default',
-      '/api/hermes/kanban/assignees?board=default',
-      '/api/hermes/kanban/task-1?board=default',
+      '/api/DiTing/kanban?board=default',
+      '/api/DiTing/kanban/stats?board=default',
+      '/api/DiTing/kanban/assignees?board=default',
+      '/api/DiTing/kanban/task-1?board=default',
     ])
   })
 
@@ -99,11 +99,11 @@ describe('Kanban API', () => {
     await assignTask('task-1', 'bob', { board: 'project-a' })
 
     expect(mockRequest.mock.calls).toEqual([
-      ['/api/hermes/kanban?board=project-a', { method: 'POST', body: JSON.stringify({ title: 'Ship', assignee: 'alice', priority: 3 }) }],
-      ['/api/hermes/kanban/complete?board=project-a', { method: 'POST', body: JSON.stringify({ task_ids: ['task-1'], summary: 'done' }) }],
-      ['/api/hermes/kanban/task-1/block?board=project-a', { method: 'POST', body: JSON.stringify({ reason: 'waiting' }) }],
-      ['/api/hermes/kanban/unblock?board=project-a', { method: 'POST', body: JSON.stringify({ task_ids: ['task-1'] }) }],
-      ['/api/hermes/kanban/task-1/assign?board=project-a', { method: 'POST', body: JSON.stringify({ profile: 'bob' }) }],
+      ['/api/DiTing/kanban?board=project-a', { method: 'POST', body: JSON.stringify({ title: 'Ship', assignee: 'alice', priority: 3 }) }],
+      ['/api/DiTing/kanban/complete?board=project-a', { method: 'POST', body: JSON.stringify({ task_ids: ['task-1'], summary: 'done' }) }],
+      ['/api/DiTing/kanban/task-1/block?board=project-a', { method: 'POST', body: JSON.stringify({ reason: 'waiting' }) }],
+      ['/api/DiTing/kanban/unblock?board=project-a', { method: 'POST', body: JSON.stringify({ task_ids: ['task-1'] }) }],
+      ['/api/DiTing/kanban/task-1/assign?board=project-a', { method: 'POST', body: JSON.stringify({ profile: 'bob' }) }],
     ])
   })
 
@@ -112,24 +112,24 @@ describe('Kanban API', () => {
       .mockResolvedValueOnce({ boards: [{ slug: 'default' }] })
       .mockResolvedValueOnce({ board: { slug: 'project-a' } })
       .mockResolvedValueOnce({ ok: true })
-      .mockResolvedValueOnce({ capabilities: { source: 'hermes-cli', supports: { boardsList: true }, missing: [] } })
+      .mockResolvedValueOnce({ capabilities: { source: 'DiTing-cli', supports: { boardsList: true }, missing: [] } })
       .mockResolvedValueOnce({ stats: { total: 3, by_status: {}, by_assignee: {} } })
       .mockResolvedValueOnce({ assignees: [{ name: 'alice', on_disk: true, counts: { todo: 1 } }] })
 
     await expect(listBoards({ includeArchived: true })).resolves.toEqual([{ slug: 'default' }])
     await expect(createBoard({ slug: 'project-a', name: 'Project A' })).resolves.toEqual({ slug: 'project-a' })
     await expect(archiveBoard('project-a')).resolves.toEqual({ ok: true })
-    await expect(getCapabilities()).resolves.toEqual({ source: 'hermes-cli', supports: { boardsList: true }, missing: [] })
+    await expect(getCapabilities()).resolves.toEqual({ source: 'DiTing-cli', supports: { boardsList: true }, missing: [] })
     await expect(getStats({ board: 'project-a' })).resolves.toEqual({ total: 3, by_status: {}, by_assignee: {} })
     await expect(getAssignees({ board: 'project-a' })).resolves.toEqual([{ name: 'alice', on_disk: true, counts: { todo: 1 } }])
 
     expect(mockRequest.mock.calls).toEqual([
-      ['/api/hermes/kanban/boards?includeArchived=true'],
-      ['/api/hermes/kanban/boards', { method: 'POST', body: JSON.stringify({ slug: 'project-a', name: 'Project A' }) }],
-      ['/api/hermes/kanban/boards/project-a', { method: 'DELETE' }],
-      ['/api/hermes/kanban/capabilities'],
-      ['/api/hermes/kanban/stats?board=project-a'],
-      ['/api/hermes/kanban/assignees?board=project-a'],
+      ['/api/DiTing/kanban/boards?includeArchived=true'],
+      ['/api/DiTing/kanban/boards', { method: 'POST', body: JSON.stringify({ slug: 'project-a', name: 'Project A' }) }],
+      ['/api/DiTing/kanban/boards/project-a', { method: 'DELETE' }],
+      ['/api/DiTing/kanban/capabilities'],
+      ['/api/DiTing/kanban/stats?board=project-a'],
+      ['/api/DiTing/kanban/assignees?board=project-a'],
     ])
   })
 
@@ -158,16 +158,16 @@ describe('Kanban API', () => {
     await expect(dispatch({ board: 'default', dryRun: true, max: 2, failureLimit: 3 })).resolves.toEqual({ spawned: 1 })
 
     expect(mockRequest.mock.calls).toEqual([
-      ['/api/hermes/kanban/task-1/comments?board=default', { method: 'POST', body: JSON.stringify({ body: 'needs review', author: 'han' }) }],
-      ['/api/hermes/kanban/links?board=project-a', { method: 'POST', body: JSON.stringify({ parent_id: 'task-1', child_id: 'task-2' }) }],
-      ['/api/hermes/kanban/links?board=project-a&parent_id=task-1&child_id=task-2', { method: 'DELETE' }],
-      ['/api/hermes/kanban/tasks/bulk?board=project-a', { method: 'POST', body: JSON.stringify({ ids: ['task-1'], status: 'done', assignee: null, summary: 'closed' }) }],
-      ['/api/hermes/kanban/task-1/log?board=default&tail=4000'],
-      ['/api/hermes/kanban/diagnostics?board=default&task=task-1&severity=warning'],
-      ['/api/hermes/kanban/task-1/reclaim?board=project-a', { method: 'POST', body: JSON.stringify({ reason: 'stale' }) }],
-      ['/api/hermes/kanban/task-1/reassign?board=project-a', { method: 'POST', body: JSON.stringify({ profile: 'bob', reclaim: true, reason: 'handoff' }) }],
-      ['/api/hermes/kanban/task-1/specify?board=default', { method: 'POST', body: JSON.stringify({ author: 'han' }) }],
-      ['/api/hermes/kanban/dispatch?board=default', { method: 'POST', body: JSON.stringify({ dryRun: true, max: 2, failureLimit: 3 }) }],
+      ['/api/DiTing/kanban/task-1/comments?board=default', { method: 'POST', body: JSON.stringify({ body: 'needs review', author: 'han' }) }],
+      ['/api/DiTing/kanban/links?board=project-a', { method: 'POST', body: JSON.stringify({ parent_id: 'task-1', child_id: 'task-2' }) }],
+      ['/api/DiTing/kanban/links?board=project-a&parent_id=task-1&child_id=task-2', { method: 'DELETE' }],
+      ['/api/DiTing/kanban/tasks/bulk?board=project-a', { method: 'POST', body: JSON.stringify({ ids: ['task-1'], status: 'done', assignee: null, summary: 'closed' }) }],
+      ['/api/DiTing/kanban/task-1/log?board=default&tail=4000'],
+      ['/api/DiTing/kanban/diagnostics?board=default&task=task-1&severity=warning'],
+      ['/api/DiTing/kanban/task-1/reclaim?board=project-a', { method: 'POST', body: JSON.stringify({ reason: 'stale' }) }],
+      ['/api/DiTing/kanban/task-1/reassign?board=project-a', { method: 'POST', body: JSON.stringify({ profile: 'bob', reclaim: true, reason: 'handoff' }) }],
+      ['/api/DiTing/kanban/task-1/specify?board=default', { method: 'POST', body: JSON.stringify({ author: 'han' }) }],
+      ['/api/DiTing/kanban/dispatch?board=default', { method: 'POST', body: JSON.stringify({ dryRun: true, max: 2, failureLimit: 3 }) }],
     ])
   })
 })

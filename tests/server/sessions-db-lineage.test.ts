@@ -6,7 +6,7 @@ import { DatabaseSync } from 'node:sqlite'
 
 const profileDir = vi.hoisted(() => ({ value: '' }))
 
-vi.mock('../../packages/server/src/services/hermes/hermes-profile', () => ({
+vi.mock('../../packages/server/src/services/DiTing/DiTing-profile', () => ({
   getActiveProfileDir: () => profileDir.value,
 }))
 
@@ -165,7 +165,7 @@ describe('session DB compression lineage', () => {
   it('projects compressed root summaries to the latest continuation tip', async () => {
     seedCompressionChain(db!)
 
-    const mod = await import('../../packages/server/src/db/hermes/sessions-db')
+    const mod = await import('../../packages/server/src/db/DiTing/sessions-db')
     const rows = await mod.listSessionSummaries(undefined, 20)
 
     expect(rows).toHaveLength(1)
@@ -182,7 +182,7 @@ describe('session DB compression lineage', () => {
   it.skip('returns the projected logical session when search matches continuation content (requires FTS5)', async () => {
     seedCompressionChain(db!)
 
-    const mod = await import('../../packages/server/src/db/hermes/sessions-db')
+    const mod = await import('../../packages/server/src/db/DiTing/sessions-db')
     const rows = await mod.searchSessionSummaries('lineageunique', undefined, 20)
 
     expect(rows).toHaveLength(1)
@@ -197,7 +197,7 @@ describe('session DB compression lineage', () => {
   it('hydrates the full compression chain when detail is requested by projected tip id', async () => {
     seedCompressionChain(db!)
 
-    const mod = await import('../../packages/server/src/db/hermes/sessions-db')
+    const mod = await import('../../packages/server/src/db/DiTing/sessions-db')
     const detail = await mod.getSessionDetailFromDb('tip')
 
     expect(detail).toMatchObject({
@@ -239,7 +239,7 @@ describe('session DB compression lineage', () => {
     insertMessage(db!, { id: 12, session_id: 'older-child', content: 'older should not merge', timestamp: 202 })
     insertMessage(db!, { id: 13, session_id: 'latest-child', content: 'latest should merge', timestamp: 206 })
 
-    const mod = await import('../../packages/server/src/db/hermes/sessions-db')
+    const mod = await import('../../packages/server/src/db/DiTing/sessions-db')
     const detail = await mod.getSessionDetailFromDb('root')
 
     expect(detail).toMatchObject({
@@ -280,7 +280,7 @@ describe('session DB compression lineage', () => {
       end_reason: null,
     })
 
-    const mod = await import('../../packages/server/src/db/hermes/sessions-db')
+    const mod = await import('../../packages/server/src/db/DiTing/sessions-db')
     const rows = await mod.searchSessionSummaries('needle', 'telegram', 1)
 
     expect(rows).toHaveLength(1)

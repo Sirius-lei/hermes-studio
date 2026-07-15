@@ -11,15 +11,15 @@ import {
 import { homedir } from 'node:os'
 import { delimiter, dirname, join, resolve } from 'node:path'
 import { promisify } from 'node:util'
-import { HERMES_CLI_ARG } from './cli-constants'
+import { DiTing_CLI_ARG } from './cli-constants'
 
 const execFileAsync = promisify(execFile)
 
-const SHIM_MARKER = 'HERMES_STUDIO_CLI_SHIM'
-const MCP_SHIM_MARKER = 'HERMES_STUDIO_MCP_SHIM'
-const PATH_MARKER_START = '# >>> Hermes Studio CLI shim >>>'
-const PATH_MARKER_END = '# <<< Hermes Studio CLI shim <<<'
-const WINDOWS_USER_PATH_ENV_B64 = 'HERMES_STUDIO_WINDOWS_USER_PATH_B64'
+const SHIM_MARKER = 'DiTing_STUDIO_CLI_SHIM'
+const MCP_SHIM_MARKER = 'DiTing_STUDIO_MCP_SHIM'
+const PATH_MARKER_START = '# >>> DiTing Studio CLI shim >>>'
+const PATH_MARKER_END = '# <<< DiTing Studio CLI shim <<<'
+const WINDOWS_USER_PATH_ENV_B64 = 'DiTing_STUDIO_WINDOWS_USER_PATH_B64'
 
 type ShimInstallStatus = 'installed' | 'updated' | 'unchanged' | 'skipped'
 
@@ -71,11 +71,11 @@ function executableForShim(options: Required<Pick<CliShimInstallOptions, 'env' |
 }
 
 export function shimPathForPlatform(binDir: string, platform: NodeJS.Platform = process.platform): string {
-  return join(binDir, platform === 'win32' ? 'hermes-studio.cmd' : 'hermes-studio')
+  return join(binDir, platform === 'win32' ? 'DiTing-studio.cmd' : 'DiTing-studio')
 }
 
 export function mcpShimPathForPlatform(binDir: string, platform: NodeJS.Platform = process.platform): string {
-  return join(binDir, platform === 'win32' ? 'hermes-studio-mcp.cmd' : 'hermes-studio-mcp')
+  return join(binDir, platform === 'win32' ? 'diting-studio-mcp.cmd' : 'diting-studio-mcp')
 }
 
 function shellQuote(value: string): string {
@@ -92,11 +92,11 @@ export function createShimContent(
   archName: string = process.arch,
   runtimeVersion = '0.15.2',
   nodePath = process.execPath,
-  webUiScriptPath = resolve(process.cwd(), 'bin', 'hermes-web-ui.mjs'),
+  webUiScriptPath = resolve(process.cwd(), 'bin', 'diting-web-ui.mjs'),
 ): string {
   if (platform === 'win32') {
     const runtimePlatform = windowsRuntimePlatformKey(archName)
-    const cliForwarder = `const cp=require('node:child_process');const args=process.argv.slice(1);if(args[0]&&args[0].toLowerCase()==='cli')args.shift();const r=cp.spawnSync(process.env.PYTHON,['-m','hermes_cli.main',...args],{stdio:'inherit'});if(r.error){console.error(r.error.message);process.exit(127)}process.exit(r.status===null?(r.signal?1:0):r.status)`
+    const cliForwarder = `const cp=require('node:child_process');const args=process.argv.slice(1);if(args[0]&&args[0].toLowerCase()==='cli')args.shift();const r=cp.spawnSync(process.env.PYTHON,['-m','diting_cli.main',...args],{stdio:'inherit'});if(r.error){console.error(r.error.message);process.exit(127)}process.exit(r.status===null?(r.signal?1:0):r.status)`
     const webForwarder = `const cp=require('node:child_process');const args=process.argv.slice(1);if(args[0]&&args[0].toLowerCase()==='web')args.shift();const r=cp.spawnSync(process.env.NODE,[process.env.WEBUI_SCRIPT,...args],{stdio:'inherit'});if(r.error){console.error(r.error.message);process.exit(127)}process.exit(r.status===null?(r.signal?1:0):r.status)`
     return [
       '@echo off',
@@ -110,42 +110,42 @@ export function createShimContent(
       'if /I "%~1"=="--help" goto help',
       'if /I "%~1"=="cli" goto runCli',
       'if /I "%~1"=="web" goto runWeb',
-      'echo Unknown Hermes Studio command: %~1 1>&2',
-      'echo Run hermes-studio --help for usage. 1>&2',
+      'echo Unknown DiTing Studio command: %~1 1>&2',
+      'echo Run DiTing-studio --help for usage. 1>&2',
       'exit /b 2',
       ':resolveRuntime',
-      'set "WEBUI_HOME=%HERMES_WEB_UI_HOME%"',
-      'if "%WEBUI_HOME%"=="" set "WEBUI_HOME=%HERMES_WEBUI_STATE_DIR%"',
-      'if "%WEBUI_HOME%"=="" set "WEBUI_HOME=%USERPROFILE%\\.hermes-web-ui"',
-      'set "RUNTIME=%HERMES_DESKTOP_RUNTIME_DIR%"',
+      'set "WEBUI_HOME=%DiTing_WEB_UI_HOME%"',
+      'if "%WEBUI_HOME%"=="" set "WEBUI_HOME=%DiTing_WEBUI_STATE_DIR%"',
+      'if "%WEBUI_HOME%"=="" set "WEBUI_HOME=%USERPROFILE%\\.diting-web-ui"',
+      'set "RUNTIME=%DiTing_DESKTOP_RUNTIME_DIR%"',
       'if "%RUNTIME%"=="" if exist "%WEBUI_HOME%\\desktop-runtime\\active-version.json" (',
       `  for /f "usebackq delims=" %%I in (\`powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$p = Join-Path $env:WEBUI_HOME 'desktop-runtime\\active-version.json'; try { $j = Get-Content -LiteralPath $p -Raw | ConvertFrom-Json; if ($j.platform -eq '${runtimePlatform}' -and $j.runtimeDirectory -and (Test-Path -LiteralPath $j.runtimeDirectory)) { [Console]::Out.Write($j.runtimeDirectory) } } catch {}" 2^>nul\`) do set "RUNTIME=%%I"`,
       ')',
-      `if "%RUNTIME%"=="" set "RUNTIME=%WEBUI_HOME%\\desktop-runtime\\hermes\\${runtimeVersion}\\${runtimePlatform}"`,
+      `if "%RUNTIME%"=="" set "RUNTIME=%WEBUI_HOME%\\desktop-runtime\\DiTing\\${runtimeVersion}\\${runtimePlatform}"`,
       'set "PYTHON=%RUNTIME%\\python\\python.exe"',
       'exit /b 0',
       ':runCli',
       'call :resolveRuntime',
       'if not exist "%PYTHON%" (',
-      '  echo Hermes Studio Python runtime not found at "%PYTHON%" 1>&2',
-      '  echo Open Hermes Studio once to finish runtime setup, then retry hermes-studio cli. 1>&2',
+      '  echo DiTing Studio Python runtime not found at "%PYTHON%" 1>&2',
+      '  echo Open DiTing Studio once to finish runtime setup, then retry DiTing-studio cli. 1>&2',
       '  exit /b 127',
       ')',
       'if not exist "%NODE%" (',
-      '  echo Hermes Studio Node runtime not found at "%NODE%" 1>&2',
-      '  echo Open Hermes Studio once to finish runtime setup, then retry hermes-studio cli. 1>&2',
+      '  echo DiTing Studio Node runtime not found at "%NODE%" 1>&2',
+      '  echo Open DiTing Studio once to finish runtime setup, then retry DiTing-studio cli. 1>&2',
       '  exit /b 127',
       ')',
       `"%NODE%" -e "${cliForwarder}" %*`,
       'exit /b %ERRORLEVEL%',
       ':runWeb',
       'if not exist "%NODE%" (',
-      '  echo Hermes Studio Node runtime not found at "%NODE%" 1>&2',
-      '  echo Open Hermes Studio once to finish runtime setup, then retry hermes-studio web. 1>&2',
+      '  echo DiTing Studio Node runtime not found at "%NODE%" 1>&2',
+      '  echo Open DiTing Studio once to finish runtime setup, then retry DiTing-studio web. 1>&2',
       '  exit /b 127',
       ')',
       'if not exist "%WEBUI_SCRIPT%" (',
-      '  echo Hermes Web UI script not found at "%WEBUI_SCRIPT%" 1>&2',
+      '  echo DiTing Web UI script not found at "%WEBUI_SCRIPT%" 1>&2',
       '  exit /b 127',
       ')',
       `"%NODE%" -e "${webForwarder}" %*`,
@@ -154,12 +154,12 @@ export function createShimContent(
       'start "" "%APP%"',
       'exit /b 0',
       ':help',
-      'echo Usage: hermes-studio [command] [options]',
+      'echo Usage: DiTing-studio [command] [options]',
       'echo.',
       'echo Commands:',
-      'echo   ^(no command^)       Open Hermes Studio desktop app',
-      'echo   cli [args...]       Run bundled Hermes Agent CLI',
-      'echo   web [args...]       Run bundled hermes-web-ui command',
+      'echo   ^(no command^)       Open DiTing Studio desktop app',
+      'echo   cli [args...]       Run bundled DiTing Agent CLI',
+      'echo   web [args...]       Run bundled diting-web-ui command',
       'echo   help, -h, --help    Show this help message',
       'exit /b 0',
       '',
@@ -174,17 +174,17 @@ export function createShimContent(
     `WEBUI_SCRIPT=${shellQuote(webUiScriptPath)}`,
     'show_help() {',
     '  cat <<\'EOF\'',
-    'Usage: hermes-studio [command] [options]',
+    'Usage: DiTing-studio [command] [options]',
     '',
     'Commands:',
-    '  (no command)       Open Hermes Studio desktop app',
-    '  cli [args...]      Run bundled Hermes Agent CLI',
-    '  web [args...]      Run bundled hermes-web-ui command',
+    '  (no command)       Open DiTing Studio desktop app',
+    '  cli [args...]      Run bundled DiTing Agent CLI',
+    '  web [args...]      Run bundled diting-web-ui command',
     '  help, -h, --help   Show this help message',
     'EOF',
     '}',
     'if [ ! -x "$APP" ]; then',
-    '  echo "Hermes Studio executable not found at $APP" >&2',
+    '  echo "DiTing Studio executable not found at $APP" >&2',
     '  exit 127',
     'fi',
     'unset ELECTRON_RUN_AS_NODE',
@@ -194,17 +194,17 @@ export function createShimContent(
     '    ;;',
     '  cli)',
     '    shift',
-    `    exec "$APP" -- ${HERMES_CLI_ARG} "$@"`,
+    `    exec "$APP" -- ${DiTing_CLI_ARG} "$@"`,
     '    ;;',
     '  web)',
     '    shift',
     '    if [ ! -x "$NODE" ]; then',
-    '      echo "Hermes Studio Node runtime not found at $NODE" >&2',
-    '      echo "Open Hermes Studio once to finish runtime setup, then retry hermes-studio web." >&2',
+    '      echo "DiTing Studio Node runtime not found at $NODE" >&2',
+    '      echo "Open DiTing Studio once to finish runtime setup, then retry DiTing-studio web." >&2',
     '      exit 127',
     '    fi',
     '    if [ ! -f "$WEBUI_SCRIPT" ]; then',
-    '      echo "Hermes Web UI script not found at $WEBUI_SCRIPT" >&2',
+    '      echo "DiTing Web UI script not found at $WEBUI_SCRIPT" >&2',
     '      exit 127',
     '    fi',
     '    exec "$NODE" "$WEBUI_SCRIPT" "$@"',
@@ -214,8 +214,8 @@ export function createShimContent(
     '    exit 0',
     '    ;;',
     '  *)',
-    '    echo "Unknown Hermes Studio command: $1" >&2',
-    '    echo "Run hermes-studio --help for usage." >&2',
+    '    echo "Unknown DiTing Studio command: $1" >&2',
+    '    echo "Run DiTing-studio --help for usage." >&2',
     '    exit 2',
     '    ;;',
     'esac',
@@ -236,22 +236,22 @@ export function createMcpShimContent(
       `set "NODE=${nodePath}"`,
       `set "SCRIPT=${scriptPath}"`,
       'if not exist "%NODE%" (',
-      '  echo Hermes Studio Node runtime not found at "%NODE%" 1>&2',
-      '  echo Open Hermes Studio once to finish runtime setup, then retry hermes-studio-mcp. 1>&2',
+      '  echo DiTing Studio Node runtime not found at "%NODE%" 1>&2',
+      '  echo Open DiTing Studio once to finish runtime setup, then retry diting-studio-mcp. 1>&2',
       '  exit /b 127',
       ')',
       'if not exist "%SCRIPT%" (',
-      '  echo Hermes Studio MCP script not found at "%SCRIPT%" 1>&2',
+      '  echo DiTing Studio MCP script not found at "%SCRIPT%" 1>&2',
       '  exit /b 127',
       ')',
-      'if "%HERMES_WEB_UI_URL%"=="" (',
-      '  if "%HERMES_DESKTOP_PORT%"=="" (',
-      `    set "HERMES_WEB_UI_URL=${webUiUrl}"`,
+      'if "%DiTing_WEB_UI_URL%"=="" (',
+      '  if "%DiTing_DESKTOP_PORT%"=="" (',
+      `    set "DiTing_WEB_UI_URL=${webUiUrl}"`,
       '  ) else (',
-      '    set "HERMES_WEB_UI_URL=http://127.0.0.1:%HERMES_DESKTOP_PORT%"',
+      '    set "DiTing_WEB_UI_URL=http://127.0.0.1:%DiTing_DESKTOP_PORT%"',
       '  )',
       ')',
-      'if "%HERMES_MCP_SERVER_NAME%"=="" set "HERMES_MCP_SERVER_NAME=hermes-studio-mcp"',
+      'if "%DiTing_MCP_SERVER_NAME%"=="" set "DiTing_MCP_SERVER_NAME=diting-studio-mcp"',
       '"%NODE%" "%SCRIPT%" %*',
       'exit /b %ERRORLEVEL%',
       '',
@@ -264,26 +264,26 @@ export function createMcpShimContent(
     `NODE=${shellQuote(nodePath)}`,
     `SCRIPT=${shellQuote(scriptPath)}`,
     'if [ ! -x "$NODE" ]; then',
-    '  echo "Hermes Studio Node runtime not found at $NODE" >&2',
-    '  echo "Open Hermes Studio once to finish runtime setup, then retry hermes-studio-mcp." >&2',
+    '  echo "DiTing Studio Node runtime not found at $NODE" >&2',
+    '  echo "Open DiTing Studio once to finish runtime setup, then retry diting-studio-mcp." >&2',
     '  exit 127',
     'fi',
     'if [ ! -f "$SCRIPT" ]; then',
-    '  echo "Hermes Studio MCP script not found at $SCRIPT" >&2',
+    '  echo "DiTing Studio MCP script not found at $SCRIPT" >&2',
     '  exit 127',
     'fi',
-    'if [ -z "${HERMES_WEB_UI_URL:-}" ]; then',
-    '  if [ -n "${HERMES_DESKTOP_PORT:-}" ]; then',
-    '    HERMES_WEB_UI_URL="http://127.0.0.1:${HERMES_DESKTOP_PORT}"',
+    'if [ -z "${DiTing_WEB_UI_URL:-}" ]; then',
+    '  if [ -n "${DiTing_DESKTOP_PORT:-}" ]; then',
+    '    DiTing_WEB_UI_URL="http://127.0.0.1:${DiTing_DESKTOP_PORT}"',
     '  else',
-    `    HERMES_WEB_UI_URL=${shellQuote(webUiUrl)}`,
+    `    DiTing_WEB_UI_URL=${shellQuote(webUiUrl)}`,
     '  fi',
     'fi',
-    'export HERMES_WEB_UI_URL',
-    'if [ -z "${HERMES_MCP_SERVER_NAME:-}" ]; then',
-    '  HERMES_MCP_SERVER_NAME=hermes-studio-mcp',
+    'export DiTing_WEB_UI_URL',
+    'if [ -z "${DiTing_MCP_SERVER_NAME:-}" ]; then',
+    '  DiTing_MCP_SERVER_NAME=diting-studio-mcp',
     'fi',
-    'export HERMES_MCP_SERVER_NAME',
+    'export DiTing_MCP_SERVER_NAME',
     'exec "$NODE" "$SCRIPT" "$@"',
     '',
   ].join('\n')
@@ -313,7 +313,7 @@ function shellProfilePaths(homeDir: string, platform: NodeJS.Platform, env: Node
 
   const shell = env.SHELL?.trim() || ''
   const name = shell.split('/').pop() || ''
-  if (name === 'fish') return [join(homeDir, '.config', 'fish', 'conf.d', 'hermes-studio.fish')]
+  if (name === 'fish') return [join(homeDir, '.config', 'fish', 'conf.d', 'DiTing-studio.fish')]
   if (name === 'bash') return [join(homeDir, '.bash_profile'), join(homeDir, '.bashrc')]
   if (name === 'zsh' || platform === 'darwin') return [join(homeDir, '.zprofile'), join(homeDir, '.zshrc')]
   return [join(homeDir, '.profile')]
@@ -416,7 +416,7 @@ async function ensureUserBinOnPath(homeDir: string, binDir: string, platform: No
   return ensureUnixShellPath(homeDir, binDir, platform, env)
 }
 
-export async function installHermesStudioCliShim(options: CliShimInstallOptions = {}): Promise<CliShimInstallResult> {
+export async function installDiTingStudioCliShim(options: CliShimInstallOptions = {}): Promise<CliShimInstallResult> {
   const platform = options.platform || process.platform
   const env = options.env || process.env
   const homeDir = options.homeDir || homedir()
@@ -446,18 +446,18 @@ export async function installHermesStudioCliShim(options: CliShimInstallOptions 
     shimPath,
     status,
     pathUpdated,
-    reason: status === 'skipped' ? 'existing hermes-studio shim is not managed by Hermes Studio' : undefined,
+    reason: status === 'skipped' ? 'existing DiTing-studio shim is not managed by DiTing Studio' : undefined,
   }
 }
 
-export async function installHermesStudioMcpShim(options: McpShimInstallOptions = {}): Promise<CliShimInstallResult> {
+export async function installDiTingStudioMcpShim(options: McpShimInstallOptions = {}): Promise<CliShimInstallResult> {
   const platform = options.platform || process.platform
   const env = options.env || process.env
   const homeDir = options.homeDir || homedir()
   const binDir = resolve(homeDir, 'bin')
   const shimPath = mcpShimPathForPlatform(binDir, platform)
   const nodePath = options.nodePath || process.execPath
-  const scriptPath = options.scriptPath || resolve(process.cwd(), 'bin', 'hermes-studio-mcp.mjs')
+  const scriptPath = options.scriptPath || resolve(process.cwd(), 'bin', 'diting-studio-mcp.mjs')
   const webUiUrl = options.webUiUrl || 'http://127.0.0.1:8748'
 
   mkdirSync(binDir, { recursive: true })
@@ -471,6 +471,6 @@ export async function installHermesStudioMcpShim(options: McpShimInstallOptions 
     shimPath,
     status,
     pathUpdated,
-    reason: status === 'skipped' ? 'existing hermes-studio-mcp shim is not managed by Hermes Studio' : undefined,
+    reason: status === 'skipped' ? 'existing diting-studio-mcp shim is not managed by DiTing Studio' : undefined,
   }
 }

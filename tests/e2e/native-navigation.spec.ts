@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { authenticate, mockHermesApi, TEST_ACCESS_KEY } from './fixtures'
+import { authenticate, mockDiTingApi, TEST_ACCESS_KEY } from './fixtures'
 
 const sampleSession = {
   id: 'session-native-1',
@@ -16,22 +16,22 @@ const sampleSession = {
 
 test('sidebar navigation exposes native links', async ({ page }) => {
   await authenticate(page, TEST_ACCESS_KEY, 'research')
-  await mockHermesApi(page)
-  await page.goto('/#/hermes/jobs')
+  await mockDiTingApi(page)
+  await page.goto('/#/DiTing/jobs')
 
   const models = page.locator('aside.sidebar').getByRole('link', { name: /^Models$/ })
-  await expect(models).toHaveAttribute('href', '#/hermes/models')
+  await expect(models).toHaveAttribute('href', '#/DiTing/models')
 
   const settings = page.locator('aside.sidebar').getByRole('link', { name: /^Settings$/ })
-  await expect(settings).toHaveAttribute('href', '#/hermes/settings')
+  await expect(settings).toHaveAttribute('href', '#/DiTing/settings')
 })
 
 test('session rows expose native session links', async ({ page }) => {
   await authenticate(page, TEST_ACCESS_KEY, 'research')
-  await mockHermesApi(page, { sessions: [sampleSession] })
-  await page.goto('/#/hermes/chat')
+  await mockDiTingApi(page, { sessions: [sampleSession] })
+  await page.goto('/#/DiTing/chat')
 
   const sessionLink = page.locator('.session-items a.session-item').first()
-  await expect(sessionLink).toHaveAttribute('href', '#/hermes/session/session-native-1')
+  await expect(sessionLink).toHaveAttribute('href', '#/DiTing/session/session-native-1')
   await expect(sessionLink).toContainText('Native Link Session')
 })

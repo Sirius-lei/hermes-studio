@@ -45,7 +45,7 @@ vi.mock('../../packages/server/src/lib/llm-prompt', () => ({
   getSystemPrompt: getSystemPromptMock,
 }))
 
-vi.mock('../../packages/server/src/db/hermes/session-store', () => ({
+vi.mock('../../packages/server/src/db/DiTing/session-store', () => ({
   getSession: getSessionMock,
   createSession: createSessionMock,
   addMessage: addMessageMock,
@@ -53,7 +53,7 @@ vi.mock('../../packages/server/src/db/hermes/session-store', () => ({
   updateSessionStats: updateSessionStatsMock,
 }))
 
-vi.mock('../../packages/server/src/db/hermes/usage-store', () => ({
+vi.mock('../../packages/server/src/db/DiTing/usage-store', () => ({
   updateUsage: updateUsageMock,
 }))
 
@@ -62,7 +62,7 @@ vi.mock('../../packages/server/src/services/logger', () => ({
   bridgeLogger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }))
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/compression', () => ({
+vi.mock('../../packages/server/src/services/DiTing/run-chat/compression', () => ({
   buildCompressedHistory: buildCompressedHistoryMock,
   buildDbHistory: buildDbHistoryMock,
   buildSnapshotAwareHistory: buildSnapshotAwareHistoryMock,
@@ -71,7 +71,7 @@ vi.mock('../../packages/server/src/services/hermes/run-chat/compression', () => 
   forceCompressBridgeHistory: forceCompressBridgeHistoryMock,
 }))
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/usage', () => ({
+vi.mock('../../packages/server/src/services/DiTing/run-chat/usage', () => ({
   calcAndUpdateUsage: calcAndUpdateUsageMock,
   estimateUsageTokensFromMessages: estimateUsageTokensFromMessagesMock,
   getCachedBridgeContextOverhead: getCachedBridgeContextOverheadMock,
@@ -80,7 +80,7 @@ vi.mock('../../packages/server/src/services/hermes/run-chat/usage', () => ({
   updateMessageContextTokenUsage: updateMessageContextTokenUsageMock,
 }))
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/bridge-message', () => ({
+vi.mock('../../packages/server/src/services/DiTing/run-chat/bridge-message', () => ({
   flushBridgePendingToDb: flushBridgePendingToDbMock,
   ensureOpenBridgeAssistantMessage: ensureOpenBridgeAssistantMessageMock,
   syncBridgeReasoningToMessage: syncBridgeReasoningToMessageMock,
@@ -88,12 +88,12 @@ vi.mock('../../packages/server/src/services/hermes/run-chat/bridge-message', () 
   recordBridgeToolCompleted: recordBridgeToolCompletedMock,
 }))
 
-vi.mock('../../packages/server/src/services/hermes/run-chat/model-config', () => ({
+vi.mock('../../packages/server/src/services/DiTing/run-chat/model-config', () => ({
   resolveBridgeRunModelConfig: resolveBridgeRunModelConfigMock,
 }))
 
-vi.mock('../../packages/server/src/services/hermes/hermes-profile', () => ({
-  getProfileDir: (profile: string) => `/tmp/hermes-bridge-final-context/${profile || 'default'}`,
+vi.mock('../../packages/server/src/services/DiTing/DiTing-profile', () => ({
+  getProfileDir: (profile: string) => `/tmp/DiTing-bridge-final-context/${profile || 'default'}`,
 }))
 
 vi.mock('../../packages/server/src/middleware/user-auth', () => ({
@@ -129,9 +129,9 @@ function makeState() {
 
 describe('bridge run final context usage', () => {
   beforeEach(() => {
-    const home = mkdtempSync(join(tmpdir(), 'hermes-bridge-run-token-'))
+    const home = mkdtempSync(join(tmpdir(), 'DiTing-bridge-run-token-'))
     homes.push(home)
-    process.env.HERMES_WEB_UI_HOME = home
+    process.env.DiTing_WEB_UI_HOME = home
     vi.clearAllMocks()
     getSystemPromptMock.mockReturnValue('system prompt')
     issueModelRunJwtMock.mockResolvedValue('model-run-token')
@@ -160,7 +160,7 @@ describe('bridge run final context usage', () => {
   })
 
   afterEach(() => {
-    delete process.env.HERMES_WEB_UI_HOME
+    delete process.env.DiTing_WEB_UI_HOME
     for (const home of homes.splice(0)) rmSync(home, { recursive: true, force: true })
   })
 
@@ -184,7 +184,7 @@ describe('bridge run final context usage', () => {
       }),
     } as any
 
-    const { handleBridgeRun } = await import('../../packages/server/src/services/hermes/run-chat/handle-bridge-run')
+    const { handleBridgeRun } = await import('../../packages/server/src/services/DiTing/run-chat/handle-bridge-run')
     await handleBridgeRun(
       nsp,
       socket,
@@ -200,12 +200,12 @@ describe('bridge run final context usage', () => {
     expect(bridge.contextEstimate).toHaveBeenCalledWith(
       'session-1',
       [],
-      expect.not.stringContaining('[Current Hermes profile:'),
+      expect.not.stringContaining('[Current DiTing profile:'),
       'default',
       { model: 'gpt-test', provider: 'openai' },
     )
     expect(bridge.contextEstimate.mock.calls[0][2]).toContain('system prompt')
-    expect(bridge.contextEstimate.mock.calls[0][2]).toContain('X-Hermes-Profile')
+    expect(bridge.contextEstimate.mock.calls[0][2]).toContain('X-DiTing-Profile')
     expect(state.contextTokens).toBe(12345)
     expect(emit).toHaveBeenCalledWith('usage.updated', expect.objectContaining({
       inputTokens: 11,
@@ -249,7 +249,7 @@ describe('bridge run final context usage', () => {
       }),
     } as any
 
-    const { handleBridgeRun } = await import('../../packages/server/src/services/hermes/run-chat/handle-bridge-run')
+    const { handleBridgeRun } = await import('../../packages/server/src/services/DiTing/run-chat/handle-bridge-run')
     await handleBridgeRun(
       nsp,
       socket,
@@ -298,7 +298,7 @@ describe('bridge run final context usage', () => {
       }),
     } as any
 
-    const { handleBridgeRun } = await import('../../packages/server/src/services/hermes/run-chat/handle-bridge-run')
+    const { handleBridgeRun } = await import('../../packages/server/src/services/DiTing/run-chat/handle-bridge-run')
     await handleBridgeRun(
       nsp,
       socket,
@@ -313,14 +313,14 @@ describe('bridge run final context usage', () => {
 
     const instructions = bridge.contextEstimate.mock.calls[0][2]
     expect(issueModelRunJwtMock).toHaveBeenCalledWith({ id: 1, username: 'admin', role: 'super_admin' })
-    expect(readFileSync(join(process.env.HERMES_WEB_UI_HOME || '', 'profiles', 'default', '.model-run-token'), 'utf-8').trim()).toBe('model-run-token')
-    expect(instructions).not.toContain('[Current Hermes profile:')
-    expect(instructions).not.toContain('pass the current Hermes profile as the profile argument')
+    expect(readFileSync(join(process.env.DiTing_WEB_UI_HOME || '', 'profiles', 'default', '.model-run-token'), 'utf-8').trim()).toBe('model-run-token')
+    expect(instructions).not.toContain('[Current DiTing profile:')
+    expect(instructions).not.toContain('pass the current DiTing profile as the profile argument')
     expect(instructions).not.toContain('model-run-token')
-    expect(instructions).not.toContain('Current Hermes Web UI model run token')
+    expect(instructions).not.toContain('Current DiTing Web UI model run token')
     expect(instructions).not.toContain('token argument')
     expect(instructions).not.toContain('list_mcp_resources')
-    expect(instructions).not.toContain('mcp__hermes-studio__')
+    expect(instructions).not.toContain('mcp__DiTing-studio__')
   })
 
   it('creates global-agent bridge sessions with source global_agent', async () => {
@@ -344,7 +344,7 @@ describe('bridge run final context usage', () => {
       }),
     } as any
 
-    const { handleBridgeRun } = await import('../../packages/server/src/services/hermes/run-chat/handle-bridge-run')
+    const { handleBridgeRun } = await import('../../packages/server/src/services/DiTing/run-chat/handle-bridge-run')
     await handleBridgeRun(
       nsp,
       socket,
@@ -360,7 +360,7 @@ describe('bridge run final context usage', () => {
     expect(createSessionMock).toHaveBeenCalledWith(expect.objectContaining({
       id: 'session-1',
       source: 'global_agent',
-      workspace: '/tmp/hermes-bridge-final-context/default/workspace',
+      workspace: '/tmp/DiTing-bridge-final-context/default/workspace',
     }))
     expect(state.source).toBe('global_agent')
   })
@@ -399,7 +399,7 @@ describe('bridge run final context usage', () => {
       }),
     } as any
 
-    const { handleBridgeRun } = await import('../../packages/server/src/services/hermes/run-chat/handle-bridge-run')
+    const { handleBridgeRun } = await import('../../packages/server/src/services/DiTing/run-chat/handle-bridge-run')
     await handleBridgeRun(
       nsp,
       socket,
@@ -475,7 +475,7 @@ describe('bridge run final context usage', () => {
       }),
     } as any
 
-    const { handleBridgeRun } = await import('../../packages/server/src/services/hermes/run-chat/handle-bridge-run')
+    const { handleBridgeRun } = await import('../../packages/server/src/services/DiTing/run-chat/handle-bridge-run')
     await handleBridgeRun(
       nsp,
       socket,
@@ -494,7 +494,7 @@ describe('bridge run final context usage', () => {
     expect(emit).toHaveBeenCalledWith('session.command', expect.objectContaining({
       command: 'goal',
       action: 'judge_unavailable',
-      message: 'Goal judge is not configured; automatic goal continuation was skipped. The goal remains active, but Hermes cannot mark it done automatically.',
+      message: 'Goal judge is not configured; automatic goal continuation was skipped. The goal remains active, but DiTing cannot mark it done automatically.',
     }))
   })
 
@@ -523,7 +523,7 @@ describe('bridge run final context usage', () => {
       }),
     } as any
 
-    const { handleBridgeRun } = await import('../../packages/server/src/services/hermes/run-chat/handle-bridge-run')
+    const { handleBridgeRun } = await import('../../packages/server/src/services/DiTing/run-chat/handle-bridge-run')
     await handleBridgeRun(
       nsp,
       socket,
@@ -591,7 +591,7 @@ describe('bridge run final context usage', () => {
       }),
     } as any
 
-    const { handleBridgeRun } = await import('../../packages/server/src/services/hermes/run-chat/handle-bridge-run')
+    const { handleBridgeRun } = await import('../../packages/server/src/services/DiTing/run-chat/handle-bridge-run')
     await handleBridgeRun(
       nsp,
       socket,
@@ -664,7 +664,7 @@ describe('bridge run final context usage', () => {
       }),
     } as any
 
-    const { handleBridgeRun } = await import('../../packages/server/src/services/hermes/run-chat/handle-bridge-run')
+    const { handleBridgeRun } = await import('../../packages/server/src/services/DiTing/run-chat/handle-bridge-run')
     await handleBridgeRun(
       nsp,
       socket,
@@ -710,7 +710,7 @@ describe('bridge run final context usage', () => {
       }),
     } as any
 
-    const { handleBridgeRun } = await import('../../packages/server/src/services/hermes/run-chat/handle-bridge-run')
+    const { handleBridgeRun } = await import('../../packages/server/src/services/DiTing/run-chat/handle-bridge-run')
     await handleBridgeRun(
       nsp,
       socket,
@@ -770,7 +770,7 @@ describe('bridge run final context usage', () => {
       }),
     } as any
 
-    const { handleBridgeRun } = await import('../../packages/server/src/services/hermes/run-chat/handle-bridge-run')
+    const { handleBridgeRun } = await import('../../packages/server/src/services/DiTing/run-chat/handle-bridge-run')
     await handleBridgeRun(
       nsp,
       socket,
@@ -828,7 +828,7 @@ describe('bridge run final context usage', () => {
       streamOutput: vi.fn(),
     } as any
 
-    const { handleBridgeRun } = await import('../../packages/server/src/services/hermes/run-chat/handle-bridge-run')
+    const { handleBridgeRun } = await import('../../packages/server/src/services/DiTing/run-chat/handle-bridge-run')
     await handleBridgeRun(
       nsp,
       socket,
@@ -882,7 +882,7 @@ describe('bridge run final context usage', () => {
       }),
     } as any
 
-    const { handleBridgeRun } = await import('../../packages/server/src/services/hermes/run-chat/handle-bridge-run')
+    const { handleBridgeRun } = await import('../../packages/server/src/services/DiTing/run-chat/handle-bridge-run')
     await handleBridgeRun(
       nsp,
       socket,

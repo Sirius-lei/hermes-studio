@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { NModal, NInput, NSelect } from 'naive-ui'
-import { useAppStore } from '@/stores/hermes/app'
-import { useProfilesStore } from '@/stores/hermes/profiles'
+import { useAppStore } from '@/stores/DiTing/app'
+import { useProfilesStore } from '@/stores/DiTing/profiles'
 import { useI18n } from 'vue-i18n'
 
 const emit = defineEmits<{

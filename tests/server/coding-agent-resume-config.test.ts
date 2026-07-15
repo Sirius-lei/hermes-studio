@@ -9,7 +9,7 @@ const readConfigYamlForProfileMock = vi.fn()
 const safeReadFileMock = vi.fn()
 const startRunMock = vi.fn()
 
-vi.doMock('../../packages/server/src/db/hermes/session-store', () => ({
+vi.doMock('../../packages/server/src/db/DiTing/session-store', () => ({
   getSession: getSessionMock,
   updateSession: updateSessionMock,
 }))
@@ -22,8 +22,8 @@ vi.doMock('../../packages/server/src/services/config-helpers', () => ({
   safeReadFile: safeReadFileMock,
 }))
 
-vi.doMock('../../packages/server/src/services/hermes/hermes-profile', () => ({
-  getProfileDir: (profile: string) => `/tmp/hermes-profile/${profile}`,
+vi.doMock('../../packages/server/src/services/DiTing/DiTing-profile', () => ({
+  getProfileDir: (profile: string) => `/tmp/DiTing-profile/${profile}`,
 }))
 
 vi.doMock('../../packages/server/src/services/agent-runner/coding-agent-run-manager', () => ({
@@ -35,9 +35,9 @@ vi.doMock('../../packages/server/src/services/agent-runner/coding-agent-run-mana
 const homes: string[] = []
 
 function makeHome() {
-  const home = mkdtempSync(join(tmpdir(), 'hermes-coding-agent-resume-'))
+  const home = mkdtempSync(join(tmpdir(), 'DiTing-coding-agent-resume-'))
   homes.push(home)
-  process.env.HERMES_WEB_UI_HOME = home
+  process.env.DiTing_WEB_UI_HOME = home
   return home
 }
 
@@ -53,7 +53,7 @@ describe('coding agent resumed session config', () => {
   })
 
   afterEach(() => {
-    delete process.env.HERMES_WEB_UI_HOME
+    delete process.env.DiTing_WEB_UI_HOME
     for (const home of homes.splice(0)) rmSync(home, { recursive: true, force: true })
   })
 

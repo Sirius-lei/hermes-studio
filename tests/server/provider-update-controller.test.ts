@@ -4,16 +4,16 @@ import { join } from 'path'
 import { tmpdir } from 'os'
 import YAML from 'js-yaml'
 
-vi.mock('../../packages/server/src/services/hermes/hermes-cli', () => ({
+vi.mock('../../packages/server/src/services/DiTing/DiTing-cli', () => ({
   restartGateway: vi.fn().mockResolvedValue(undefined),
 }))
 
-let hermesHome = ''
+let DiTingHome = ''
 
 async function loadProvidersController() {
   vi.resetModules()
-  process.env.HERMES_HOME = hermesHome
-  return import('../../packages/server/src/controllers/hermes/providers')
+  process.env.DiTing_HOME = DiTingHome
+  return import('../../packages/server/src/controllers/DiTing/providers')
 }
 
 function makeCtx(poolKey: string, body: Record<string, any>, profile = 'research') {
@@ -32,14 +32,14 @@ function readYaml(filePath: string) {
 
 describe('providers controller update', () => {
   beforeEach(() => {
-    hermesHome = mkdtempSync(join(tmpdir(), 'hwui-provider-update-'))
-    mkdirSync(join(hermesHome, 'profiles', 'research'), { recursive: true })
-    writeFileSync(join(hermesHome, 'config.yaml'), 'model:\n  provider: deepseek\n  default: keep-default-model\n')
-    writeFileSync(join(hermesHome, '.env'), [
+    DiTingHome = mkdtempSync(join(tmpdir(), 'hwui-provider-update-'))
+    mkdirSync(join(DiTingHome, 'profiles', 'research'), { recursive: true })
+    writeFileSync(join(DiTingHome, 'config.yaml'), 'model:\n  provider: deepseek\n  default: keep-default-model\n')
+    writeFileSync(join(DiTingHome, '.env'), [
       'DEEPSEEK_API_KEY=keep-default-key',
       '',
     ].join('\n'))
-    writeFileSync(join(hermesHome, 'profiles', 'research', 'config.yaml'), [
+    writeFileSync(join(DiTingHome, 'profiles', 'research', 'config.yaml'), [
       'model:',
       '  provider: custom:research-proxy',
       '  default: research-model',
@@ -50,18 +50,18 @@ describe('providers controller update', () => {
       '    model: research-model',
       '',
     ].join('\n'))
-    writeFileSync(join(hermesHome, 'profiles', 'research', '.env'), [
+    writeFileSync(join(DiTingHome, 'profiles', 'research', '.env'), [
       'DEEPSEEK_API_KEY=old-research-key',
       '',
     ].join('\n'))
   })
 
   afterEach(() => {
-    delete process.env.HERMES_HOME
-    vi.doUnmock('../../packages/server/src/controllers/hermes/providers')
+    delete process.env.DiTing_HOME
+    vi.doUnmock('../../packages/server/src/controllers/DiTing/providers')
     vi.clearAllMocks()
-    if (hermesHome) rmSync(hermesHome, { recursive: true, force: true })
-    hermesHome = ''
+    if (DiTingHome) rmSync(DiTingHome, { recursive: true, force: true })
+    DiTingHome = ''
   })
 
   it('updates built-in provider API keys in the request-scoped profile env only', async () => {
@@ -71,12 +71,12 @@ describe('providers controller update', () => {
     await update(ctx)
 
     expect(ctx.body).toEqual({ success: true })
-    expect(readFileSync(join(hermesHome, '.env'), 'utf-8')).toContain('DEEPSEEK_API_KEY=keep-default-key')
-    expect(readFileSync(join(hermesHome, 'profiles', 'research', '.env'), 'utf-8')).toContain('DEEPSEEK_API_KEY=new-research-key')
+    expect(readFileSync(join(DiTingHome, '.env'), 'utf-8')).toContain('DEEPSEEK_API_KEY=keep-default-key')
+    expect(readFileSync(join(DiTingHome, 'profiles', 'research', '.env'), 'utf-8')).toContain('DEEPSEEK_API_KEY=new-research-key')
   })
 
   it('updates custom provider API keys in the request-scoped profile config only', async () => {
-    const defaultConfigPath = join(hermesHome, 'config.yaml')
+    const defaultConfigPath = join(DiTingHome, 'config.yaml')
     writeFileSync(defaultConfigPath, [
       'model:',
       '  provider: custom:research-proxy',
@@ -96,13 +96,13 @@ describe('providers controller update', () => {
 
     expect(ctx.body).toEqual({ success: true })
     const defaultConfig = readYaml(defaultConfigPath)
-    const researchConfig = readYaml(join(hermesHome, 'profiles', 'research', 'config.yaml'))
+    const researchConfig = readYaml(join(DiTingHome, 'profiles', 'research', 'config.yaml'))
     expect(defaultConfig.custom_providers[0].api_key).toBe('keep-default-custom-key')
     expect(researchConfig.custom_providers[0].api_key).toBe('new-research-custom-key')
   })
 
   it('updates custom provider api_mode in the request-scoped profile config only', async () => {
-    const defaultConfigPath = join(hermesHome, 'config.yaml')
+    const defaultConfigPath = join(DiTingHome, 'config.yaml')
     writeFileSync(defaultConfigPath, [
       'model:',
       '  provider: custom:research-proxy',
@@ -123,7 +123,7 @@ describe('providers controller update', () => {
 
     expect(ctx.body).toEqual({ success: true })
     const defaultConfig = readYaml(defaultConfigPath)
-    const researchConfig = readYaml(join(hermesHome, 'profiles', 'research', 'config.yaml'))
+    const researchConfig = readYaml(join(DiTingHome, 'profiles', 'research', 'config.yaml'))
     expect(defaultConfig.custom_providers[0].api_mode).toBe('codex_responses')
     expect(researchConfig.custom_providers[0].api_mode).toBe('chat_completions')
   })

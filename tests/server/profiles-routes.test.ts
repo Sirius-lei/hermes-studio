@@ -24,8 +24,8 @@ const gatewayAutostartMocks = vi.hoisted(() => ({
   restartGatewayForProfile: vi.fn(),
 }))
 
-// Mock hermes-cli
-vi.mock('../../packages/server/src/services/hermes/hermes-cli', () => ({
+// Mock DiTing-cli
+vi.mock('../../packages/server/src/services/DiTing/DiTing-cli', () => ({
   listProfiles: vi.fn(),
   getProfile: vi.fn(),
   createProfile: vi.fn(),
@@ -40,38 +40,38 @@ vi.mock('../../packages/server/src/services/hermes/hermes-cli', () => ({
   importProfile: vi.fn(),
 }))
 
-vi.mock('../../packages/server/src/services/hermes/agent-bridge', () => ({
+vi.mock('../../packages/server/src/services/DiTing/agent-bridge', () => ({
   AgentBridgeClient: vi.fn(() => ({
     destroyAll: agentBridgeMocks.destroyAll,
     destroyProfile: agentBridgeMocks.destroyProfile,
   })),
 }))
 
-vi.mock('../../packages/server/src/services/hermes/skill-injector', () => {
-  const HermesSkillInjector = vi.fn(() => ({
+vi.mock('../../packages/server/src/services/DiTing/skill-injector', () => {
+  const DiTingSkillInjector = vi.fn(() => ({
     injectMissingSkills: skillInjectorMocks.injectMissingSkills,
   })) as any
-  HermesSkillInjector.resolveTargetDirForProfile = skillInjectorMocks.resolveTargetDirForProfile
-  return { HermesSkillInjector }
+  DiTingSkillInjector.resolveTargetDirForProfile = skillInjectorMocks.resolveTargetDirForProfile
+  return { DiTingSkillInjector }
 })
 
-vi.mock('../../packages/server/src/services/hermes/session-deleter', () => ({
+vi.mock('../../packages/server/src/services/DiTing/session-deleter', () => ({
   SessionDeleter: {
     getInstance: vi.fn(() => sessionDeleterMocks),
   },
 }))
 
-vi.mock('../../packages/server/src/services/hermes/gateway-autostart', () => ({
+vi.mock('../../packages/server/src/services/DiTing/gateway-autostart', () => ({
   getGatewayRuntimeStatusForProfile: gatewayAutostartMocks.getGatewayRuntimeStatusForProfile,
   prepareGatewayForProfileDelete: gatewayAutostartMocks.prepareGatewayForProfileDelete,
   restartGatewayForProfile: gatewayAutostartMocks.restartGatewayForProfile,
 }))
 
-import * as hermesCli from '../../packages/server/src/services/hermes/hermes-cli'
+import * as DiTingCli from '../../packages/server/src/services/DiTing/DiTing-cli'
 
 describe('Profile Routes', () => {
-  const originalHermesHome = process.env.HERMES_HOME
-  const originalWebUiHome = process.env.HERMES_WEB_UI_HOME
+  const originalDiTingHome = process.env.DiTing_HOME
+  const originalWebUiHome = process.env.DiTing_WEB_UI_HOME
   const tempHomes: string[] = []
 
   beforeEach(() => {
@@ -79,49 +79,49 @@ describe('Profile Routes', () => {
     agentBridgeMocks.destroyProfile.mockResolvedValue({ destroyed: 0 })
     gatewayAutostartMocks.prepareGatewayForProfileDelete.mockResolvedValue(undefined)
     skillInjectorMocks.injectMissingSkills.mockResolvedValue({ targets: [] })
-    skillInjectorMocks.resolveTargetDirForProfile.mockImplementation((name: string) => join('/tmp/hermes-skills', name))
+    skillInjectorMocks.resolveTargetDirForProfile.mockImplementation((name: string) => join('/tmp/DiTing-skills', name))
   })
 
   afterEach(async () => {
-    if (originalHermesHome === undefined) delete process.env.HERMES_HOME
-    else process.env.HERMES_HOME = originalHermesHome
-    if (originalWebUiHome === undefined) delete process.env.HERMES_WEB_UI_HOME
-    else process.env.HERMES_WEB_UI_HOME = originalWebUiHome
+    if (originalDiTingHome === undefined) delete process.env.DiTing_HOME
+    else process.env.DiTing_HOME = originalDiTingHome
+    if (originalWebUiHome === undefined) delete process.env.DiTing_WEB_UI_HOME
+    else process.env.DiTing_WEB_UI_HOME = originalWebUiHome
     await Promise.all(tempHomes.splice(0).map(dir => rm(dir, { recursive: true, force: true })))
   })
 
-  describe('hermes-cli wrapper', () => {
+  describe('DiTing-cli wrapper', () => {
     it('listProfiles returns array', async () => {
       const mockProfiles = [{ name: 'default', active: true }]
-      vi.mocked(hermesCli.listProfiles).mockResolvedValue(mockProfiles as any)
+      vi.mocked(DiTingCli.listProfiles).mockResolvedValue(mockProfiles as any)
 
-      const result = await hermesCli.listProfiles()
+      const result = await DiTingCli.listProfiles()
       expect(result).toEqual(mockProfiles)
     })
 
     it('getProfile returns profile detail', async () => {
       const mockDetail = { name: 'default', path: '/tmp/default' }
-      vi.mocked(hermesCli.getProfile).mockResolvedValue(mockDetail as any)
+      vi.mocked(DiTingCli.getProfile).mockResolvedValue(mockDetail as any)
 
-      const result = await hermesCli.getProfile('default')
+      const result = await DiTingCli.getProfile('default')
       expect(result).toEqual(mockDetail)
-      expect(hermesCli.getProfile).toHaveBeenCalledWith('default')
+      expect(DiTingCli.getProfile).toHaveBeenCalledWith('default')
     })
 
     it('createProfile calls CLI with name and clone flag', async () => {
-      vi.mocked(hermesCli.createProfile).mockResolvedValue('Profile created')
+      vi.mocked(DiTingCli.createProfile).mockResolvedValue('Profile created')
 
-      await hermesCli.createProfile('test', true)
+      await DiTingCli.createProfile('test', true)
 
-      expect(hermesCli.createProfile).toHaveBeenCalledWith('test', true)
+      expect(DiTingCli.createProfile).toHaveBeenCalledWith('test', true)
     })
 
     it('clone creation copies only the configured model provider auth for the new profile', async () => {
-      const hermesHome = await mkdtemp(join(tmpdir(), 'hermes-profile-clone-auth-'))
-      tempHomes.push(hermesHome)
-      process.env.HERMES_HOME = hermesHome
-      await writeFile(join(hermesHome, 'active_profile'), 'default\n', 'utf-8')
-      await writeFile(join(hermesHome, 'auth.json'), JSON.stringify({
+      const DiTingHome = await mkdtemp(join(tmpdir(), 'DiTing-profile-clone-auth-'))
+      tempHomes.push(DiTingHome)
+      process.env.DiTing_HOME = DiTingHome
+      await writeFile(join(DiTingHome, 'active_profile'), 'default\n', 'utf-8')
+      await writeFile(join(DiTingHome, 'auth.json'), JSON.stringify({
         providers: {
           'openai-codex': { access_token: 'codex-provider-token' },
           anthropic: { access_token: 'anthropic-provider-token' },
@@ -131,8 +131,8 @@ describe('Profile Routes', () => {
           anthropic: [{ access_token: 'anthropic-pool-token' }],
         },
       }, null, 2), 'utf-8')
-      vi.mocked(hermesCli.createProfile).mockImplementation(async (name: string) => {
-        const profileDir = join(hermesHome, 'profiles', name)
+      vi.mocked(DiTingCli.createProfile).mockImplementation(async (name: string) => {
+        const profileDir = join(DiTingHome, 'profiles', name)
         await mkdir(profileDir, { recursive: true })
         await writeFile(join(profileDir, 'config.yaml'), [
           'model:',
@@ -142,7 +142,7 @@ describe('Profile Routes', () => {
         ].join('\n'), 'utf-8')
         return 'Profile created'
       })
-      const { create } = await import('../../packages/server/src/controllers/hermes/profiles')
+      const { create } = await import('../../packages/server/src/controllers/DiTing/profiles')
       const ctx: any = {
         request: { body: { name: 'cloned', clone: true } },
         status: 200,
@@ -153,7 +153,7 @@ describe('Profile Routes', () => {
 
       expect(ctx.status).toBe(200)
       expect(ctx.body.copiedAuthProviders).toEqual(['openai-codex'])
-      const clonedAuth = JSON.parse(readFileSync(join(hermesHome, 'profiles', 'cloned', 'auth.json'), 'utf-8'))
+      const clonedAuth = JSON.parse(readFileSync(join(DiTingHome, 'profiles', 'cloned', 'auth.json'), 'utf-8'))
       expect(clonedAuth.providers['openai-codex']).toEqual({ access_token: 'codex-provider-token' })
       expect(clonedAuth.credential_pool['openai-codex']).toEqual([{ access_token: 'codex-pool-token' }])
       expect(clonedAuth.providers.anthropic).toBeUndefined()
@@ -161,29 +161,29 @@ describe('Profile Routes', () => {
     })
 
     it('deleteProfile calls CLI with name', async () => {
-      vi.mocked(hermesCli.deleteProfile).mockResolvedValue(true)
+      vi.mocked(DiTingCli.deleteProfile).mockResolvedValue(true)
 
-      await hermesCli.deleteProfile('test')
+      await DiTingCli.deleteProfile('test')
 
-      expect(hermesCli.deleteProfile).toHaveBeenCalledWith('test')
+      expect(DiTingCli.deleteProfile).toHaveBeenCalledWith('test')
     })
 
     it('renameProfile calls CLI with old and new name', async () => {
-      vi.mocked(hermesCli.renameProfile).mockResolvedValue(true)
+      vi.mocked(DiTingCli.renameProfile).mockResolvedValue(true)
 
-      await hermesCli.renameProfile('old', 'new')
+      await DiTingCli.renameProfile('old', 'new')
 
-      expect(hermesCli.renameProfile).toHaveBeenCalledWith('old', 'new')
+      expect(DiTingCli.renameProfile).toHaveBeenCalledWith('old', 'new')
     })
   })
 
   describe('profile rename validation', () => {
-    it('rejects reserved profile names before calling Hermes CLI', async () => {
-      vi.mocked(hermesCli.renameProfile).mockResolvedValue(true)
-      const { rename } = await import('../../packages/server/src/controllers/hermes/profiles')
+    it('rejects reserved profile names before calling DiTing CLI', async () => {
+      vi.mocked(DiTingCli.renameProfile).mockResolvedValue(true)
+      const { rename } = await import('../../packages/server/src/controllers/DiTing/profiles')
       const ctx: any = {
         params: { name: 'work' },
-        request: { body: { new_name: 'hermes' } },
+        request: { body: { new_name: 'DiTing' } },
         status: 200,
         body: undefined,
       }
@@ -191,44 +191,44 @@ describe('Profile Routes', () => {
       await rename(ctx)
 
       expect(ctx.status).toBe(400)
-      expect(ctx.body).toEqual({ error: "Profile name 'hermes' is reserved and cannot be used" })
-      expect(hermesCli.renameProfile).not.toHaveBeenCalled()
+      expect(ctx.body).toEqual({ error: "Profile name 'DiTing' is reserved and cannot be used" })
+      expect(DiTingCli.renameProfile).not.toHaveBeenCalled()
     })
   })
 
   describe('profile deletion fallback', () => {
-    it('prepares the profile gateway for deletion before calling Hermes CLI delete', async () => {
-      const hermesHome = await mkdtemp(join(tmpdir(), 'hermes-profile-delete-'))
-      tempHomes.push(hermesHome)
-      process.env.HERMES_HOME = hermesHome
-      const profileDir = join(hermesHome, 'profiles', 'work')
+    it('prepares the profile gateway for deletion before calling DiTing CLI delete', async () => {
+      const DiTingHome = await mkdtemp(join(tmpdir(), 'DiTing-profile-delete-'))
+      tempHomes.push(DiTingHome)
+      process.env.DiTing_HOME = DiTingHome
+      const profileDir = join(DiTingHome, 'profiles', 'work')
       await mkdir(profileDir, { recursive: true })
       await writeFile(join(profileDir, 'config.yaml'), 'model:\n  default: test\n', 'utf-8')
 
       gatewayAutostartMocks.prepareGatewayForProfileDelete.mockImplementation(async () => {
         await rm(profileDir, { recursive: true, force: true })
       })
-      vi.mocked(hermesCli.deleteProfile).mockResolvedValue(true)
-      const { remove } = await import('../../packages/server/src/controllers/hermes/profiles')
+      vi.mocked(DiTingCli.deleteProfile).mockResolvedValue(true)
+      const { remove } = await import('../../packages/server/src/controllers/DiTing/profiles')
       const ctx: any = { params: { name: 'work' }, status: 200, body: undefined }
 
       await remove(ctx)
 
       expect(gatewayAutostartMocks.prepareGatewayForProfileDelete).toHaveBeenCalledWith('work')
-      expect(hermesCli.deleteProfile).toHaveBeenCalledWith('work')
+      expect(DiTingCli.deleteProfile).toHaveBeenCalledWith('work')
       expect(ctx.status).toBe(200)
       expect(ctx.body).toEqual({ success: true })
     })
 
-    it('does not return success when Hermes CLI reports delete success but the profile directory remains', async () => {
-      const hermesHome = await mkdtemp(join(tmpdir(), 'hermes-profile-delete-'))
-      tempHomes.push(hermesHome)
-      process.env.HERMES_HOME = hermesHome
-      const profileDir = join(hermesHome, 'profiles', 'work')
+    it('does not return success when DiTing CLI reports delete success but the profile directory remains', async () => {
+      const DiTingHome = await mkdtemp(join(tmpdir(), 'DiTing-profile-delete-'))
+      tempHomes.push(DiTingHome)
+      process.env.DiTing_HOME = DiTingHome
+      const profileDir = join(DiTingHome, 'profiles', 'work')
       await mkdir(profileDir, { recursive: true })
       await writeFile(join(profileDir, 'config.yaml'), 'model:\n  default: test\n', 'utf-8')
-      vi.mocked(hermesCli.deleteProfile).mockResolvedValue(true)
-      const { remove } = await import('../../packages/server/src/controllers/hermes/profiles')
+      vi.mocked(DiTingCli.deleteProfile).mockResolvedValue(true)
+      const { remove } = await import('../../packages/server/src/controllers/DiTing/profiles')
       const ctx: any = { params: { name: 'work' }, status: 200, body: undefined }
 
       await remove(ctx)
@@ -238,34 +238,34 @@ describe('Profile Routes', () => {
       expect(existsSync(profileDir)).toBe(true)
     })
 
-    it('removes a reserved profile directory when Hermes CLI refuses to delete it', async () => {
-      const hermesHome = await mkdtemp(join(tmpdir(), 'hermes-profile-delete-'))
-      tempHomes.push(hermesHome)
-      process.env.HERMES_HOME = hermesHome
-      const badProfileDir = join(hermesHome, 'profiles', 'hermes')
+    it('removes a reserved profile directory when DiTing CLI refuses to delete it', async () => {
+      const DiTingHome = await mkdtemp(join(tmpdir(), 'DiTing-profile-delete-'))
+      tempHomes.push(DiTingHome)
+      process.env.DiTing_HOME = DiTingHome
+      const badProfileDir = join(DiTingHome, 'profiles', 'DiTing')
       await mkdir(badProfileDir, { recursive: true })
       await writeFile(join(badProfileDir, 'config.yaml'), 'model:\n  default: bad\n', 'utf-8')
-      await writeFile(join(hermesHome, 'active_profile'), 'hermes\n', 'utf-8')
-      vi.mocked(hermesCli.deleteProfile).mockResolvedValue(false)
-      const { remove } = await import('../../packages/server/src/controllers/hermes/profiles')
-      const ctx: any = { params: { name: 'hermes' }, status: 200, body: undefined }
+      await writeFile(join(DiTingHome, 'active_profile'), 'DiTing\n', 'utf-8')
+      vi.mocked(DiTingCli.deleteProfile).mockResolvedValue(false)
+      const { remove } = await import('../../packages/server/src/controllers/DiTing/profiles')
+      const ctx: any = { params: { name: 'DiTing' }, status: 200, body: undefined }
 
       await remove(ctx)
 
       expect(ctx.status).toBe(200)
       expect(ctx.body).toEqual({ success: true, fallback: 'removed_reserved_profile_from_disk' })
       expect(existsSync(badProfileDir)).toBe(false)
-      expect(readFileSync(join(hermesHome, 'active_profile'), 'utf-8')).toBe('default\n')
+      expect(readFileSync(join(DiTingHome, 'active_profile'), 'utf-8')).toBe('default\n')
     })
 
-    it('does not bypass Hermes CLI failures for normal profile names', async () => {
-      const hermesHome = await mkdtemp(join(tmpdir(), 'hermes-profile-delete-'))
-      tempHomes.push(hermesHome)
-      process.env.HERMES_HOME = hermesHome
-      const profileDir = join(hermesHome, 'profiles', 'work')
+    it('does not bypass DiTing CLI failures for normal profile names', async () => {
+      const DiTingHome = await mkdtemp(join(tmpdir(), 'DiTing-profile-delete-'))
+      tempHomes.push(DiTingHome)
+      process.env.DiTing_HOME = DiTingHome
+      const profileDir = join(DiTingHome, 'profiles', 'work')
       await mkdir(profileDir, { recursive: true })
-      vi.mocked(hermesCli.deleteProfile).mockResolvedValue(false)
-      const { remove } = await import('../../packages/server/src/controllers/hermes/profiles')
+      vi.mocked(DiTingCli.deleteProfile).mockResolvedValue(false)
+      const { remove } = await import('../../packages/server/src/controllers/DiTing/profiles')
       const ctx: any = { params: { name: 'work' }, status: 200, body: undefined }
 
       await remove(ctx)
@@ -276,17 +276,17 @@ describe('Profile Routes', () => {
     })
   })
 
-  describe('Hermes CLI active profile switch', () => {
+  describe('DiTing CLI active profile switch', () => {
     it('only destroys bridge sessions for the target profile', async () => {
-      const hermesHome = await mkdtemp(join(tmpdir(), 'hermes-profile-switch-'))
-      tempHomes.push(hermesHome)
-      process.env.HERMES_HOME = hermesHome
-      const profileDir = join(hermesHome, 'profiles', 'work')
+      const DiTingHome = await mkdtemp(join(tmpdir(), 'DiTing-profile-switch-'))
+      tempHomes.push(DiTingHome)
+      process.env.DiTing_HOME = DiTingHome
+      const profileDir = join(DiTingHome, 'profiles', 'work')
       await mkdir(profileDir, { recursive: true })
       await writeFile(join(profileDir, 'config.yaml'), 'model:\n  default: gpt-test\n', 'utf-8')
-      await writeFile(join(hermesHome, 'active_profile'), 'work\n', 'utf-8')
-      vi.mocked(hermesCli.useProfile).mockResolvedValue('Switched to work')
-      vi.mocked(hermesCli.getProfile).mockResolvedValue({
+      await writeFile(join(DiTingHome, 'active_profile'), 'work\n', 'utf-8')
+      vi.mocked(DiTingCli.useProfile).mockResolvedValue('Switched to work')
+      vi.mocked(DiTingCli.getProfile).mockResolvedValue({
         name: 'work',
         path: profileDir,
         model: 'gpt-test',
@@ -296,7 +296,7 @@ describe('Profile Routes', () => {
         hasSoulMd: false,
       } as any)
       agentBridgeMocks.destroyProfile.mockResolvedValue({ destroyed: 2 })
-      const { switchProfile } = await import('../../packages/server/src/controllers/hermes/profiles')
+      const { switchProfile } = await import('../../packages/server/src/controllers/DiTing/profiles')
       const ctx: any = {
         request: { body: { name: 'work' } },
         status: 200,
@@ -315,10 +315,10 @@ describe('Profile Routes', () => {
 
   describe('profile avatars', () => {
     it('stores generated avatar metadata under the Web UI home', async () => {
-      const webUiHome = await mkdtemp(join(tmpdir(), 'hermes-web-ui-avatar-'))
+      const webUiHome = await mkdtemp(join(tmpdir(), 'diting-web-ui-avatar-'))
       tempHomes.push(webUiHome)
-      process.env.HERMES_WEB_UI_HOME = webUiHome
-      const { updateAvatar } = await import('../../packages/server/src/controllers/hermes/profiles')
+      process.env.DiTing_WEB_UI_HOME = webUiHome
+      const { updateAvatar } = await import('../../packages/server/src/controllers/DiTing/profiles')
       const ctx: any = {
         params: { name: 'work' },
         request: { body: { type: 'generated', seed: 'custom-seed' } },
@@ -338,11 +338,11 @@ describe('Profile Routes', () => {
     })
 
     it('stores uploaded image avatars and returns a data URL', async () => {
-      const webUiHome = await mkdtemp(join(tmpdir(), 'hermes-web-ui-avatar-'))
+      const webUiHome = await mkdtemp(join(tmpdir(), 'diting-web-ui-avatar-'))
       tempHomes.push(webUiHome)
-      process.env.HERMES_WEB_UI_HOME = webUiHome
+      process.env.DiTing_WEB_UI_HOME = webUiHome
       const dataUrl = `data:image/png;base64,${Buffer.from('avatar-png').toString('base64')}`
-      const { updateAvatar } = await import('../../packages/server/src/controllers/hermes/profiles')
+      const { updateAvatar } = await import('../../packages/server/src/controllers/DiTing/profiles')
       const ctx: any = {
         params: { name: 'work' },
         request: { body: { type: 'image', dataUrl } },
@@ -361,13 +361,13 @@ describe('Profile Routes', () => {
     })
 
     it('deletes profile avatar metadata', async () => {
-      const webUiHome = await mkdtemp(join(tmpdir(), 'hermes-web-ui-avatar-'))
+      const webUiHome = await mkdtemp(join(tmpdir(), 'diting-web-ui-avatar-'))
       tempHomes.push(webUiHome)
-      process.env.HERMES_WEB_UI_HOME = webUiHome
+      process.env.DiTing_WEB_UI_HOME = webUiHome
       const metadataDir = join(webUiHome, 'profile-metadata', Buffer.from('work', 'utf-8').toString('base64url'))
       await mkdir(metadataDir, { recursive: true })
       await writeFile(join(metadataDir, 'avatar.json'), '{"type":"generated"}\n', 'utf-8')
-      const { deleteAvatar } = await import('../../packages/server/src/controllers/hermes/profiles')
+      const { deleteAvatar } = await import('../../packages/server/src/controllers/DiTing/profiles')
       const ctx: any = { params: { name: 'work' }, status: 200, body: undefined }
 
       await deleteAvatar(ctx)

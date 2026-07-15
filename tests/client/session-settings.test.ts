@@ -20,11 +20,11 @@ const mockPrefsStore = vi.hoisted(() => ({
   }),
 }))
 
-vi.mock('@/stores/hermes/settings', () => ({
+vi.mock('@/stores/DiTing/settings', () => ({
   useSettingsStore: () => mockSettingsStore,
 }))
 
-vi.mock('@/stores/hermes/session-browser-prefs', () => ({
+vi.mock('@/stores/DiTing/session-browser-prefs', () => ({
   useSessionBrowserPrefsStore: () => mockPrefsStore,
 }))
 
@@ -45,7 +45,7 @@ vi.mock('naive-ui', async () => {
   }
 })
 
-import SessionSettings from '@/components/hermes/settings/SessionSettings.vue'
+import SessionSettings from '@/components/DiTing/settings/SessionSettings.vue'
 
 describe('SessionSettings', () => {
   beforeEach(() => {
@@ -135,7 +135,7 @@ describe('SessionSettings', () => {
     expect(mockSettingsStore.saveSection).toHaveBeenCalledWith('skills', { write_approval: false })
   })
 
-  it('shows write approval toggles without probing Hermes Agent support', async () => {
+  it('shows write approval toggles without probing DiTing Agent support', async () => {
     const wrapper = mount(SessionSettings, {
       global: {
         stubs: {

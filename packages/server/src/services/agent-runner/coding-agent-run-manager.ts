@@ -2,11 +2,11 @@ import { dirname, join } from 'path'
 import { existsSync, accessSync, chmodSync, constants as fsConstants, readFileSync } from 'fs'
 import { homedir } from 'os'
 import { spawn, type ChildProcess } from 'child_process'
-import { createSession, addMessage, getSession, updateSession, updateSessionStats } from '../../db/hermes/session-store'
+import { createSession, addMessage, getSession, updateSession, updateSessionStats } from '../../db/DiTing/session-store'
 import { logger } from '../logger'
-import { applyResponseStreamEvent, flushResponseRunToDb } from '../hermes/run-chat/response-stream'
-import { extractResponseText } from '../hermes/run-chat/response-utils'
-import type { SessionState } from '../hermes/run-chat/types'
+import { applyResponseStreamEvent, flushResponseRunToDb } from '../DiTing/run-chat/response-stream'
+import { extractResponseText } from '../DiTing/run-chat/response-utils'
+import type { SessionState } from '../DiTing/run-chat/types'
 import type { CanonicalResponsesEvent } from './adapters/responses-stream'
 import { mapCodingAgentResponseEvent } from './coding-agent-event-mapper'
 import { normalizeWindowsCommandPath, windowsCmdShimExecution, windowsCommandNeedsShell } from '../windows-command'
@@ -19,7 +19,7 @@ const CODING_AGENT_TOOL_OUTPUT_STORAGE_LIMIT = 32 * 1024
 const CODING_AGENT_TOOL_OUTPUT_HEAD_CHARS = 24 * 1024
 const CODING_AGENT_TOOL_OUTPUT_TAIL_CHARS = 8 * 1024
 const CODEX_REASONING_SUMMARY_ARGS = ['-c', 'model_reasoning_summary="auto"']
-const HERMES_MCP_SERVER_NAME = 'hermes-studio'
+const DiTing_MCP_SERVER_NAME = 'DiTing-studio'
 
 let pty: any = null
 
@@ -167,7 +167,7 @@ function truncateCodingAgentToolOutputForStorage(output: unknown): string {
   return [
     head,
     '',
-    `[Hermes Web UI: coding-agent tool output truncated for storage; original_chars=${text.length}; omitted_chars=${omitted}]`,
+    `[DiTing Web UI: coding-agent tool output truncated for storage; original_chars=${text.length}; omitted_chars=${omitted}]`,
     '',
     tail,
   ].join('\n')
@@ -215,13 +215,13 @@ function isPrintAgent(agentId: string): boolean {
   return agentId === 'claude-code' || agentId === 'codex'
 }
 
-function hasManagedHermesMcpConfig(run: ManagedCodingAgentRun): boolean {
+function hasManagedDiTingMcpConfig(run: ManagedCodingAgentRun): boolean {
   if (run.launch.agentId !== 'codex' || run.launch.mode !== 'scoped') return true
   const codexHome = String(run.launch.env?.CODEX_HOME || '').trim()
   if (!codexHome) return false
   try {
     const config = readFileSync(join(codexHome, 'config.toml'), 'utf-8')
-    return config.includes(`[mcp_servers.${HERMES_MCP_SERVER_NAME}]`)
+    return config.includes(`[mcp_servers.${DiTing_MCP_SERVER_NAME}]`)
   } catch {
     return false
   }
@@ -426,7 +426,7 @@ export class CodingAgentRunManager {
       if (provider && run.launch.provider !== provider) return false
       if (model && run.launch.model !== model) return false
     }
-    if (!hasManagedHermesMcpConfig(run)) return false
+    if (!hasManagedDiTingMcpConfig(run)) return false
     return true
   }
 
@@ -1693,7 +1693,7 @@ export class CodingAgentRunManager {
     try {
       // Lazy require avoids coupling the service to bootstrap order.
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { getChatRunServer } = require('../../routes/hermes/chat-run')
+      const { getChatRunServer } = require('../../routes/DiTing/chat-run')
       getChatRunServer()?.emitExternalEvent?.(sessionId, event, payload)
     } catch {}
   }
@@ -1737,7 +1737,7 @@ export class CodingAgentRunManager {
   private markChatRunCompleted(sessionId: string, event: string) {
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const { getChatRunServer } = require('../../routes/hermes/chat-run')
+      const { getChatRunServer } = require('../../routes/DiTing/chat-run')
       getChatRunServer()?.markExternalRunCompleted?.(sessionId, event)
     } catch {}
   }

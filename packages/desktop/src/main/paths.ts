@@ -7,10 +7,10 @@ import {
   runtimePlatformKey,
   type DesktopRuntimeResource,
 } from './runtime-paths'
-import { compareHermesAgentVersions, hermesAgentVersionFromRuntimeTag } from './runtime-version'
+import { compareDiTingAgentVersions, DiTingAgentVersionFromRuntimeTag } from './runtime-version'
 
 const isWin = platform() === 'win32'
-const DEFAULT_HERMES_AGENT_VERSION = '0.15.2'
+const DEFAULT_DiTing_AGENT_VERSION = '0.15.2'
 const MIN_COMPATIBLE_WEB_UI_VERSION = '0.6.14'
 const PACKAGED_RUNTIME_RELEASE_NAME = 'runtime-release.json'
 const ACTIVE_RUNTIME_VERSION_NAME = 'active-version.json'
@@ -22,14 +22,14 @@ export function isPackaged() {
 
 function defaultWebuiDir(): string {
   if (isPackaged()) return resolve(process.resourcesPath, 'webui')
-  return process.env.HERMES_WEB_UI_DIR?.trim() || resolve(app?.getAppPath?.() || resolve(process.cwd(), 'packages', 'desktop'), '..', '..')
+  return process.env.DiTing_WEB_UI_DIR?.trim() || resolve(app?.getAppPath?.() || resolve(process.cwd(), 'packages', 'desktop'), '..', '..')
 }
 
 export { runtimePlatformKey }
 
 type RuntimeReleaseMetadata = {
   tag?: string
-  hermesAgentVersion?: string
+  DiTingAgentVersion?: string
 }
 
 type ActiveRuntimeVersion = {
@@ -40,9 +40,9 @@ type ActiveRuntimeVersion = {
 
 function runtimeRequiredFiles(root: string): string[] {
   const python = isWin ? join(root, 'python', 'python.exe') : join(root, 'python', 'bin', 'python3')
-  const hermes = isWin ? join(root, 'python', 'Scripts', 'hermes.exe') : join(root, 'python', 'bin', 'hermes')
+  const DiTing = isWin ? join(root, 'python', 'Scripts', 'DiTing.exe') : join(root, 'python', 'bin', 'DiTing')
   const node = isWin ? join(root, 'node', 'node.exe') : join(root, 'node', 'bin', 'node')
-  const files = [python, hermes, node]
+  const files = [python, DiTing, node]
   if (isWin) files.push(join(root, 'git', 'cmd', 'git.exe'))
   return files
 }
@@ -54,14 +54,14 @@ function runtimeDirectoryReady(root: string): boolean {
 function readRuntimeManifestVersion(runtimeDir: string): string | null {
   try {
     const manifest = JSON.parse(readFileSync(join(runtimeDir, 'runtime-manifest.json'), 'utf-8')) as {
-      hermesAgentVersion?: unknown
+      DiTingAgentVersion?: unknown
       asset?: { name?: unknown }
     }
-    if (typeof manifest.hermesAgentVersion === 'string' && manifest.hermesAgentVersion.trim()) {
-      return manifest.hermesAgentVersion.trim()
+    if (typeof manifest.DiTingAgentVersion === 'string' && manifest.DiTingAgentVersion.trim()) {
+      return manifest.DiTingAgentVersion.trim()
     }
     const assetName = typeof manifest.asset?.name === 'string' ? manifest.asset.name : ''
-    const match = assetName.match(/hermes-agent-([^-]+)-/)
+    const match = assetName.match(/diting-agent-([^-]+)-/)
     return match?.[1] || null
   } catch {
     return null
@@ -69,7 +69,7 @@ function readRuntimeManifestVersion(runtimeDir: string): string | null {
 }
 
 function installedRuntimeDirectories(): Array<{ directory: string; version: string }> {
-  const root = join(webUiHome(), 'desktop-runtime', 'hermes')
+  const root = join(webUiHome(), 'desktop-runtime', 'DiTing')
   const currentPlatform = runtimePlatformKey()
   if (!existsSync(root)) return []
 
@@ -116,7 +116,7 @@ function cleanupLegacyWebUiVersions(): void {
     for (const entry of readdirSync(root, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue
       const version = entry.name.trim().replace(/^v/, '')
-      const comparison = compareHermesAgentVersions(version, MIN_COMPATIBLE_WEB_UI_VERSION)
+      const comparison = compareDiTingAgentVersions(version, MIN_COMPATIBLE_WEB_UI_VERSION)
       if (comparison === null || comparison >= 0) continue
       const target = join(root, entry.name)
       rmSync(target, { recursive: true, force: true })
@@ -128,11 +128,11 @@ function cleanupLegacyWebUiVersions(): void {
 }
 
 // Bundled web-ui directory.
-// dev:  <repo root> (or HERMES_WEB_UI_DIR)
+// dev:  <repo root> (or DiTing_WEB_UI_DIR)
 // prod: <resources>/webui
 // active-version.json can pin the Web UI path used to start the local server.
 export function webuiDir(): string {
-  const override = process.env.HERMES_WEB_UI_DIR?.trim()
+  const override = process.env.DiTing_WEB_UI_DIR?.trim()
   if (override) return resolve(override)
 
   cleanupLegacyWebUiVersions()
@@ -160,11 +160,11 @@ function runtimeReleaseMetadata(): RuntimeReleaseMetadata | null {
   for (const candidate of candidates) {
     if (!existsSync(candidate)) continue
     try {
-      const metadata = JSON.parse(readFileSync(candidate, 'utf-8')) as { tag?: unknown; hermesAgentVersion?: unknown }
+      const metadata = JSON.parse(readFileSync(candidate, 'utf-8')) as { tag?: unknown; DiTingAgentVersion?: unknown }
       return {
         tag: typeof metadata.tag === 'string' && metadata.tag.trim() ? metadata.tag.trim() : undefined,
-        hermesAgentVersion: typeof metadata.hermesAgentVersion === 'string' && metadata.hermesAgentVersion.trim()
-          ? metadata.hermesAgentVersion.trim()
+        DiTingAgentVersion: typeof metadata.DiTingAgentVersion === 'string' && metadata.DiTingAgentVersion.trim()
+          ? metadata.DiTingAgentVersion.trim()
           : undefined,
       }
     } catch {}
@@ -174,30 +174,30 @@ function runtimeReleaseMetadata(): RuntimeReleaseMetadata | null {
 }
 
 export function desktopRuntimeVersion(): string {
-  const releaseTag = process.env.HERMES_DESKTOP_RUNTIME_RELEASE_TAG?.trim()
-  const versionFromTag = hermesAgentVersionFromRuntimeTag(releaseTag)
+  const releaseTag = process.env.DiTing_DESKTOP_RUNTIME_RELEASE_TAG?.trim()
+  const versionFromTag = DiTingAgentVersionFromRuntimeTag(releaseTag)
   if (versionFromTag) return versionFromTag
 
   const metadata = runtimeReleaseMetadata()
-  if (metadata?.hermesAgentVersion) return metadata.hermesAgentVersion
+  if (metadata?.DiTingAgentVersion) return metadata.DiTingAgentVersion
 
-  const versionFromMetadataTag = hermesAgentVersionFromRuntimeTag(metadata?.tag)
+  const versionFromMetadataTag = DiTingAgentVersionFromRuntimeTag(metadata?.tag)
   if (versionFromMetadataTag) return versionFromMetadataTag
 
-  const versionOverride = process.env.HERMES_VERSION?.trim()
+  const versionOverride = process.env.DiTing_VERSION?.trim()
   if (versionOverride) return versionOverride
 
-  return DEFAULT_HERMES_AGENT_VERSION
+  return DEFAULT_DiTing_AGENT_VERSION
 }
 
 export function targetDesktopRuntimeDir(): string {
-  const override = process.env.HERMES_DESKTOP_RUNTIME_DIR?.trim()
+  const override = process.env.DiTing_DESKTOP_RUNTIME_DIR?.trim()
   if (override) return resolve(override)
-  return join(webUiHome(), 'desktop-runtime', 'hermes', desktopRuntimeVersion(), runtimePlatformKey())
+  return join(webUiHome(), 'desktop-runtime', 'DiTing', desktopRuntimeVersion(), runtimePlatformKey())
 }
 
 export function desktopRuntimeDir(): string {
-  const override = process.env.HERMES_DESKTOP_RUNTIME_DIR?.trim()
+  const override = process.env.DiTing_DESKTOP_RUNTIME_DIR?.trim()
   if (override) return resolve(override)
 
   const active = readActiveRuntimeVersion()
@@ -253,8 +253,8 @@ export function gitPathDirs(): string[] {
     join(dir, 'mingw64', 'bin'),
     // Do not expose Git for Windows' Unix toolchain on PATH. Its usr/bin
     // includes GNU tools like du.exe/find.exe, which can be picked up by
-    // Hermes or subprocesses and recursively scan Windows profile/AppData
-    // trees. We pass git.exe explicitly via HERMES_AGENT_GIT instead.
+    // DiTing or subprocesses and recursively scan Windows profile/AppData
+    // trees. We pass git.exe explicitly via DiTing_AGENT_GIT instead.
   ].filter(existsSync)
 }
 
@@ -311,12 +311,12 @@ export function bundledPython(): string {
   return isWin ? join(dir, 'python.exe') : join(dir, 'bin', 'python3')
 }
 
-export function hermesBin(): string {
-  return isWin ? join(pythonBinDir(), 'hermes.exe') : join(pythonBinDir(), 'hermes')
+export function DiTingBin(): string {
+  return isWin ? join(pythonBinDir(), 'DiTing.exe') : join(pythonBinDir(), 'DiTing')
 }
 
-export function hermesBinExists(): boolean {
-  return existsSync(hermesBin())
+export function DiTingBinExists(): boolean {
+  return existsSync(DiTingBin())
 }
 
 export function desktopIcon(): string {
@@ -335,14 +335,14 @@ export function desktopTrayTemplateIcon(): string {
 }
 
 export function webUiHome(): string {
-  return process.env.HERMES_WEB_UI_HOME?.trim() || resolve(homedir(), '.hermes-web-ui')
+  return process.env.DiTing_WEB_UI_HOME?.trim() || resolve(homedir(), '.diting-web-ui')
 }
 
-export function hermesHome(): string {
-  const override = process.env.HERMES_HOME?.trim()
+export function DiTingHome(): string {
+  const override = process.env.DiTing_HOME?.trim()
   if (override) return resolve(override)
 
-  const defaultHome = resolve(homedir(), '.hermes')
+  const defaultHome = resolve(homedir(), '.diting')
 
   if (isWin) {
     const candidates = [
@@ -351,7 +351,7 @@ export function hermesHome(): string {
     ]
       .map(value => value?.trim())
       .filter((value): value is string => !!value)
-      .map(value => resolve(value, 'hermes'))
+      .map(value => resolve(value, 'DiTing'))
 
     for (const candidate of candidates) {
       if (existsSync(candidate)) return candidate

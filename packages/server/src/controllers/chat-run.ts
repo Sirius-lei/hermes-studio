@@ -66,7 +66,7 @@ function requestTimeoutMs(value: unknown): number {
 }
 
 function chatRunBaseUrl(): string {
-  return (process.env.HERMES_WEB_UI_URL || `http://127.0.0.1:${config.port}`).replace(/\/$/, '')
+  return (process.env.DiTing_WEB_UI_URL || `http://127.0.0.1:${config.port}`).replace(/\/$/, '')
 }
 
 function profileFrom(ctx: Context, body: ChatRunPayload): string {

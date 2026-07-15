@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 import { arch as osArch, platform as osPlatform } from 'node:os'
-import { hermesVersion, runtimeReleaseTag } from './runtime-config.mjs'
+import { DiTingVersion, runtimeReleaseTag } from './runtime-config.mjs'
 
 const TARGET_OS = process.env.TARGET_OS || osPlatform()
 const TARGET_ARCH = process.env.TARGET_ARCH || osArch()
-const HERMES_VERSION = hermesVersion()
+const DiTing_VERSION = DiTingVersion()
 const RUNTIME_RELEASE_TAG = runtimeReleaseTag()
 const OS_LABEL = TARGET_OS === 'win32' ? 'win' : TARGET_OS === 'darwin' ? 'mac' : TARGET_OS
 
@@ -14,8 +14,8 @@ if (!['win', 'mac', 'linux'].includes(OS_LABEL) || !['x64', 'arm64'].includes(TA
 }
 
 const platform = `${OS_LABEL}-${TARGET_ARCH}`
-const asset = `hermes-runtime-hermes-agent-${HERMES_VERSION}-${platform}.tar.gz`
-const manifest = `hermes-runtime-${platform}.json`
+const asset = `DiTing-runtime-diting-agent-${DiTing_VERSION}-${platform}.tar.gz`
+const manifest = `DiTing-runtime-${platform}.json`
 
 if (process.argv.includes('--manifest')) {
   console.log(manifest)

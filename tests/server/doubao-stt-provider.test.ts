@@ -8,10 +8,10 @@ const audioConvertMock = vi.hoisted(() => ({
   })),
 }))
 
-vi.mock('../../packages/server/src/services/hermes/stt-providers/audio-convert', () => audioConvertMock)
+vi.mock('../../packages/server/src/services/DiTing/stt-providers/audio-convert', () => audioConvertMock)
 
-import { transcribeWithProvider } from '../../packages/server/src/services/hermes/stt-providers'
-import { transcribeDoubaoFile } from '../../packages/server/src/services/hermes/stt-providers/doubao'
+import { transcribeWithProvider } from '../../packages/server/src/services/DiTing/stt-providers'
+import { transcribeDoubaoFile } from '../../packages/server/src/services/DiTing/stt-providers/doubao'
 
 const mockFetch = vi.fn()
 vi.stubGlobal('fetch', mockFetch)

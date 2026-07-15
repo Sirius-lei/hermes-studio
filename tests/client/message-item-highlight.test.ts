@@ -28,8 +28,8 @@ vi.mock('naive-ui', () => ({
   }),
 }))
 
-import MessageItem from '@/components/hermes/chat/MessageItem.vue'
-import type { Message } from '@/stores/hermes/chat'
+import MessageItem from '@/components/DiTing/chat/MessageItem.vue'
+import type { Message } from '@/stores/DiTing/chat'
 
 describe('MessageItem tool details', () => {
   beforeEach(() => {
@@ -56,6 +56,30 @@ describe('MessageItem tool details', () => {
         resume: vi.fn(),
       },
     })
+  })
+
+  it('renders a plain assistant response only once', () => {
+    const wrapper = mount(MessageItem, {
+      props: {
+        message: {
+          id: 'assistant-plain',
+          role: 'assistant',
+          content: '你好呀～有什么想一起处理的？',
+          timestamp: Date.now(),
+        } satisfies Message,
+      },
+      global: {
+        stubs: {
+          MarkdownRenderer: {
+            props: ['content'],
+            template: '<div class="markdown-renderer-stub">{{ content }}</div>',
+          },
+        },
+      },
+    })
+
+    expect(wrapper.findAll('.markdown-renderer-stub')).toHaveLength(1)
+    expect(wrapper.text()).toContain('你好呀～有什么想一起处理的？')
   })
 
   it('renders highlighted code blocks for tool arguments and tool results', async () => {

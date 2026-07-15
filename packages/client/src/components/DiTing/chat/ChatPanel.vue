@@ -1,0 +1,3962 @@
+<script setup lang="ts">
+import { renameSession, setSessionWorkspace, batchDeleteSessions, exportSession } from "@/api/DiTing/sessions";
+import type { AvailableModelGroup } from "@/api/DiTing/system";
+import { fetchCodingAgentsStatus, inferCodingAgentApiMode, normalizeCodingAgentApiMode, type CodingAgentApiMode, type CodingAgentId } from "@/api/coding-agents";
+import {
+  useChatStore,
+  type MultiAgentRouteState,
+  type MultiAgentRunOptions,
+  type MultiAgentWorkflowMessageState,
+  type Session,
+} from "@/stores/DiTing/chat";
+import { useAppStore } from "@/stores/DiTing/app";
+import { useProfilesStore } from "@/stores/DiTing/profiles";
+import { useSessionBrowserPrefsStore } from "@/stores/DiTing/session-browser-prefs";
+import {
+  NButton,
+  NDrawer,
+  NDrawerContent,
+  NDropdown,
+  NInput,
+  NModal,
+  NSelect,
+  NTooltip,
+  NPopconfirm,
+  NRadioButton,
+  NRadioGroup,
+  useMessage,
+  type DropdownOption,
+} from "naive-ui";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { useI18n } from "vue-i18n";
+import { copyToClipboard } from "@/utils/clipboard";
+import { useSessionSearch } from "@/composables/useSessionSearch";
+import { listSubAgentsRegistry, replaceSubAgentsRegistry } from "@/api/DiTing/sub-agents";
+import FolderPicker from "./FolderPicker.vue";
+import ChatInput from "./ChatInput.vue";
+import ConversationMonitorPane from "./ConversationMonitorPane.vue";
+import MessageList from "./MessageList.vue";
+import MultiAgentCanvasPanel from "./MultiAgentCanvasPanel.vue";
+import SessionListItem from "./SessionListItem.vue";
+import OutlinePanel from "./OutlinePanel.vue";
+import FilesPanel from "./FilesPanel.vue";
+import TerminalPanel from "./TerminalPanel.vue";
+import { isStoredSuperAdmin } from "@/api/client";
+
+const chatStore = useChatStore();
+const appStore = useAppStore();
+const profilesStore = useProfilesStore();
+const sessionBrowserPrefsStore = useSessionBrowserPrefsStore();
+const route = useRoute();
+const router = useRouter();
+const message = useMessage();
+const { t } = useI18n();
+const { openSessionSearch } = useSessionSearch();
+const isSuperAdmin = computed(() => isStoredSuperAdmin());
+const routeUserId = computed(() => {
+  const value = route.query.user_id;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+});
+
+type MultiAgentSkill = {
+  name: string
+  description?: string
+}
+
+type MultiAgentCandidate = {
+  id: string
+  name: string
+  description: string
+  baseUrl?: string
+  chatPath?: string
+  enabled?: boolean
+  skills: MultiAgentSkill[]
+  tools: MultiAgentSkill[]
+}
+
+type RuntimeAgentProfileResponse = {
+  id?: string
+  name?: string
+  description?: string
+  skills?: Array<{ name?: string; description?: string; path?: string }>
+  extensions?: Array<{ name?: string; description?: string; path?: string; entry?: string }>
+}
+
+const FALLBACK_SUBAGENT_RUNTIME_BASE_URLS = [
+  "http://127.0.0.1:8767",
+  "http://172.16.50.149:8768",
+];
+
+type MultiAgentPlanTask = {
+  id: string
+  index: number
+  phase: string
+  title: string
+  summary: string
+  dependsOn: string[]
+  executorType: "DiTing" | "subagent"
+  agentId: string
+  agentName: string
+  status: "todo" | "doing" | "done" | "partial" | "blocked" | "unsafe" | "failed" | "waiting_replan" | "invalidated" | "skipped"
+  outcome: "unknown" | "success" | "partial" | "failure" | "unsafe"
+}
+
+type MultiAgentPlannerStep = {
+  id: string
+  title: string
+  detail: string
+  status: "pending" | "running" | "done" | "error"
+}
+
+const multiAgentMode = ref(false);
+const multiAgentAgents = ref<MultiAgentCandidate[]>([]);
+const multiAgentRunOptions = computed<MultiAgentRunOptions | null>(() => {
+  if (!multiAgentMode.value) return null;
+  return {
+    enabled: true,
+    candidates: multiAgentAgents.value.map(agent => ({
+      id: agent.id,
+      name: agent.name,
+      description: agent.description,
+      baseUrl: agent.baseUrl || "",
+      chatPath: agent.chatPath || "/v1/chat/completions",
+      enabled: agent.enabled !== false,
+      skills: agent.skills.map(skill => ({
+        name: skill.name,
+        description: skill.description || "",
+      })),
+      tools: agent.tools.map(tool => ({
+        name: tool.name,
+        description: tool.description || "",
+      })),
+    })),
+  };
+});
+
+const multiAgentRuntimeRoute = computed<MultiAgentRouteState | null>(() => {
+  if (!multiAgentMode.value) return null;
+  const sessionId = chatStore.activeSessionId;
+  if (!sessionId) return null;
+  return chatStore.multiAgentRoutes.get(sessionId) || null;
+});
+
+const multiAgentRouteHistory = computed<MultiAgentRouteState[]>(() => {
+  if (!multiAgentMode.value) return [];
+  const sessionId = chatStore.activeSessionId;
+  if (!sessionId) return [];
+  return chatStore.multiAgentRouteHistories.get(sessionId) || [];
+});
+
+const multiAgentSelectedHistoryRoute = computed<MultiAgentRouteState | null>(() => {
+  const sessionId = chatStore.activeSessionId;
+  if (!sessionId) return null;
+  const selectedRunId = chatStore.selectedMultiAgentRunIds.get(sessionId) || "";
+  if (!selectedRunId) return multiAgentRouteHistory.value[0] || null;
+  return multiAgentRouteHistory.value.find(route => route.runId === selectedRunId) || multiAgentRouteHistory.value[0] || null;
+});
+
+const multiAgentDisplayedRoute = computed<MultiAgentRouteState | null>(() => {
+  const sessionId = chatStore.activeSessionId;
+  if (!sessionId) return null;
+  const selectedRunId = chatStore.selectedMultiAgentRunIds.get(sessionId) || "";
+  const runtimeRoute = multiAgentRuntimeRoute.value;
+  if (runtimeRoute && (!selectedRunId || selectedRunId === runtimeRoute.runId)) return runtimeRoute;
+  return multiAgentSelectedHistoryRoute.value || runtimeRoute || null;
+});
+
+const multiAgentHistoryItems = computed(() =>
+  multiAgentRouteHistory.value.map(route => ({
+    runId: route.runId,
+    objective: route.objective || route.reason || route.text || "协作任务",
+    status: route.status,
+    startedAt: route.startedAt,
+    endedAt: route.endedAt,
+  })),
+);
+
+const multiAgentWorkflowSnapshot = computed<MultiAgentWorkflowMessageState | null>(() => {
+  if (!multiAgentMode.value) return null;
+  const workflowMessage = [...chatStore.messages]
+    .reverse()
+    .find(message => message.systemType === "workflow" && message.workflow);
+  return workflowMessage?.workflow || null;
+});
+
+const displayedMultiAgentTasks = computed<MultiAgentPlanTask[]>(() => {
+  const route = multiAgentDisplayedRoute.value;
+  if (!route) return [];
+
+  const visibleTasks = route.planNodes
+    .filter(task => !["understand", "route"].includes(task.id));
+  const executableTasks = visibleTasks.filter(task => task.id !== "respond");
+  const tasksToRender = executableTasks.length > 0 ? visibleTasks : [];
+
+  return tasksToRender
+    .map((task, index) => ({
+      ...task,
+      index: index + 1,
+      dependsOn: task.dependsOn || [],
+      executorType: task.executor.type,
+      agentId: task.executor.id || "",
+      agentName: task.executor.name,
+      outcome: task.outcome,
+    }));
+});
+
+const multiAgentTodoSteps = computed<MultiAgentPlannerStep[]>(() => {
+  if (displayedMultiAgentTasks.value.length > 0) {
+    return displayedMultiAgentTasks.value.map((task) => ({
+      id: task.id,
+      title: task.title,
+      detail: task.summary || "等待执行。",
+      status: task.status === "done"
+        ? "done"
+        : task.status === "doing"
+          ? "running"
+          : task.status === "partial"
+            || task.status === "unsafe"
+            || task.status === "blocked"
+            || task.status === "failed"
+            || task.status === "waiting_replan"
+            || task.status === "invalidated"
+            || task.status === "skipped"
+            ? "error"
+            : "pending",
+    }));
+  }
+  return [];
+});
+
+const currentQueuedMessageCount = computed(() => {
+  const sid = chatStore.activeSessionId;
+  if (!sid) return 0;
+  return chatStore.queuedUserMessages.get(sid)?.length || 0;
+});
+
+const multiAgentPanelStatusText = computed(() => {
+  const route = multiAgentDisplayedRoute.value;
+  if (!route) return "等待任务";
+  if (chatStore.activePendingApproval) {
+    return currentQueuedMessageCount.value > 0
+      ? `等待权限确认 · ${currentQueuedMessageCount.value} 条排队`
+      : "等待权限确认";
+  }
+  if (route.status === "failed") return "执行失败";
+  if (route.status === "completed") return "已完成";
+  if (currentQueuedMessageCount.value > 0 && route.status === "running") {
+    return `执行中 · ${currentQueuedMessageCount.value} 条排队`;
+  }
+  if (route.currentNodeId === "understand") return "理解需求中";
+  if (route.currentNodeId === "route") return "规划任务中";
+  if (route.currentNodeId === "respond") return "汇总结果中";
+  return "执行中";
+});
+
+const multiAgentPrimaryActorText = computed(() => {
+  const route = multiAgentDisplayedRoute.value;
+  if (!route) return "当前由主智能体待命";
+  if (route.selectedAgentName) return `已匹配子智能体：${route.selectedAgentName}`;
+  const matchedPlanAgent = route.planNodes.find(node => node.executor.type === "subagent" && node.executor.name)?.executor.name?.trim();
+  if (matchedPlanAgent) return `已匹配子智能体：${matchedPlanAgent}`;
+  return route.mode === "delegate_subagent"
+    ? "等待子智能体接管"
+    : "当前由主智能体执行";
+});
+
+const multiAgentObjectiveText = computed(() => {
+  const route = multiAgentDisplayedRoute.value;
+  if (!route) return "";
+  return route.objective || route.reason || route.text || "";
+});
+
+const multiAgentObjectiveLines = computed(() =>
+  multiAgentObjectiveText.value
+    .split("\n")
+    .map(line => line.trim())
+    .filter(Boolean),
+);
+
+function selectMultiAgentHistoryRun(runId: string) {
+  const sessionId = chatStore.activeSessionId;
+  if (!sessionId) return;
+  chatStore.selectMultiAgentRun(sessionId, runId);
+}
+
+const showOutline = ref(false);
+const messageListRef = ref<InstanceType<typeof MessageList> | null>(null);
+const chatInputRef = ref<(InstanceType<typeof ChatInput> & { addFiles?: (files: File[]) => void }) | null>(null);
+const chatContentWrapperRef = ref<HTMLElement | null>(null);
+const chatDropCounter = ref(0);
+const isChatDropActive = ref(false);
+const showToolPanel = ref(false);
+const activeToolPanel = ref<"files" | "terminal">("files");
+const TOOL_PANEL_MIN_WIDTH = 360;
+const TOOL_PANEL_DEFAULT_WIDTH = 560;
+const TOOL_PANEL_STORAGE_KEY = "DiTing.chat.toolPanelWidth";
+const toolPanelWidth = ref(loadToolPanelWidth());
+const toolResizeStart = ref<{ x: number; width: number } | null>(null);
+
+const currentMode = ref<"chat" | "live">("chat");
+
+// Batch selection mode
+const isBatchMode = ref(false);
+const selectedSessionKeys = ref<Set<string>>(new Set());
+const showBatchDeleteConfirm = ref(false);
+const isBatchDeleting = ref(false);
+
+// Initialize synchronously from the media query so first paint is correct.
+// On narrow viewports the session list is an absolute-positioned overlay
+// (z-index 10) on top of the chat area; if we default to `true`, onMounted
+// only flips it to `false` AFTER the first render, causing a visible flash
+// where the session list covers the chat content ("auto-fixes after a
+// moment" — that was the race).
+const showSessions = ref(
+  typeof window === "undefined" ||
+    !window.matchMedia("(max-width: 768px)").matches,
+);
+let mobileQuery: MediaQueryList | null = null;
+const isMobile = ref(false);
+const toolPanelStyle = computed(() => ({
+  width: isMobile.value ? "100%" : `${toolPanelWidth.value}px`,
+}));
+
+function normalizeMultiAgentSkillList(value: unknown): MultiAgentSkill[] {
+  if (!Array.isArray(value)) return [];
+  return value.map((item: any) => ({
+    name: String(item?.name || item?.id || "").trim(),
+    description: String(item?.description || item?.path || item?.entry || "").trim(),
+  })).filter(item => item.name);
+}
+
+async function fetchRuntimeProfile(baseUrl: string): Promise<RuntimeAgentProfileResponse> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), 2500);
+  try {
+    const response = await fetch(`${baseUrl.replace(/\/+$/, "")}/api/agent/profile`, {
+      method: "GET",
+      signal: controller.signal,
+      headers: {
+        Accept: "application/json",
+      },
+    });
+    if (!response.ok) {
+      throw new Error(`runtime profile returned ${response.status}`);
+    }
+    return await response.json() as RuntimeAgentProfileResponse;
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+function normalizeRegistryCandidates(records: any[]): MultiAgentCandidate[] {
+  return records.map((agent: any) => ({
+    id: String(agent?.id || agent?.name || "").trim(),
+    name: String(agent?.name || agent?.id || "").trim(),
+    description: String(agent?.description || "").trim(),
+    baseUrl: String(agent?.baseUrl || "").trim(),
+    chatPath: String(agent?.runtimeConfig?.chatPath || agent?.chatPath || "/v1/chat/completions").trim(),
+    enabled: agent?.runtimeConfig?.enabled !== false && agent?.status !== "offline" && agent?.status !== "draft",
+    skills: normalizeMultiAgentSkillList(agent?.skills),
+    tools: normalizeMultiAgentSkillList(agent?.tools),
+  })).filter(agent => agent.id && agent.name);
+}
+
+async function discoverBootstrapMultiAgentAgents(): Promise<MultiAgentCandidate[]> {
+  const discovered: MultiAgentCandidate[] = [];
+  for (const baseUrl of FALLBACK_SUBAGENT_RUNTIME_BASE_URLS) {
+    try {
+      const profile = await fetchRuntimeProfile(baseUrl);
+      const candidate: MultiAgentCandidate = {
+        id: String(profile?.id || profile?.name || "pi-mono").trim(),
+        name: String(profile?.name || profile?.id || "pi-mono").trim(),
+        description: String(profile?.description || "使用 subAgent-pi 运行时提供的子智能体。").trim(),
+        baseUrl,
+        chatPath: "/v1/chat/completions",
+        enabled: true,
+        skills: normalizeMultiAgentSkillList(profile?.skills),
+        tools: normalizeMultiAgentSkillList(profile?.extensions),
+      };
+      if (candidate.id && candidate.name) {
+        discovered.push(candidate);
+      }
+    } catch {
+      // try the next known runtime endpoint
+    }
+  }
+  return discovered.filter((candidate, index, list) =>
+    list.findIndex(item => item.id === candidate.id && item.baseUrl === candidate.baseUrl) === index,
+  );
+}
+
+async function refreshMultiAgentAgents() {
+  try {
+    const parsed = await listSubAgentsRegistry<any>();
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      multiAgentAgents.value = normalizeRegistryCandidates(parsed);
+      return;
+    }
+
+    const discovered = await discoverBootstrapMultiAgentAgents();
+    multiAgentAgents.value = discovered;
+    if (discovered.length > 0) {
+      void replaceSubAgentsRegistry(discovered as any[]).catch(() => {});
+    }
+  } catch {
+    multiAgentAgents.value = [];
+  }
+}
+
+function requestRefreshMultiAgentAgents() {
+  void refreshMultiAgentAgents();
+}
+
+function toggleMultiAgentMode() {
+  multiAgentMode.value = !multiAgentMode.value;
+  if (multiAgentMode.value) {
+    requestRefreshMultiAgentAgents();
+    return;
+  }
+}
+
+function sessionHref(sessionId: string) {
+  return router.resolve({
+    name: chatStore.runtimeMode === "global_agent" ? "DiTing.globalAgentSession" : "DiTing.session",
+    params: { sessionId },
+    query: routeUserId.value ? { user_id: routeUserId.value } : undefined,
+  }).href;
+}
+
+function openSessionInNewTab(sessionId: string) {
+  if (typeof window === "undefined") return;
+  window.open(sessionHref(sessionId), "_blank", "noopener,noreferrer");
+}
+
+function handleOutlineNavigate(target: { messageId: string; anchorId: string }) {
+  messageListRef.value?.scrollToAnchor(target.messageId, target.anchorId);
+  if (isMobile.value) showOutline.value = false;
+}
+
+function loadToolPanelWidth() {
+  if (typeof window === "undefined") return TOOL_PANEL_DEFAULT_WIDTH;
+  const saved = Number.parseInt(
+    window.localStorage.getItem(TOOL_PANEL_STORAGE_KEY) || "",
+    10,
+  );
+  return Number.isFinite(saved) ? Math.round(saved) : TOOL_PANEL_DEFAULT_WIDTH;
+}
+
+function toolPanelMaxWidth() {
+  if (typeof window === "undefined") return 1180;
+  if (isMobile.value) return window.innerWidth;
+  const available = chatContentWrapperRef.value?.clientWidth || window.innerWidth;
+  return Math.max(320, Math.min(Math.floor(available * 0.88), available - 120));
+}
+
+function clampToolPanelWidth(width: number) {
+  const maxWidth = toolPanelMaxWidth();
+  const minWidth = Math.min(TOOL_PANEL_MIN_WIDTH, maxWidth);
+  return Math.min(maxWidth, Math.max(minWidth, Math.round(width)));
+}
+
+function handleToolPanelViewportResize() {
+  if (isMobile.value) return;
+  toolPanelWidth.value = clampToolPanelWidth(toolPanelWidth.value);
+}
+
+function handleToolResizeMove(event: PointerEvent) {
+  const start = toolResizeStart.value;
+  if (!start) return;
+  const delta = start.x - event.clientX;
+  toolPanelWidth.value = clampToolPanelWidth(start.width + delta);
+}
+
+function stopToolResize() {
+  if (!toolResizeStart.value) return;
+  toolResizeStart.value = null;
+  window.removeEventListener("pointermove", handleToolResizeMove);
+  window.removeEventListener("pointerup", stopToolResize);
+  if (!isMobile.value) {
+    window.localStorage.setItem(TOOL_PANEL_STORAGE_KEY, String(toolPanelWidth.value));
+  }
+  document.body.style.userSelect = "";
+  document.body.style.cursor = "";
+}
+
+function startToolResize(event: PointerEvent) {
+  if (isMobile.value) return;
+  event.preventDefault();
+  toolResizeStart.value = {
+    x: event.clientX,
+    width: toolPanelWidth.value,
+  };
+  window.addEventListener("pointermove", handleToolResizeMove);
+  window.addEventListener("pointerup", stopToolResize);
+  document.body.style.userSelect = "none";
+  document.body.style.cursor = "col-resize";
+}
+
+function hasDraggedFiles(event: DragEvent) {
+  return Array.from(event.dataTransfer?.types || []).includes("Files");
+}
+
+function resetChatDropState() {
+  chatDropCounter.value = 0;
+  isChatDropActive.value = false;
+}
+
+function handleChatDragOver(event: DragEvent) {
+  if (!hasDraggedFiles(event)) return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+}
+
+function handleChatDragEnter(event: DragEvent) {
+  if (!hasDraggedFiles(event)) return;
+  event.preventDefault();
+  chatDropCounter.value += 1;
+  isChatDropActive.value = true;
+}
+
+function handleChatDragLeave(event: DragEvent) {
+  if (!hasDraggedFiles(event)) return;
+  chatDropCounter.value -= 1;
+  if (chatDropCounter.value <= 0) resetChatDropState();
+}
+
+function handleChatDrop(event: DragEvent) {
+  if (!hasDraggedFiles(event)) return;
+  event.preventDefault();
+  const files = Array.from(event.dataTransfer?.files || []);
+  const target = event.target instanceof Element ? event.target : null;
+  resetChatDropState();
+  if (!files.length || target?.closest(".chat-input-area")) return;
+  chatInputRef.value?.addFiles?.(files);
+}
+
+async function handleSessionClick(sessionId: string) {
+  chatStore.clearSessionCompletedUnread(sessionId);
+  await router.push({
+    name: chatStore.runtimeMode === "global_agent" ? "DiTing.globalAgentSession" : "DiTing.session",
+    params: { sessionId },
+  });
+  if (chatStore.activeSessionId !== sessionId) {
+    await chatStore.switchSession(sessionId);
+  }
+  if (mobileQuery?.matches) showSessions.value = false;
+}
+
+function handleMobileChange(e: MediaQueryListEvent | MediaQueryList) {
+  isMobile.value = e.matches;
+  if (e.matches && showSessions.value) {
+    showSessions.value = false;
+  }
+}
+
+function openPageSidebar() {
+  showSessions.value = true;
+}
+
+function openChatRoute() {
+  if (chatStore.runtimeMode === "global_agent") {
+    void router.push({ name: "DiTing.globalAgent" });
+    return;
+  }
+  void router.push({ name: "DiTing.chat" });
+}
+
+function openHistoryRoute() {
+  void router.push({ name: "DiTing.history" });
+}
+
+function openWorkflowRoute() {
+  void router.push({ name: "DiTing.workflow" });
+}
+
+onMounted(() => {
+  mobileQuery = window.matchMedia("(max-width: 768px)");
+  handleMobileChange(mobileQuery);
+  mobileQuery.addEventListener("change", handleMobileChange);
+  window.addEventListener("DiTing:open-page-sidebar", openPageSidebar);
+  window.addEventListener("resize", handleToolPanelViewportResize);
+  window.addEventListener("storage", requestRefreshMultiAgentAgents);
+  handleToolPanelViewportResize();
+  requestRefreshMultiAgentAgents();
+  if (profilesStore.profiles.length === 0) {
+    void profilesStore.fetchProfiles();
+  }
+});
+
+onUnmounted(() => {
+  mobileQuery?.removeEventListener("change", handleMobileChange);
+  window.removeEventListener("DiTing:open-page-sidebar", openPageSidebar);
+  window.removeEventListener("resize", handleToolPanelViewportResize);
+  window.removeEventListener("storage", requestRefreshMultiAgentAgents);
+  stopToolResize();
+});
+watch(showToolPanel, async (visible) => {
+  if (!visible || isMobile.value) return;
+  await nextTick();
+  handleToolPanelViewportResize();
+});
+
+const showRenameModal = ref(false);
+const renameValue = ref("");
+const renameSessionId = ref<string | null>(null);
+const renameInputRef = ref<InstanceType<typeof NInput> | null>(null);
+const sessionProfileFilter = computed(() => chatStore.sessionProfileFilter);
+const profileFilterOptions = computed(() => [
+  { label: t("chat.allProfiles"), value: "__all__" },
+  ...profilesStore.profiles.map((profile) => ({
+    label: profile.name,
+    value: profile.name,
+  })),
+]);
+
+async function handleProfileFilterChange(value: string) {
+  chatStore.sessionProfileFilter = value === "__all__" ? null : value;
+  await chatStore.loadSessions(chatStore.sessionProfileFilter);
+}
+
+function sortSessionsForSidebar(items: Session[]): Session[] {
+  return [...items].sort((a, b) => {
+    const aLive = chatStore.isSessionLive(a.id);
+    const bLive = chatStore.isSessionLive(b.id);
+    if (aLive !== bLive) return aLive ? -1 : 1;
+    return (b.updatedAt || 0) - (a.updatedAt || 0);
+  });
+}
+
+const pinnedSessions = computed(() =>
+  sortSessionsForSidebar(
+    chatStore.sessions.filter((session) =>
+      sessionBrowserPrefsStore.isPinned(session.id),
+    ),
+  ),
+);
+
+const unpinnedSessions = computed(() =>
+  sortSessionsForSidebar(
+    chatStore.sessions.filter(
+      (session) => !sessionBrowserPrefsStore.isPinned(session.id),
+    ),
+  ),
+);
+
+watch(
+  () => [
+    chatStore.sessionsLoaded,
+    ...chatStore.sessions.map((session) => session.id),
+  ],
+  (value) => {
+    const sessionIds = value.slice(1) as string[];
+    if (!value[0] || sessionIds.length === 0) return;
+    sessionBrowserPrefsStore.pruneMissingSessions(sessionIds);
+  },
+  { immediate: true },
+);
+
+const activeSessionTitle = computed(
+  () => chatStore.activeSession?.title || t("chat.newChat"),
+);
+
+const activeSessionModelLabel = computed(() => {
+  const session = chatStore.activeSession;
+  if (!session?.model) return t("models.selectModel");
+  return appStore.displayModelName(session.model, session.provider);
+});
+
+const headerTitle = computed(() =>
+  currentMode.value === "live"
+    ? t("chat.liveSessions")
+    : activeSessionTitle.value,
+);
+
+const showNewChatModal = ref(false);
+const newChatAgent = ref<"DiTing" | "claude-code" | "codex">("DiTing");
+const newChatAgentMode = ref<"global" | "scoped">("scoped");
+const newChatProfile = ref<string>("default");
+const newChatProvider = ref<string>("");
+const newChatModel = ref<string>("");
+const newChatBaseUrl = ref<string>("");
+const newChatApiKey = ref<string>("");
+const newChatApiMode = ref<CodingAgentApiMode>("codex_responses");
+const newChatWorkspace = ref("");
+const newChatLoading = ref(false);
+const CODING_AGENT_AUTH_PROVIDER_KEYS = new Set(["openai-codex", "copilot", "xai-oauth", "nous", "google-gemini-cli", "claude-oauth"]);
+
+const newChatAgentOptions = computed(() => [
+  { label: "主智能体", value: "DiTing" },
+  { label: "Claude Code", value: "claude-code" },
+  { label: "Codex", value: "codex" },
+]);
+
+const newChatApiModeOptions = computed(() => [
+  { label: t("codingAgents.protocolOpenAiChat"), value: "chat_completions" },
+  { label: t("codingAgents.protocolOpenAiResponses"), value: "codex_responses" },
+  { label: t("codingAgents.protocolAnthropicMessages"), value: "anthropic_messages" },
+]);
+
+const newChatAgentModeOptions = computed(() => [
+  { label: t("codingAgents.launchModeGlobal"), value: "global" },
+  { label: t("codingAgents.launchModeScoped"), value: "scoped" },
+]);
+
+function getModelGroupsForProfile(profile: string) {
+  const profileModels = appStore.profileModelGroups.find(
+    (entry) => entry.profile === profile,
+  );
+  return profileModels?.groups || [];
+}
+
+function isCodingAgentAuthProvider(provider?: string) {
+  return CODING_AGENT_AUTH_PROVIDER_KEYS.has(String(provider || "").toLowerCase());
+}
+
+function isNewChatProviderAllowed(group: AvailableModelGroup) {
+  if (!(newChatAgent.value !== "DiTing" && newChatAgentMode.value === "scoped")) return true;
+  return !isCodingAgentAuthProvider(group.provider);
+}
+
+function getSelectableModelGroupsForProfile(profile: string) {
+  return getModelGroupsForProfile(profile).filter(isNewChatProviderAllowed);
+}
+
+function getDefaultModelForProfile(profile: string) {
+  const groups = getSelectableModelGroupsForProfile(profile);
+  const activeProfileName = profilesStore.activeProfileName || "default";
+  const selectedProvider = appStore.selectedProvider || "";
+  const selectedModel = appStore.selectedModel || "";
+  const selectedGroup = selectedProvider
+    ? groups.find((group) => group.provider === selectedProvider)
+    : undefined;
+  if (
+    profile === activeProfileName &&
+    selectedGroup?.models.includes(selectedModel)
+  ) {
+    return {
+      provider: selectedProvider,
+      model: selectedModel,
+    };
+  }
+  const profileModels = appStore.profileModelGroups.find(
+    (entry) => entry.profile === profile,
+  );
+  const defaultProvider = profileModels?.default_provider || "";
+  const defaultModel = profileModels?.default || "";
+  const providerGroup = defaultProvider
+    ? groups.find((group) => group.provider === defaultProvider)
+    : undefined;
+  const fallbackGroup = providerGroup || groups.find((group) => group.models.length > 0);
+  return {
+    provider: fallbackGroup?.provider || "",
+    model: fallbackGroup?.models.includes(defaultModel)
+      ? defaultModel
+      : fallbackGroup?.models[0] || "",
+  };
+}
+
+const newChatProfileOptions = computed(() =>
+  (profilesStore.profiles.length > 0 ? profilesStore.profiles : [{ name: "default" }]).map((profile) => ({
+    label: profile.name,
+    value: profile.name,
+  })),
+);
+
+const newChatModelGroups = computed(() => {
+  return getSelectableModelGroupsForProfile(newChatProfile.value);
+});
+
+const newChatProviderOptions = computed(() =>
+  newChatModelGroups.value.map((group) => ({
+    label: group.label || group.provider,
+    value: group.provider,
+  })),
+);
+
+const newChatModelOptions = computed(() => {
+  const group = newChatModelGroups.value.find(
+    (item) => item.provider === newChatProvider.value,
+  );
+  return (group?.models || []).map((model) => ({
+    label: appStore.displayModelName(model, group?.provider),
+    value: model,
+  }));
+});
+
+const selectedNewChatProviderGroup = computed(() =>
+  newChatModelGroups.value.find((item) => item.provider === newChatProvider.value),
+);
+
+const isNewChatCodingAgent = computed(() => newChatAgent.value !== "DiTing");
+const isNewChatGlobalCodingAgent = computed(() =>
+  isNewChatCodingAgent.value && newChatAgentMode.value === "global",
+);
+const newChatUsesProviderModel = computed(() => !isNewChatGlobalCodingAgent.value);
+const newChatNeedsBaseUrl = computed(() =>
+  isNewChatCodingAgent.value && newChatAgentMode.value === "scoped" && !selectedNewChatProviderGroup.value?.base_url,
+);
+const newChatNeedsApiKey = computed(() =>
+  isNewChatCodingAgent.value && newChatAgentMode.value === "scoped" && !selectedNewChatProviderGroup.value?.api_key,
+);
+const canConfirmNewChat = computed(() => {
+  if (!newChatProfile.value) return false;
+  if (!newChatUsesProviderModel.value) return true;
+  if (!newChatProvider.value || !newChatModel.value) return false;
+  if (!isNewChatCodingAgent.value) return true;
+  if (!newChatApiMode.value) return false;
+  if (newChatNeedsBaseUrl.value && !newChatBaseUrl.value.trim()) return false;
+  if (newChatNeedsApiKey.value && !newChatApiKey.value.trim()) return false;
+  return true;
+});
+
+function defaultNewChatApiMode(group?: AvailableModelGroup): CodingAgentApiMode {
+  const providerKey = String(group?.provider || newChatProvider.value || "").toLowerCase();
+  const baseUrl = String(group?.base_url || newChatBaseUrl.value || "").toLowerCase();
+  return normalizeCodingAgentApiMode(
+    group?.api_mode,
+    inferCodingAgentApiMode(providerKey, baseUrl),
+  );
+}
+
+function syncNewChatApiMode() {
+  newChatApiMode.value = defaultNewChatApiMode(selectedNewChatProviderGroup.value);
+}
+
+function syncNewChatModelSelection() {
+  const defaults = getDefaultModelForProfile(newChatProfile.value);
+  newChatProvider.value = defaults.provider;
+  newChatModel.value = defaults.model;
+  newChatBaseUrl.value = "";
+  newChatApiKey.value = "";
+  syncNewChatApiMode();
+}
+
+function ensureNewChatProviderSelection() {
+  if (!newChatUsesProviderModel.value) return;
+  const currentGroup = selectedNewChatProviderGroup.value;
+  if (currentGroup && currentGroup.models.includes(newChatModel.value)) {
+    syncNewChatApiMode();
+    return;
+  }
+  syncNewChatModelSelection();
+}
+
+watch(
+  () => [newChatAgent.value, newChatAgentMode.value, newChatProfile.value],
+  () => ensureNewChatProviderSelection(),
+);
+
+async function openNewChatModal() {
+  isBatchMode.value = false;
+  selectedSessionKeys.value.clear();
+  showBatchDeleteConfirm.value = false;
+  showNewChatModal.value = true;
+  newChatLoading.value = true;
+  try {
+    if (profilesStore.profiles.length === 0) await profilesStore.fetchProfiles();
+    if (appStore.modelGroups.length === 0 && appStore.profileModelGroups.length === 0) {
+      await appStore.loadModels();
+    }
+    newChatWorkspace.value = "";
+    newChatProfile.value =
+      profilesStore.activeProfileName ||
+      profilesStore.profiles.find((profile) => profile.active)?.name ||
+      profilesStore.profiles[0]?.name ||
+      "default";
+    syncNewChatModelSelection();
+  } finally {
+    newChatLoading.value = false;
+  }
+}
+
+function handleNewChatProfileChange(value: string) {
+  newChatProfile.value = value;
+  syncNewChatModelSelection();
+}
+
+function handleNewChatProviderChange(value: string) {
+  newChatProvider.value = value;
+  newChatModel.value = newChatModelOptions.value[0]?.value || "";
+  newChatBaseUrl.value = "";
+  newChatApiKey.value = "";
+  syncNewChatApiMode();
+}
+
+async function confirmNewChat() {
+  if (newChatAgent.value !== "DiTing") {
+    newChatLoading.value = true;
+    try {
+      const agentId = newChatAgent.value as CodingAgentId;
+      const status = await fetchCodingAgentsStatus();
+      const tool = status.tools.find((item) => item.id === agentId);
+      if (!tool?.installed) {
+        const fallbackName = agentId === "codex" ? "Codex" : "Claude Code";
+        message.warning(t("codingAgents.installRequired", { agent: tool?.name || fallbackName }));
+        showNewChatModal.value = false;
+        await router.push({ name: "DiTing.codingAgents" });
+        return;
+      }
+    } catch {
+      message.error(t("codingAgents.loadFailed"));
+      return;
+    } finally {
+      newChatLoading.value = false;
+    }
+  }
+
+  const group = selectedNewChatProviderGroup.value;
+  const source = newChatAgent.value === "DiTing" ? "cli" : "coding_agent";
+  const isGlobalCodingAgent = source === "coding_agent" && newChatAgentMode.value === "global";
+  const agent = newChatAgent.value === "codex"
+    ? "codex"
+    : newChatAgent.value === "claude-code"
+      ? "claude"
+      : "DiTing";
+  const session = chatStore.newChat({
+    profile: newChatProfile.value,
+    provider: isGlobalCodingAgent ? undefined : newChatProvider.value,
+    model: isGlobalCodingAgent ? undefined : newChatModel.value,
+    source,
+    agent,
+    codingAgentId: newChatAgent.value === "DiTing" ? undefined : newChatAgent.value,
+    codingAgentMode: source === "coding_agent" ? newChatAgentMode.value : undefined,
+    workspace: newChatWorkspace.value || null,
+    baseUrl: source === "coding_agent" && !isGlobalCodingAgent ? group?.base_url || newChatBaseUrl.value.trim() || undefined : undefined,
+    apiKey: source === "coding_agent" && !isGlobalCodingAgent ? group?.api_key || newChatApiKey.value.trim() || undefined : undefined,
+    apiMode: source === "coding_agent" && !isGlobalCodingAgent ? newChatApiMode.value : undefined,
+  });
+  await router.push({
+    name: chatStore.runtimeMode === "global_agent" ? "DiTing.globalAgentSession" : "DiTing.session",
+    params: { sessionId: session.id },
+  });
+  showNewChatModal.value = false;
+}
+
+function sessionProfile(sessionId: string): string | null {
+  return chatStore.sessions.find((session) => session.id === sessionId)?.profile || null;
+}
+
+function buildSessionUrl(sessionId: string, profile?: string | null): string {
+  const href = router.resolve({
+    name: chatStore.runtimeMode === "global_agent" ? "DiTing.globalAgentSession" : "DiTing.session",
+    params: { sessionId },
+    query: {
+      ...(profile ? { profile } : {}),
+      ...(routeUserId.value ? { user_id: routeUserId.value } : {}),
+    },
+  }).href;
+  return `${window.location.origin}${window.location.pathname}${href}`;
+}
+
+async function copySessionLink(id?: string) {
+  const sessionId = id || chatStore.activeSessionId;
+  if (sessionId) {
+    const ok = await copyToClipboard(buildSessionUrl(sessionId, sessionProfile(sessionId)));
+    if (ok) message.success(t("common.copied"));
+    else message.error(t("common.copied") + " ✗");
+  }
+}
+
+async function copySessionId(id?: string) {
+  const sessionId = id || chatStore.activeSessionId;
+  if (sessionId) {
+    const ok = await copyToClipboard(sessionId);
+    if (ok) message.success(t("common.copied"));
+    else message.error(t("common.copied") + " ✗");
+  }
+}
+
+async function handleDeleteSession(id: string) {
+  const ok = await chatStore.deleteSession(id);
+  if (!ok) {
+    message.error(t("common.deleteFailed"));
+    return;
+  }
+  sessionBrowserPrefsStore.removePinned(id);
+  message.success(t("chat.sessionDeleted"));
+}
+
+function toggleBatchMode() {
+  if (isBatchDeleting.value) return;
+  isBatchMode.value = !isBatchMode.value;
+  if (!isBatchMode.value) {
+    selectedSessionKeys.value.clear();
+    showBatchDeleteConfirm.value = false;
+  }
+}
+
+function sessionSelectionKey(session: Pick<Session, "id" | "profile">): string {
+  return `${session.profile || "default"}\u0000${session.id}`;
+}
+
+function toggleSessionSelection(session: Session) {
+  if (isBatchDeleting.value) return;
+  const key = sessionSelectionKey(session);
+  if (selectedSessionKeys.value.has(key)) {
+    selectedSessionKeys.value.delete(key);
+  } else {
+    selectedSessionKeys.value.add(key);
+  }
+  selectedSessionKeys.value = new Set(selectedSessionKeys.value);
+  if (selectedSessionKeys.value.size === 0) {
+    showBatchDeleteConfirm.value = false;
+  }
+}
+
+function isSessionSelected(session: Session): boolean {
+  return selectedSessionKeys.value.has(sessionSelectionKey(session));
+}
+
+async function handleBatchDelete() {
+  if (selectedSessionKeys.value.size === 0 || isBatchDeleting.value) return;
+
+  const sessionsByKey = new Map(chatStore.sessions.map((session) => [sessionSelectionKey(session), session]));
+  const targets = Array.from(selectedSessionKeys.value)
+    .map((key) => sessionsByKey.get(key))
+    .filter((session): session is Session => Boolean(session))
+    .map((session) => ({ id: session.id, profile: session.profile || null }));
+  if (targets.length === 0) return;
+  isBatchDeleting.value = true;
+  try {
+    const result = await batchDeleteSessions(targets);
+    if (result.deleted > 0) {
+      // Remove from pinned sessions
+      for (const target of targets) {
+        sessionBrowserPrefsStore.removePinned(target.id);
+      }
+
+      // Remove deleted sessions from local store (without calling API again)
+      // Use loadSessions to refresh from server instead of manual filtering
+      await chatStore.loadSessions(chatStore.sessionProfileFilter);
+
+      message.success(t("chat.batchDeleteSuccess", { count: result.deleted }));
+      if (result.failed > 0) {
+        message.warning(t("chat.batchDeletePartial", { failed: result.failed }));
+      }
+    } else {
+      message.error(t("chat.batchDeleteFailed"));
+    }
+  } catch (err: any) {
+    message.error(t("chat.batchDeleteFailed"));
+  } finally {
+    isBatchDeleting.value = false;
+    showBatchDeleteConfirm.value = false;
+    isBatchMode.value = false;
+    selectedSessionKeys.value.clear();
+  }
+}
+
+function handleBatchDeleteConfirm() {
+  void handleBatchDelete();
+  return false;
+}
+
+function selectAllSessions() {
+  if (isBatchDeleting.value) return;
+  selectedSessionKeys.value.clear();
+  for (const session of chatStore.sessions) {
+    if (session.id !== chatStore.activeSessionId) {
+      selectedSessionKeys.value.add(sessionSelectionKey(session));
+    }
+  }
+  selectedSessionKeys.value = new Set(selectedSessionKeys.value);
+}
+
+const selectedCount = computed(() => selectedSessionKeys.value.size);
+const canSelectAll = computed(() => {
+  return chatStore.sessions.some(s => s.id !== chatStore.activeSessionId);
+});
+
+const contextSessionId = ref<string | null>(null);
+const contextSessionPinned = computed(() =>
+  contextSessionId.value
+    ? sessionBrowserPrefsStore.isPinned(contextSessionId.value)
+    : false,
+);
+const contextSession = computed(() =>
+  contextSessionId.value
+    ? chatStore.sessions.find((session) => session.id === contextSessionId.value) || null
+    : null,
+);
+
+const contextMenuOptions = computed(() => {
+  const options: DropdownOption[] = [{
+    label: t(contextSessionPinned.value ? "chat.unpin" : "chat.pin"),
+    key: "pin",
+  },
+  { label: t("chat.rename"), key: "rename" },
+  { label: t("chat.setWorkspace"), key: "workspace" }]
+
+  if (contextSession.value?.source === "cli" || contextSession.value?.source === "coding_agent") {
+    options.push({ label: t("chat.setModel"), key: "model" })
+  }
+
+  options.push({
+    label: t("chat.export"),
+    key: "export",
+    children: [
+      {
+        label: t("chat.exportFull"),
+        key: "export-full",
+        children: [
+          { label: "JSON", key: "export-full-json" },
+          { label: "TXT", key: "export-full-txt" },
+        ],
+      },
+      {
+        label: t("chat.exportCompressed"),
+        key: "export-compressed",
+        children: [
+          { label: "JSON", key: "export-compressed-json" },
+          { label: "TXT", key: "export-compressed-txt" },
+        ],
+      },
+    ],
+  })
+  options.push({ label: t("chat.openSessionInNewTab"), key: "open-link" })
+  options.push({ label: t("chat.copySessionLink"), key: "copy-link" })
+  options.push({ label: t("chat.copySessionId"), key: "copy-id" })
+  return options
+});
+
+function openSettingsPage() {
+  router.push({ name: "DiTing.settings" });
+}
+
+function handleContextMenu(e: MouseEvent, sessionId: string) {
+  e.preventDefault();
+  contextSessionId.value = sessionId;
+  showContextMenu.value = true;
+  contextMenuX.value = e.clientX;
+  contextMenuY.value = e.clientY;
+}
+
+const showContextMenu = ref(false);
+const contextMenuX = ref(0);
+const contextMenuY = ref(0);
+
+function parseExportKey(key: string): { mode: 'full' | 'compressed'; ext: 'json' | 'txt' } | null {
+  if (key === 'export-full-json') return { mode: 'full', ext: 'json' }
+  if (key === 'export-full-txt') return { mode: 'full', ext: 'txt' }
+  if (key === 'export-compressed-json') return { mode: 'compressed', ext: 'json' }
+  if (key === 'export-compressed-txt') return { mode: 'compressed', ext: 'txt' }
+  return null
+}
+
+async function handleContextMenuSelect(key: string) {
+  showContextMenu.value = false;
+  if (!contextSessionId.value) return;
+  if (key === "pin") {
+    sessionBrowserPrefsStore.togglePinned(contextSessionId.value);
+    return;
+  }
+  if (key === "copy-link") {
+    copySessionLink(contextSessionId.value);
+  } else if (key === "copy-id") {
+    copySessionId(contextSessionId.value);
+  } else if (key === "open-link") {
+    openSessionInNewTab(contextSessionId.value);
+  } else if (parseExportKey(key)) {
+    const { mode, ext } = parseExportKey(key)!;
+    const loadingMsg = mode === "compressed" ? message.loading(t("chat.exportCompressing"), { duration: 0 }) : null;
+    try {
+      await exportSession(contextSessionId.value, mode, ext);
+      loadingMsg?.destroy();
+      message.success(t("chat.exportSuccess"));
+    } catch {
+      loadingMsg?.destroy();
+      message.error(t("chat.exportFailed"));
+    }
+  } else if (key === "workspace") {
+    const session = chatStore.sessions.find(
+      (s) => s.id === contextSessionId.value,
+    );
+    workspaceSessionId.value = contextSessionId.value;
+    workspaceValue.value = session?.workspace || "";
+    showWorkspaceModal.value = true;
+  } else if (key === "model") {
+    await openSessionModelModal(contextSessionId.value);
+  } else if (key === "rename") {
+    const session = chatStore.sessions.find(
+      (s) => s.id === contextSessionId.value,
+    );
+    renameSessionId.value = contextSessionId.value;
+    renameValue.value = session?.title || "";
+    showRenameModal.value = true;
+    nextTick(() => {
+      renameInputRef.value?.focus();
+    });
+  }
+}
+
+function handleClickOutside() {
+  showContextMenu.value = false;
+}
+
+async function handleRenameConfirm() {
+  if (!renameSessionId.value || !renameValue.value.trim()) return;
+  const ok = await renameSession(
+    renameSessionId.value,
+    renameValue.value.trim(),
+  );
+  if (ok) {
+    const session = chatStore.sessions.find(
+      (s) => s.id === renameSessionId.value,
+    );
+    if (session) session.title = renameValue.value.trim();
+    if (chatStore.activeSession?.id === renameSessionId.value) {
+      chatStore.activeSession.title = renameValue.value.trim();
+    }
+    message.success(t("chat.renamed"));
+  } else {
+    message.error(t("chat.renameFailed"));
+  }
+  showRenameModal.value = false;
+}
+
+const showWorkspaceModal = ref(false);
+const workspaceValue = ref("");
+const workspaceSessionId = ref<string | null>(null);
+
+function openActiveSessionWorkspace() {
+  const session = chatStore.activeSession;
+  if (!session?.id) return;
+  workspaceSessionId.value = session.id;
+  workspaceValue.value = session.workspace || "";
+  showWorkspaceModal.value = true;
+}
+
+async function handleWorkspaceConfirm() {
+  if (!workspaceSessionId.value) return;
+  const ok = await setSessionWorkspace(
+    workspaceSessionId.value,
+    workspaceValue.value || null,
+  );
+  if (ok) {
+    const session = chatStore.sessions.find(
+      (s) => s.id === workspaceSessionId.value,
+    );
+    if (session) session.workspace = workspaceValue.value || null;
+    if (chatStore.activeSession?.id === workspaceSessionId.value) {
+      chatStore.activeSession.workspace = workspaceValue.value || null;
+    }
+    message.success(t("chat.workspaceSet"));
+  } else {
+    message.error(t("chat.workspaceSetFailed"));
+  }
+  showWorkspaceModal.value = false;
+}
+
+const showSessionModelModal = ref(false);
+const showSessionModelModeModal = ref(false);
+const sessionModelSessionId = ref<string | null>(null);
+const sessionModelSearch = ref("");
+const sessionModelCollapsedGroups = ref<Record<string, boolean>>({});
+const sessionModelValue = ref("");
+const sessionModelProvider = ref("");
+const sessionModelCustomInput = ref("");
+const sessionModelCustomProvider = ref("");
+const sessionModelApiMode = ref<CodingAgentApiMode>("codex_responses");
+const pendingSessionModelSwitch = ref<{ model: string; provider: string } | null>(null);
+
+const sessionModelProfile = computed<string | null>(() => {
+  const session = chatStore.sessions.find((s) => s.id === sessionModelSessionId.value);
+  return session?.profile || null;
+});
+
+const sessionModelSession = computed(() =>
+  chatStore.sessions.find((s) => s.id === sessionModelSessionId.value) ||
+  (chatStore.activeSession?.id === sessionModelSessionId.value ? chatStore.activeSession : undefined),
+);
+
+const isSessionModelScopedCodingAgent = computed(() =>
+  sessionModelSession.value?.source === "coding_agent" &&
+  sessionModelSession.value?.codingAgentMode !== "global",
+);
+
+const sessionModelBaseGroups = computed(() =>
+  sessionModelProfile.value
+    ? getModelGroupsForProfile(sessionModelProfile.value).filter((group) => (
+        !isSessionModelScopedCodingAgent.value || !isCodingAgentAuthProvider(group.provider)
+      ))
+    : [],
+);
+
+const sessionModelProviderOptions = computed(() =>
+  sessionModelBaseGroups.value.map((group) => ({ label: group.label, value: group.provider })),
+);
+
+const sessionModelGroupsWithCustom = computed(() =>
+  sessionModelBaseGroups.value.map((group) => ({
+    ...group,
+    models: [
+      ...group.models,
+      ...(appStore.customModels[group.provider] || []).filter(
+        (model) => !group.models.includes(model),
+      ),
+    ],
+  })),
+);
+
+const filteredSessionModelGroups = computed(() => {
+  const query = sessionModelSearch.value.trim().toLowerCase();
+  if (!query) return sessionModelGroupsWithCustom.value;
+  return sessionModelGroupsWithCustom.value
+    .map((group) => ({
+      ...group,
+      models: group.models.filter((model) => {
+        const displayName = appStore.displayModelName(model, group.provider);
+        return model.toLowerCase().includes(query) || displayName.toLowerCase().includes(query);
+      }),
+    }))
+    .filter((group) => group.models.length > 0 || group.label.toLowerCase().includes(query));
+});
+
+async function openSessionModelModal(sessionId: string) {
+  if (appStore.modelGroups.length === 0 && appStore.profileModelGroups.length === 0) {
+    await appStore.loadModels();
+  }
+  const session =
+    chatStore.sessions.find((s) => s.id === sessionId) ||
+    (chatStore.activeSession?.id === sessionId ? chatStore.activeSession : undefined);
+  sessionModelSessionId.value = sessionId;
+  const groups = sessionModelBaseGroups.value;
+  const providerGroup = session?.provider
+    ? groups.find((group) => group.provider === session.provider)
+    : undefined;
+  const fallbackGroup = providerGroup || groups.find((group) => group.models.length > 0);
+  const defaults = {
+    provider: fallbackGroup?.provider || "",
+    model: fallbackGroup?.models.includes(session?.model || "")
+      ? session?.model || ""
+      : fallbackGroup?.models[0] || "",
+  };
+  sessionModelValue.value = providerGroup ? session?.model || defaults.model || "" : defaults.model || "";
+  sessionModelProvider.value = providerGroup ? session?.provider || "" : defaults.provider || "";
+  sessionModelCustomProvider.value = sessionModelProvider.value;
+  sessionModelSearch.value = "";
+  sessionModelCustomInput.value = "";
+  sessionModelCollapsedGroups.value = {};
+  showSessionModelModal.value = true;
+}
+
+function handleHeaderModelClick() {
+  const sessionId = chatStore.activeSession?.id;
+  if (!sessionId) {
+    openNewChatModal();
+    return;
+  }
+  openSessionModelModal(sessionId);
+}
+
+function isSessionModelGroupCollapsed(provider: string) {
+  return !!sessionModelCollapsedGroups.value[provider];
+}
+
+function toggleSessionModelGroup(provider: string) {
+  sessionModelCollapsedGroups.value[provider] = !sessionModelCollapsedGroups.value[provider];
+}
+
+function isCustomSessionModel(model: string, provider: string) {
+  return (appStore.customModels[provider] || []).includes(model);
+}
+
+function sessionModelDisplayName(model: string, provider: string) {
+  return appStore.displayModelName(model, provider);
+}
+
+function sessionModelAlias(model: string, provider: string) {
+  return appStore.getModelAlias(model, provider);
+}
+
+function defaultSessionModelApiMode(provider: string): CodingAgentApiMode {
+  const group = sessionModelBaseGroups.value.find((item) => item.provider === provider);
+  const providerKey = String(group?.provider || provider || "").toLowerCase();
+  const baseUrl = String(group?.base_url || "").toLowerCase();
+  return normalizeCodingAgentApiMode(
+    group?.api_mode,
+    inferCodingAgentApiMode(providerKey, baseUrl),
+  );
+}
+
+async function applySessionModelSwitch(model: string, provider: string, apiMode?: CodingAgentApiMode) {
+  if (!sessionModelSessionId.value) return;
+  const ok = await chatStore.switchSessionModel(model, provider, sessionModelSessionId.value, apiMode);
+  if (ok) {
+    sessionModelValue.value = model;
+    sessionModelProvider.value = provider;
+    if (apiMode) sessionModelApiMode.value = apiMode;
+    pendingSessionModelSwitch.value = null;
+    showSessionModelModeModal.value = false;
+    showSessionModelModal.value = false;
+    message.success(t("chat.modelSet"));
+  } else {
+    message.error(t("chat.modelSetFailed"));
+  }
+}
+
+async function selectSessionModel(model: string, provider: string) {
+  const meta = sessionModelBaseGroups.value.find((group) => group.provider === provider)?.model_meta?.[model];
+  if (meta?.disabled || !sessionModelSessionId.value) return;
+  if (isSessionModelScopedCodingAgent.value) {
+    pendingSessionModelSwitch.value = { model, provider };
+    sessionModelApiMode.value = defaultSessionModelApiMode(provider);
+    showSessionModelModeModal.value = true;
+    return;
+  }
+  await applySessionModelSwitch(model, provider);
+}
+
+async function confirmSessionModelMode() {
+  const pending = pendingSessionModelSwitch.value;
+  if (!pending) return;
+  await applySessionModelSwitch(pending.model, pending.provider, sessionModelApiMode.value);
+}
+
+function cancelSessionModelMode() {
+  pendingSessionModelSwitch.value = null;
+  showSessionModelModeModal.value = false;
+}
+
+async function handleSessionModelCustomSubmit() {
+  const model = sessionModelCustomInput.value.trim();
+  const provider = sessionModelCustomProvider.value;
+  if (!model || !provider) return;
+  await selectSessionModel(model, provider);
+}
+</script>
+
+<template>
+  <div class="chat-panel">
+    <div
+      v-if="currentMode === 'chat'"
+      class="session-backdrop"
+      :class="{ active: showSessions }"
+      @click="showSessions = false"
+    />
+    <aside
+      v-if="currentMode === 'chat'"
+      class="session-list"
+      :class="{ collapsed: !showSessions }"
+    >
+      <div v-if="showSessions" class="page-sidebar-top page-sidebar-top--chat">
+        <button class="session-primary-btn" type="button" @click="openNewChatModal">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+          <span>{{ t("chat.newChat") }}</span>
+        </button>
+
+        <nav class="session-nav-links" aria-label="会话导航">
+          <button class="session-nav-link" type="button" @click="openSessionSearch">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <circle cx="11" cy="11" r="7" />
+              <path d="m20 20-3.5-3.5" />
+            </svg>
+            <span>{{ t("sidebar.search") }}</span>
+          </button>
+          <button class="session-nav-link" type="button" @click="openHistoryRoute">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="9" />
+              <path d="M12 7v5l3 2" />
+            </svg>
+            <span>{{ t("sidebar.history") }}</span>
+          </button>
+        </nav>
+
+        <div class="session-mode-switch" role="tablist" aria-label="会话模式">
+          <button
+            class="session-mode-tab"
+            :class="{ active: chatStore.runtimeMode !== 'global_agent' }"
+            type="button"
+            @click="openChatRoute"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            </svg>
+          </button>
+          <button
+            class="session-mode-tab"
+            :class="{ active: chatStore.runtimeMode === 'global_agent' }"
+            type="button"
+            @click="void router.push({ name: 'DiTing.globalAgent' })"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="7" y="7" width="10" height="10" rx="2" />
+              <path d="M9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M1 15h4M19 9h4M19 15h4" />
+            </svg>
+          </button>
+          <button class="session-mode-tab" type="button" @click="openWorkflowRoute">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="5" cy="12" r="3" />
+              <circle cx="19" cy="6" r="3" />
+              <circle cx="19" cy="18" r="3" />
+              <path d="M8 12h3a4 4 0 0 0 4-4V6" />
+              <path d="M8 12h3a4 4 0 0 1 4 4v2" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="session-list-toolbar session-list-toolbar--compact">
+          <div class="session-filter-wrap">
+            <NSelect
+              class="session-profile-filter"
+              :value="sessionProfileFilter || '__all__'"
+              :options="profileFilterOptions"
+              size="small"
+              :loading="profilesStore.loading"
+              @update:value="handleProfileFilterChange"
+            />
+          </div>
+          <div class="session-list-actions">
+            <button class="session-close-btn" @click="showSessions = false">
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+            <NButton
+              v-if="!isBatchMode"
+              quaternary
+              size="tiny"
+              @click="toggleBatchMode"
+              :title="t('chat.toggleBatchMode')"
+            >
+              <template #icon>
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M9 11l3 3L22 4" />
+                  <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                </svg>
+              </template>
+            </NButton>
+            <NButton
+              v-if="isBatchMode"
+              quaternary
+              size="tiny"
+              @click="selectAllSessions"
+              :disabled="!canSelectAll || isBatchDeleting"
+              :title="t('chat.selectAll')"
+            >
+              <template #icon>
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path d="M9 11l3 3L22 4" />
+                  <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+                </svg>
+              </template>
+            </NButton>
+            <NPopconfirm
+              v-if="isBatchMode && selectedCount > 0"
+              v-model:show="showBatchDeleteConfirm"
+              :positive-button-props="{ loading: isBatchDeleting, disabled: isBatchDeleting }"
+              :negative-button-props="{ disabled: isBatchDeleting }"
+              @positive-click="handleBatchDeleteConfirm"
+            >
+              <template #trigger>
+                <NButton quaternary size="tiny" type="error" :loading="isBatchDeleting" :disabled="isBatchDeleting">
+                  <template #icon>
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                    >
+                      <polyline points="3 6 5 6 21 6" />
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                    </svg>
+                  </template>
+                </NButton>
+              </template>
+              {{ t('chat.confirmBatchDelete', { count: selectedCount }) }}
+            </NPopconfirm>
+            <NButton
+              v-if="isBatchMode"
+              quaternary
+              size="tiny"
+              @click="toggleBatchMode"
+              :disabled="isBatchDeleting"
+            >
+              <template #icon>
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </template>
+            </NButton>
+          </div>
+        </div>
+      </div>
+      <div v-if="showSessions" class="session-items">
+        <div
+          v-if="chatStore.isLoadingSessions && chatStore.sessions.length === 0"
+          class="session-loading"
+        >
+          {{ t("common.loading") }}
+        </div>
+        <div v-else-if="chatStore.sessions.length === 0" class="session-empty">
+          {{ t("chat.noSessions") }}
+        </div>
+
+        <template v-if="pinnedSessions.length > 0">
+          <div class="session-group-header session-group-header--static">
+            <span class="session-group-label">{{ t("chat.pinned") }}</span>
+            <span class="session-group-count">{{ pinnedSessions.length }}</span>
+          </div>
+          <SessionListItem
+            v-for="s in pinnedSessions"
+            :key="`pinned-${s.id}`"
+            :session="s"
+            :active="s.id === chatStore.activeSessionId"
+            :pinned="true"
+            :can-delete="
+              s.id !== chatStore.activeSessionId ||
+              chatStore.sessions.length > 1
+            "
+            :streaming="chatStore.isSessionLive(s.id)"
+            :completed-unread="chatStore.isSessionCompletedUnread(s.id)"
+            :selectable="isBatchMode"
+            :selected="isSessionSelected(s)"
+            :show-profile="true"
+            :to="sessionHref(s.id)"
+            @select="handleSessionClick(s.id)"
+            @contextmenu="handleContextMenu($event, s.id)"
+            @delete="handleDeleteSession(s.id)"
+            @toggle-select="toggleSessionSelection(s)"
+          />
+        </template>
+
+        <SessionListItem
+          v-for="s in unpinnedSessions"
+          :key="s.id"
+          :session="s"
+          :active="s.id === chatStore.activeSessionId"
+          :pinned="false"
+          :can-delete="
+            s.id !== chatStore.activeSessionId ||
+            chatStore.sessions.length > 1
+          "
+          :streaming="chatStore.isSessionLive(s.id)"
+          :completed-unread="chatStore.isSessionCompletedUnread(s.id)"
+          :selectable="isBatchMode"
+          :selected="isSessionSelected(s)"
+          :show-profile="true"
+          :to="sessionHref(s.id)"
+          @select="handleSessionClick(s.id)"
+          @contextmenu="handleContextMenu($event, s.id)"
+          @delete="handleDeleteSession(s.id)"
+          @toggle-select="toggleSessionSelection(s)"
+        />
+      </div>
+      <div v-if="showSessions" class="page-sidebar-bottom">
+        <button class="page-sidebar-menu-btn" type="button" @click="openSettingsPage">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.8"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+          </svg>
+          <span>{{ t("sidebar.settings") }}</span>
+        </button>
+      </div>
+    </aside>
+
+    <NDropdown
+      placement="bottom-start"
+      trigger="manual"
+      :x="contextMenuX"
+      :y="contextMenuY"
+      :options="contextMenuOptions"
+      :show="showContextMenu"
+      @select="handleContextMenuSelect"
+      @clickoutside="handleClickOutside"
+    />
+
+    <NModal
+      v-model:show="showRenameModal"
+      preset="dialog"
+      :title="t('chat.renameSession')"
+      :positive-text="t('common.ok')"
+      :negative-text="t('common.cancel')"
+      @positive-click="handleRenameConfirm"
+    >
+      <NInput
+        ref="renameInputRef"
+        v-model:value="renameValue"
+        :placeholder="t('chat.enterNewTitle')"
+        @keydown.enter="handleRenameConfirm"
+      />
+    </NModal>
+
+    <NModal
+      v-model:show="showWorkspaceModal"
+      preset="dialog"
+      :title="t('chat.setWorkspaceTitle')"
+      :positive-text="t('common.ok')"
+      :negative-text="t('common.cancel')"
+      style="width: 520px"
+      @positive-click="handleWorkspaceConfirm"
+    >
+      <FolderPicker v-model="workspaceValue" />
+    </NModal>
+
+    <NModal
+      v-model:show="showSessionModelModal"
+      preset="card"
+      :title="t('chat.setModelTitle')"
+      :style="{ width: 'min(480px, calc(100vw - 32px))' }"
+      :mask-closable="true"
+    >
+      <NInput
+        v-model:value="sessionModelSearch"
+        :placeholder="t('models.searchPlaceholder')"
+        clearable
+        size="small"
+        class="session-model-search"
+      />
+      <div class="session-model-list">
+        <div v-for="group in filteredSessionModelGroups" :key="group.provider" class="session-model-group">
+          <div class="session-model-group-header" @click="toggleSessionModelGroup(group.provider)">
+            <svg
+              class="session-model-group-arrow"
+              :class="{ collapsed: isSessionModelGroupCollapsed(group.provider) }"
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+            <span class="session-model-group-label">{{ group.label }}</span>
+            <span class="session-model-group-count">{{ group.models.length }}</span>
+          </div>
+          <div v-show="!isSessionModelGroupCollapsed(group.provider)" class="session-model-group-items">
+            <div
+              v-for="model in group.models"
+              :key="model"
+              class="session-model-item"
+              :class="{
+                active: model === sessionModelValue && group.provider === sessionModelProvider,
+                disabled: !!group.model_meta?.[model]?.disabled,
+              }"
+              :title="group.model_meta?.[model]?.disabled ? t('models.disabledTooltip') : ''"
+              @click="selectSessionModel(model, group.provider)"
+            >
+              <span class="session-model-item-label">
+                <span class="session-model-item-name">{{ sessionModelDisplayName(model, group.provider) }}</span>
+                <span v-if="sessionModelAlias(model, group.provider)" class="session-model-item-id">
+                  {{ t('models.aliasCanonical', { model }) }}
+                </span>
+              </span>
+              <span v-if="group.model_meta?.[model]?.preview" class="session-model-badge-preview">{{ t('models.previewBadge') }}</span>
+              <span v-if="group.model_meta?.[model]?.disabled" class="session-model-badge-disabled">{{ t('models.disabledBadge') }}</span>
+              <span v-if="isCustomSessionModel(model, group.provider)" class="session-model-badge-custom">{{ t('models.customBadge') }}</span>
+              <svg
+                v-if="model === sessionModelValue && group.provider === sessionModelProvider"
+                class="session-model-check"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+            </div>
+          </div>
+        </div>
+        <div v-if="filteredSessionModelGroups.length === 0" class="session-model-empty">
+          {{ sessionModelSearch ? 'No results' : 'No models' }}
+        </div>
+        <div class="session-model-custom">
+          <div class="session-model-custom-row">
+            <NSelect
+              v-model:value="sessionModelCustomProvider"
+              :options="sessionModelProviderOptions"
+              size="small"
+              class="session-model-custom-provider"
+            />
+            <NInput
+              v-model:value="sessionModelCustomInput"
+              :placeholder="t('models.customModelPlaceholder')"
+              size="small"
+              class="session-model-custom-input"
+              @keydown.enter="handleSessionModelCustomSubmit"
+            />
+          </div>
+          <div class="session-model-custom-hint">
+            {{ t('models.customModelHint') }}
+          </div>
+        </div>
+      </div>
+    </NModal>
+
+    <NModal
+      v-model:show="showSessionModelModeModal"
+      preset="dialog"
+      :title="t('codingAgents.protocolScope')"
+      :mask-closable="true"
+      style="width: min(420px, calc(100vw - 32px))"
+    >
+      <NSelect
+        v-model:value="sessionModelApiMode"
+        :options="newChatApiModeOptions"
+      />
+      <template #action>
+        <NButton size="small" @click="cancelSessionModelMode">
+          {{ t('common.cancel') }}
+        </NButton>
+        <NButton size="small" type="primary" @click="confirmSessionModelMode">
+          {{ t('common.confirm') }}
+        </NButton>
+      </template>
+    </NModal>
+
+    <NDrawer
+      v-model:show="showNewChatModal"
+      class="new-chat-drawer"
+      placement="right"
+      width="min(440px, 100vw)"
+      :mask-closable="true"
+    >
+      <NDrawerContent :title="t('chat.newChat')" closable>
+        <div class="new-chat-form">
+          <label class="new-chat-field">
+            <span class="new-chat-label">{{ t("chat.agent") }}</span>
+            <NSelect
+              v-model:value="newChatAgent"
+              :options="newChatAgentOptions"
+              :disabled="newChatLoading"
+            />
+          </label>
+          <label v-if="isNewChatCodingAgent" class="new-chat-field">
+            <span class="new-chat-label">{{ t("codingAgents.launchModeScope") }}</span>
+            <NRadioGroup v-model:value="newChatAgentMode" name="new-chat-coding-agent-mode">
+              <NRadioButton
+                v-for="option in newChatAgentModeOptions"
+                :key="option.value"
+                :value="option.value"
+              >
+                {{ option.label }}
+              </NRadioButton>
+            </NRadioGroup>
+          </label>
+          <label class="new-chat-field">
+            <span class="new-chat-label">{{ t("sidebar.profiles") }}</span>
+            <NSelect
+              :value="newChatProfile"
+              :options="newChatProfileOptions"
+              :loading="newChatLoading || profilesStore.loading"
+              @update:value="handleNewChatProfileChange"
+            />
+          </label>
+          <label v-if="newChatUsesProviderModel" class="new-chat-field">
+            <span class="new-chat-label">{{ t("models.provider") }}</span>
+            <NSelect
+              :value="newChatProvider"
+              :options="newChatProviderOptions"
+              :disabled="newChatLoading"
+              @update:value="handleNewChatProviderChange"
+            />
+          </label>
+          <label v-if="newChatUsesProviderModel" class="new-chat-field">
+            <span class="new-chat-label">{{ t("models.models") }}</span>
+            <NSelect
+              v-model:value="newChatModel"
+              :options="newChatModelOptions"
+              :disabled="newChatLoading || !newChatProvider"
+              filterable
+            />
+          </label>
+          <label v-if="isNewChatCodingAgent && newChatAgentMode === 'scoped'" class="new-chat-field">
+            <span class="new-chat-label">{{ t("codingAgents.protocolScope") }}</span>
+            <NSelect
+              v-model:value="newChatApiMode"
+              :options="newChatApiModeOptions"
+              :disabled="newChatLoading"
+            />
+          </label>
+          <label v-if="newChatNeedsBaseUrl" class="new-chat-field">
+            <span class="new-chat-label">{{ t("models.baseUrl") }}</span>
+            <NInput
+              v-model:value="newChatBaseUrl"
+              :placeholder="t('models.baseUrlPlaceholder')"
+            />
+          </label>
+          <label v-if="newChatNeedsApiKey" class="new-chat-field">
+            <span class="new-chat-label">{{ t("models.apiKey") }}</span>
+            <NInput
+              v-model:value="newChatApiKey"
+              type="password"
+              show-password-on="click"
+              :placeholder="t('models.apiKeyPlaceholder')"
+            />
+          </label>
+          <div class="new-chat-field">
+            <span class="new-chat-label">{{ t("chat.workspace") }}</span>
+            <FolderPicker v-model="newChatWorkspace" />
+          </div>
+        </div>
+        <template #footer>
+          <div class="new-chat-actions">
+            <NButton @click="showNewChatModal = false">{{ t("common.cancel") }}</NButton>
+            <NButton
+              type="primary"
+              :disabled="!canConfirmNewChat"
+              @click="confirmNewChat"
+            >
+              {{ t("chat.newChat") }}
+            </NButton>
+          </div>
+        </template>
+      </NDrawerContent>
+    </NDrawer>
+
+    <div class="chat-main">
+      <header class="chat-header">
+        <div class="header-left">
+          <NButton
+            v-if="currentMode === 'chat'"
+            class="header-sidebar-toggle"
+            quaternary
+            size="small"
+            @click="showSessions = !showSessions"
+            circle
+          >
+            <template #icon>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.5"
+              >
+                <rect x="3" y="3" width="7" height="7" />
+                <rect x="14" y="3" width="7" height="7" />
+                <rect x="3" y="14" width="7" height="7" />
+                <rect x="14" y="14" width="7" height="7" />
+              </svg>
+            </template>
+          </NButton>
+          <span class="header-session-title">{{ headerTitle }}</span>
+          <button
+            v-if="chatStore.activeSession?.workspace"
+            class="workspace-badge"
+            type="button"
+            :title="chatStore.activeSession.workspace"
+            @click="openActiveSessionWorkspace"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+            </svg>
+            <span>
+              {{
+                chatStore.activeSession.workspace.split("/").pop() ||
+                chatStore.activeSession.workspace
+              }}
+            </span>
+          </button>
+        </div>
+        <div class="header-actions">
+          <!-- chat/live mode toggle hidden -->
+          <template v-if="currentMode === 'chat'">
+            <NTooltip v-if="isSuperAdmin" trigger="hover">
+              <template #trigger>
+                <NButton
+                  class="header-tool-toggle"
+                  :class="{ active: showToolPanel }"
+                  quaternary
+                  size="small"
+                  @click="showToolPanel = !showToolPanel"
+                  circle
+                >
+                  <template #icon>
+                    <svg
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                    >
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                      <line x1="9" y1="3" x2="9" y2="21" />
+                      <line x1="15" y1="3" x2="15" y2="21" />
+                    </svg>
+                  </template>
+                </NButton>
+              </template>
+              {{ t("drawer.files") }} / {{ t("drawer.terminal") }}
+            </NTooltip>
+            <NTooltip trigger="hover">
+              <template #trigger>
+                <NButton
+                  quaternary
+                  size="small"
+                  @click="showOutline = !showOutline"
+                  circle
+                >
+                  <template #icon>
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                    >
+                      <path d="M3 12h18M3 6h18M3 18h18" />
+                    </svg>
+                  </template>
+                </NButton>
+              </template>
+              {{ t("chat.outlineTitle") }}
+            </NTooltip>
+            <NTooltip trigger="hover">
+              <template #trigger>
+                <NButton
+                  quaternary
+                  size="small"
+                  @click="copySessionId()"
+                  circle
+                >
+                  <template #icon>
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                    >
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+                      <path
+                        d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"
+                      />
+                    </svg>
+                  </template>
+                </NButton>
+              </template>
+              {{ t("chat.copySessionId") }}
+            </NTooltip>
+            <NButton
+              class="header-model-button"
+              size="small"
+              :circle="isMobile"
+              :title="activeSessionModelLabel"
+              @click="handleHeaderModelClick"
+            >
+              <template #icon>
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.8"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M12 1v4" />
+                  <path d="M12 19v4" />
+                  <path d="M1 12h4" />
+                  <path d="M19 12h4" />
+                  <path d="M4.22 4.22l2.83 2.83" />
+                  <path d="M16.95 16.95l2.83 2.83" />
+                  <path d="M4.22 19.78l2.83-2.83" />
+                  <path d="M16.95 7.05l2.83-2.83" />
+                </svg>
+              </template>
+              <template v-if="!isMobile">{{ activeSessionModelLabel }}</template>
+            </NButton>
+          </template>
+        </div>
+      </header>
+
+      <template v-if="currentMode === 'chat'">
+        <div
+          ref="chatContentWrapperRef"
+          class="chat-content-wrapper"
+          :class="{ 'chat-content-wrapper--drop-active': isChatDropActive }"
+          @dragover="handleChatDragOver"
+          @dragenter="handleChatDragEnter"
+          @dragleave="handleChatDragLeave"
+          @drop="handleChatDrop"
+        >
+          <div class="chat-main-content">
+            <MessageList ref="messageListRef" />
+            <ChatInput
+              ref="chatInputRef"
+              :multi-agent-mode="multiAgentMode"
+              :multi-agent-run-options="multiAgentRunOptions"
+              @toggle-multi-agent="toggleMultiAgentMode"
+            />
+          </div>
+          <OutlinePanel
+            v-if="showOutline"
+            :messages="chatStore.messages"
+            @navigate="handleOutlineNavigate"
+          />
+          <MultiAgentCanvasPanel
+            v-if="multiAgentMode"
+            :route="multiAgentDisplayedRoute"
+            :workflow-snapshot="multiAgentWorkflowSnapshot"
+            :tasks="displayedMultiAgentTasks"
+            :todo-steps="multiAgentTodoSteps"
+            :status-text="multiAgentPanelStatusText"
+            :primary-actor-text="multiAgentPrimaryActorText"
+            :objective-lines="multiAgentObjectiveLines"
+            :history-runs="multiAgentHistoryItems"
+            :selected-run-id="multiAgentDisplayedRoute?.runId || ''"
+            @close="toggleMultiAgentMode"
+            @select-run="selectMultiAgentHistoryRun"
+          />
+          <aside
+            v-if="showToolPanel"
+            class="chat-tool-panel"
+            :style="toolPanelStyle"
+          >
+            <div
+              class="chat-tool-resize-handle"
+              @pointerdown="startToolResize"
+            />
+            <div class="chat-tool-panel-inner">
+              <div class="chat-tool-tabs" role="tablist">
+                <button
+                  class="chat-tool-tab"
+                  :class="{ active: activeToolPanel === 'files' }"
+                  type="button"
+                  role="tab"
+                  :aria-selected="activeToolPanel === 'files'"
+                  @click="activeToolPanel = 'files'"
+                >
+                  {{ t("drawer.files") }}
+                </button>
+                <button
+                  class="chat-tool-tab"
+                  :class="{ active: activeToolPanel === 'terminal' }"
+                  type="button"
+                  role="tab"
+                  :aria-selected="activeToolPanel === 'terminal'"
+                  @click="activeToolPanel = 'terminal'"
+                >
+                  {{ t("drawer.terminal") }}
+                </button>
+              </div>
+              <div class="chat-tool-content">
+                <FilesPanel v-show="activeToolPanel === 'files'" />
+                <TerminalPanel
+                  v-show="activeToolPanel === 'terminal'"
+                  :visible="showToolPanel && activeToolPanel === 'terminal'"
+                />
+              </div>
+            </div>
+          </aside>
+        </div>
+      </template>
+      <ConversationMonitorPane
+        v-else
+        :human-only="sessionBrowserPrefsStore.humanOnly"
+      />
+    </div>
+  </div>
+</template>
+
+<style scoped lang="scss">
+@use "@/styles/variables" as *;
+
+.chat-panel {
+  display: flex;
+  height: 100%;
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.session-model-search {
+  margin-bottom: 12px;
+}
+
+.session-model-list {
+  max-height: 50vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.session-model-group {
+  margin-bottom: 4px;
+}
+
+.session-model-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: $text-secondary;
+  cursor: pointer;
+  border-radius: $radius-sm;
+  user-select: none;
+  transition: background-color $transition-fast;
+
+  &:hover {
+    background-color: $bg-secondary;
+  }
+}
+
+.session-model-group-arrow {
+  flex-shrink: 0;
+  transition: transform $transition-fast;
+
+  &.collapsed {
+    transform: rotate(-90deg);
+  }
+}
+
+.session-model-group-label {
+  flex: 1;
+}
+
+.session-model-group-count {
+  font-size: 11px;
+  color: $text-muted;
+  font-weight: 400;
+}
+
+.session-model-group-items {
+  padding-left: 8px;
+}
+
+.session-model-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  font-size: 13px;
+  color: $text-secondary;
+  border-radius: $radius-sm;
+  cursor: pointer;
+  transition: all $transition-fast;
+
+  &:hover {
+    background-color: rgba(var(--accent-primary-rgb), 0.06);
+    color: $text-primary;
+  }
+
+  &.active {
+    color: $accent-primary;
+    font-weight: 500;
+  }
+
+  &.disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+
+    &:hover {
+      background-color: transparent;
+      color: $text-secondary;
+    }
+  }
+}
+
+.session-model-item-label {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.session-model-item-name,
+.session-model-item-id {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: $font-code;
+}
+
+.session-model-item-name {
+  font-size: 12px;
+}
+
+.session-model-item-id {
+  color: $text-muted;
+  font-size: 10px;
+  font-weight: 400;
+}
+
+.session-model-check {
+  flex-shrink: 0;
+  color: $accent-primary;
+}
+
+.session-model-badge-preview,
+.session-model-badge-custom,
+.session-model-badge-disabled {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-right: 4px;
+  letter-spacing: 0.03em;
+}
+
+.session-model-badge-preview {
+  color: #fff;
+  background: #d97706;
+}
+
+.session-model-badge-custom {
+  color: #fff;
+  background: $accent-primary;
+}
+
+.session-model-badge-disabled {
+  color: $text-muted;
+  background: transparent;
+  border: 1px solid $border-color;
+  padding: 0 5px;
+}
+
+.session-model-empty {
+  padding: 24px 0;
+  text-align: center;
+  font-size: 13px;
+  color: $text-muted;
+}
+
+.session-model-custom {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid $border-color;
+}
+
+.session-model-custom-row {
+  display: flex;
+  gap: 8px;
+}
+
+.session-model-custom-provider {
+  width: 160px;
+  flex-shrink: 0;
+}
+
+.session-model-custom-input {
+  flex: 1;
+}
+
+.session-model-custom-hint {
+  margin-top: 6px;
+  font-size: 11px;
+  color: $text-muted;
+}
+
+.session-list {
+  width: $sidebar-width;
+  border-right: 1px solid $border-color;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  transition:
+    width $transition-normal,
+    opacity $transition-normal;
+  overflow: hidden;
+
+  &.collapsed {
+    width: 0;
+    border-right: none;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  @media (max-width: $breakpoint-mobile) {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 100%;
+    z-index: 120;
+    background: $bg-card;
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
+    width: $sidebar-width;
+
+    &.collapsed {
+      transform: translateX(-100%);
+      opacity: 0;
+    }
+  }
+}
+
+@media (max-width: $breakpoint-mobile) {
+  .session-close-btn {
+    display: flex;
+  }
+
+  .session-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.4);
+    z-index: 110;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity $transition-fast;
+
+    &.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+  }
+}
+
+.page-sidebar-top {
+  flex-shrink: 0;
+  padding: 12px;
+  border-bottom: 1px solid $border-color;
+}
+
+.page-sidebar-top--chat {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.session-primary-btn {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.98);
+  color: $text-primary;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 14px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  transition:
+    border-color $transition-fast,
+    background-color $transition-fast,
+    box-shadow $transition-fast;
+
+  &:hover {
+    border-color: rgba(var(--accent-primary-rgb), 0.24);
+    background: rgba(var(--accent-primary-rgb), 0.03);
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
+  }
+}
+
+.session-nav-links {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.session-nav-link {
+  width: 100%;
+  min-width: 0;
+  min-height: 34px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: $text-secondary;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition:
+    background-color $transition-fast,
+    color $transition-fast;
+
+  svg {
+    flex-shrink: 0;
+  }
+
+  span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    line-height: 18px;
+  }
+
+  &:hover {
+    background: rgba(var(--accent-primary-rgb), 0.06);
+    color: $text-primary;
+  }
+}
+
+.session-mode-switch {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: rgba(148, 163, 184, 0.14);
+}
+
+.session-mode-tab {
+  min-height: 32px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: $text-secondary;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    background-color $transition-fast,
+    color $transition-fast,
+    box-shadow $transition-fast;
+
+  &:hover {
+    color: $text-primary;
+  }
+
+  &.active {
+    background: rgba(255, 255, 255, 0.98);
+    color: $text-primary;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+  }
+}
+
+.page-sidebar-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.page-sidebar-tab {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  border: none;
+  border-radius: $radius-sm;
+  background: transparent;
+  color: $text-secondary;
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 7px 10px;
+  cursor: pointer;
+  transition:
+    background-color $transition-fast,
+    color $transition-fast;
+
+  svg {
+    flex-shrink: 0;
+  }
+
+  span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+    line-height: 18px;
+  }
+
+  &:hover {
+    background: rgba(var(--accent-primary-rgb), 0.06);
+    color: $text-primary;
+  }
+}
+
+.session-list-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.session-list-toolbar--compact {
+  margin-top: 0;
+}
+
+.session-filter-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.session-list-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+
+  .n-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 22px;
+    min-height: 22px;
+  }
+}
+
+.session-close-btn {
+  display: none;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: $text-secondary;
+  padding: 4px;
+  border-radius: $radius-sm;
+  height: 22px;
+  min-height: 22px;
+  align-items: center;
+  justify-content: center;
+
+  &:hover {
+    background: rgba($accent-primary, 0.06);
+  }
+}
+
+.session-list-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: $text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  line-height: 22px;
+}
+
+.session-profile-filter {
+  min-width: 0;
+  flex: 1;
+}
+
+.conversation-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px;
+  margin-top: 8px;
+  padding: 2px;
+  border-radius: $radius-sm;
+  background: rgba(var(--accent-primary-rgb), 0.05);
+}
+
+.conversation-switch-tab {
+  min-width: 0;
+  height: 28px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: $text-secondary;
+  font-size: 12px;
+  line-height: 16px;
+  cursor: pointer;
+  transition:
+    background-color $transition-fast,
+    color $transition-fast;
+
+  &:hover {
+    color: $text-primary;
+  }
+
+  &.active {
+    background: $bg-card;
+    color: $text-primary;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  }
+}
+
+.new-chat-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+:deep(.new-chat-drawer .n-drawer-content) {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+:deep(.new-chat-drawer .n-drawer-header),
+:deep(.new-chat-drawer .n-drawer-footer) {
+  flex-shrink: 0;
+}
+
+:deep(.new-chat-drawer .n-drawer-body) {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+:deep(.new-chat-drawer .n-drawer-body-content-wrapper) {
+  height: 100%;
+  overflow-y: auto;
+}
+
+:deep(.new-chat-drawer .folder-picker) {
+  max-height: 260px;
+}
+
+:deep(.new-chat-drawer .folder-tree) {
+  max-height: 170px;
+}
+
+@media (max-width: $breakpoint-mobile) {
+  :deep(.new-chat-drawer .n-drawer-body-content-wrapper) {
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+
+  :deep(.new-chat-drawer .folder-picker) {
+    max-height: 210px;
+  }
+
+  :deep(.new-chat-drawer .folder-tree) {
+    max-height: 128px;
+  }
+}
+
+.new-chat-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.new-chat-label {
+  font-size: 12px;
+  color: $text-muted;
+  font-weight: 500;
+}
+
+.new-chat-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.session-group-header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px 4px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.session-group-header--static {
+  cursor: default;
+}
+
+.group-chevron {
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+  transform: rotate(90deg);
+
+  &.collapsed {
+    transform: rotate(0deg);
+  }
+}
+
+.session-group-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: $text-muted;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.session-group-count {
+  font-size: 10px;
+  color: $text-muted;
+  font-weight: 400;
+}
+
+.session-items {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 6px 12px;
+}
+
+.page-sidebar-bottom {
+  flex-shrink: 0;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.page-sidebar-menu-btn {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+  height: 36px;
+  border: none;
+  border-radius: $radius-sm;
+  background: transparent;
+  color: $text-secondary;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  transition:
+    background-color $transition-fast,
+    color $transition-fast;
+
+  &:hover {
+    background: rgba(var(--accent-primary-rgb), 0.06);
+    color: $text-primary;
+  }
+}
+
+.page-sidebar-menu-btn span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.session-loading,
+.session-empty {
+  padding: 16px 10px;
+  font-size: 12px;
+  color: $text-muted;
+  text-align: center;
+}
+
+.chat-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.chat-content-wrapper {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+  position: relative;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.chat-content-wrapper--drop-active::after {
+  content: "";
+  position: absolute;
+  inset: 12px;
+  z-index: 30;
+  pointer-events: none;
+  border: 2px dashed var(--accent-info);
+  border-radius: 8px;
+  background: rgba(var(--accent-info-rgb), 0.05);
+}
+
+.chat-main-content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.multi-agent-side-panel {
+  width: 360px;
+  flex-shrink: 0;
+  border-left: 1px solid $border-color;
+  background: $bg-card;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.multi-agent-side-header {
+  min-height: 58px;
+  padding: 12px;
+  border-bottom: 1px solid $border-light;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.multi-agent-side-title {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  strong {
+    display: block;
+    color: $text-primary;
+    font-size: 14px;
+    line-height: 18px;
+    font-weight: 650;
+  }
+
+  span {
+    display: block;
+    margin-top: 1px;
+    color: $text-muted;
+    font-size: 12px;
+    line-height: 16px;
+    overflow-wrap: anywhere;
+  }
+}
+
+.multi-agent-header-status {
+  font-weight: 500;
+}
+
+.multi-agent-plan-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: $success;
+  box-shadow: 0 0 0 4px rgba(var(--success-rgb), 0.12);
+  flex-shrink: 0;
+}
+
+.multi-agent-side-close {
+  min-height: 30px;
+  border: 1px solid $border-light;
+  border-radius: 6px;
+  background: $bg-card;
+  color: $text-secondary;
+  padding: 0 10px;
+  font-size: 12px;
+  cursor: pointer;
+
+  &:hover {
+    color: $text-primary;
+    border-color: $border-color;
+  }
+}
+
+.multi-agent-side-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.multi-agent-placeholder {
+  min-height: 160px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  color: $text-secondary;
+  font-size: 12px;
+  line-height: 1.55;
+
+  strong {
+    color: $text-primary;
+    font-size: 14px;
+    line-height: 18px;
+    font-weight: 650;
+  }
+
+  span {
+    max-width: 260px;
+  }
+}
+
+.multi-agent-summary {
+  display: grid;
+  gap: 4px;
+
+  span {
+    color: $text-muted;
+    font-size: 11px;
+    line-height: 15px;
+  }
+
+  p {
+    margin: 0;
+    color: $text-secondary;
+    font-size: 13px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
+
+.multi-agent-scrollable {
+  min-height: 96px;
+  max-height: 120px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.multi-agent-task-summary-scroll,
+.multi-agent-step-scroll {
+  min-height: 72px;
+  max-height: 72px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.multi-agent-status-strip {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
+  gap: 9px;
+  padding: 10px 12px;
+  border: 1px solid rgba(var(--accent-info-rgb), 0.18);
+  border-radius: 8px;
+  background: rgba(var(--accent-info-rgb), 0.035);
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(var(--accent-info-rgb), 0.1) 45%,
+      transparent 100%
+    );
+    animation: multi-agent-strip-scan 2.4s ease-in-out infinite;
+    pointer-events: none;
+  }
+
+  &.is-completed {
+    border-color: rgba(var(--success-rgb), 0.2);
+    background: rgba(var(--success-rgb), 0.035);
+
+    &::after {
+      animation: none;
+      opacity: 0;
+    }
+
+    .multi-agent-status-pulse {
+      background: $success;
+      box-shadow: 0 0 0 5px rgba(var(--success-rgb), 0.08);
+    }
+  }
+
+  &.is-failed {
+    border-color: rgba(var(--accent-error-rgb), 0.22);
+    background: rgba(var(--accent-error-rgb), 0.035);
+
+    &::after {
+      animation: none;
+      opacity: 0;
+    }
+
+    .multi-agent-status-pulse {
+      background: var(--accent-error);
+      box-shadow: 0 0 0 5px rgba(var(--accent-error-rgb), 0.08);
+    }
+  }
+
+  strong {
+    display: block;
+    color: $text-primary;
+    font-size: 12px;
+    line-height: 17px;
+    font-weight: 650;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  small {
+    display: -webkit-box;
+    margin-top: 3px;
+    color: $text-secondary;
+    font-size: 11px;
+    line-height: 1.45;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+  }
+}
+
+.multi-agent-status-pulse {
+  position: relative;
+  z-index: 1;
+  width: 9px;
+  height: 9px;
+  margin-top: 4px;
+  border-radius: 999px;
+  background: var(--accent-info);
+  box-shadow: 0 0 0 5px rgba(var(--accent-info-rgb), 0.08);
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset: -6px;
+    border-radius: inherit;
+    border: 1px solid currentColor;
+    opacity: 0.18;
+    animation: multi-agent-pulse-ring 1.4s ease-out infinite;
+  }
+}
+
+.multi-agent-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+
+  div {
+    min-width: 0;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: $bg-secondary;
+  }
+
+  span {
+    display: block;
+    color: $text-muted;
+    font-size: 11px;
+    line-height: 15px;
+  }
+
+  strong {
+    display: block;
+    margin-top: 2px;
+    color: $text-primary;
+    font-size: 14px;
+    line-height: 18px;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.multi-agent-flow-meter {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 3px;
+  min-height: 18px;
+
+  i {
+    width: 13px;
+    height: 3px;
+    border-radius: 999px;
+    background: rgba(var(--accent-info-rgb), 0.55);
+    transform-origin: center;
+    animation: multi-agent-bar-wave 1s ease-in-out infinite;
+
+    &:nth-child(2) {
+      animation-delay: 0.12s;
+    }
+
+    &:nth-child(3) {
+      animation-delay: 0.24s;
+    }
+  }
+}
+
+.multi-agent-planner-shell,
+.multi-agent-canvas-shell {
+  padding: 12px;
+  border: 1px solid $border-light;
+  border-radius: 8px;
+  background: $bg-card;
+  display: grid;
+  gap: 10px;
+}
+
+.multi-agent-canvas-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+
+  strong {
+    color: $text-primary;
+    font-size: 13px;
+    line-height: 18px;
+    font-weight: 650;
+  }
+
+  span {
+    color: $text-muted;
+    font-size: 11px;
+    line-height: 16px;
+  }
+}
+
+.multi-agent-planner-list {
+  display: grid;
+  gap: 8px;
+}
+
+.multi-agent-planner-item {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 10px 12px;
+  border: 1px solid $border-light;
+  border-radius: 7px;
+  background: $bg-card;
+
+  &.is-running {
+    border-color: rgba(var(--accent-info-rgb), 0.22);
+    background: rgba(var(--accent-info-rgb), 0.03);
+  }
+
+  &.is-done {
+    border-color: rgba(var(--success-rgb), 0.2);
+  }
+}
+
+.multi-agent-planner-badge {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: $bg-secondary;
+  border: 1px solid $border-light;
+  color: $text-secondary;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+
+  &.is-running {
+    color: var(--accent-info);
+    border-color: rgba(var(--accent-info-rgb), 0.24);
+    background: rgba(var(--accent-info-rgb), 0.06);
+  }
+
+  &.is-done {
+    color: $success;
+    border-color: rgba(var(--success-rgb), 0.24);
+    background: rgba(var(--success-rgb), 0.06);
+  }
+}
+
+.multi-agent-planner-copy {
+  min-width: 0;
+
+  p {
+    margin: 0;
+    color: $text-secondary;
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
+
+.multi-agent-status-chip {
+  &.is-todo {
+    background: $bg-secondary;
+    color: $text-muted;
+  }
+
+  &.is-doing {
+    background: rgba(var(--accent-info-rgb), 0.12);
+    color: var(--accent-info);
+  }
+
+  &.is-done {
+    background: rgba(var(--success-rgb), 0.12);
+    color: $success;
+  }
+
+  &.is-blocked {
+    background: rgba(var(--accent-error-rgb), 0.12);
+    color: var(--accent-error);
+  }
+}
+
+.multi-agent-task-list {
+  display: grid;
+  gap: 10px;
+}
+
+.multi-agent-task {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 12px;
+  align-items: stretch;
+  min-height: 124px;
+}
+
+.multi-agent-task-rail {
+  position: relative;
+  height: 100%;
+  display: grid;
+  grid-template-rows: 1fr auto 1fr;
+  justify-items: center;
+}
+
+.multi-agent-task-line-segment {
+  width: 2px;
+  height: 100%;
+  border-radius: 999px;
+  background: rgba(var(--accent-primary-rgb), 0.12);
+
+  &.is-hidden {
+    opacity: 0;
+  }
+
+  &.is-done {
+    background: rgba(var(--success-rgb), 0.42);
+  }
+
+  &.is-blocked {
+    background: rgba(var(--accent-error-rgb), 0.35);
+  }
+
+  &.is-running {
+    background: linear-gradient(
+      to bottom,
+      rgba(var(--accent-info-rgb), 0.1) 0%,
+      rgba(var(--accent-info-rgb), 0.55) 40%,
+      rgba(var(--accent-info-rgb), 0.1) 100%
+    );
+    background-size: 100% 180%;
+    animation: multi-agent-line-flow 1.1s linear infinite;
+  }
+}
+
+.multi-agent-task-glyph {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  border: 1px solid $border-light;
+  background: $bg-card;
+  color: $text-secondary;
+  box-shadow: 0 0 0 4px rgba(var(--accent-primary-rgb), 0.04);
+
+  &.is-doing {
+    color: var(--accent-info);
+    border-color: rgba(var(--accent-info-rgb), 0.28);
+    box-shadow: 0 0 0 4px rgba(var(--accent-info-rgb), 0.08);
+  }
+
+  &.is-done {
+    color: $success;
+    border-color: rgba(var(--success-rgb), 0.28);
+    box-shadow: 0 0 0 4px rgba(var(--success-rgb), 0.08);
+  }
+
+  &.is-blocked {
+    color: var(--accent-error);
+    border-color: rgba(var(--accent-error-rgb), 0.3);
+    box-shadow: 0 0 0 4px rgba(var(--accent-error-rgb), 0.08);
+  }
+}
+
+.multi-agent-task-index {
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.multi-agent-task-spinner {
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 2px solid rgba(var(--accent-info-rgb), 0.18);
+  border-top-color: var(--accent-info);
+  animation: multi-agent-spin 0.9s linear infinite;
+}
+
+.multi-agent-task-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.multi-agent-task-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(118px, 152px);
+  gap: 10px;
+  align-items: start;
+  padding: 12px;
+  border: 1px solid $border-light;
+  border-radius: 7px;
+  background: $bg-card;
+  transition:
+    border-color $transition-fast,
+    background-color $transition-fast,
+    transform $transition-fast;
+}
+
+.multi-agent-task.active {
+  .multi-agent-task-card {
+    border-color: rgba(var(--accent-primary-rgb), 0.28);
+    background: rgba(var(--accent-primary-rgb), 0.035);
+    box-shadow: inset 0 0 0 1px rgba(var(--accent-primary-rgb), 0.06);
+  }
+}
+
+.multi-agent-task.done {
+  .multi-agent-task-card {
+    border-color: rgba(var(--success-rgb), 0.2);
+  }
+}
+
+.multi-agent-task.blocked {
+  .multi-agent-task-card {
+    border-color: rgba(var(--accent-error-rgb), 0.22);
+  }
+}
+
+.multi-agent-task-main {
+  min-width: 0;
+
+  p {
+    margin: 0;
+    color: $text-secondary;
+    font-size: 12px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+}
+
+.multi-agent-task-line {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+
+  strong {
+    min-width: 0;
+    color: $text-primary;
+    font-size: 13px;
+    line-height: 18px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+  }
+
+  span {
+    flex-shrink: 0;
+    color: $text-muted;
+    font-size: 11px;
+    line-height: 16px;
+  }
+}
+
+.multi-agent-task-agent {
+  min-width: 0;
+  justify-self: stretch;
+  padding: 7px 9px;
+  border-radius: 6px;
+  background: $bg-secondary;
+  color: $text-secondary;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+
+  &.empty {
+    color: $text-muted;
+    background: $bg-secondary;
+  }
+
+  small {
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  &.is-doing small {
+    background: rgba(var(--accent-info-rgb), 0.12);
+    color: var(--accent-info);
+  }
+
+  &.is-done small {
+    background: rgba(var(--success-rgb), 0.12);
+    color: $success;
+  }
+
+  &.is-blocked small {
+    background: rgba(var(--accent-error-rgb), 0.12);
+    color: var(--accent-error);
+  }
+
+  span,
+  small {
+    min-width: 0;
+    font-size: 11px;
+    line-height: 16px;
+  }
+
+  span {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  small {
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.multi-agent-plain {
+  padding: 10px 12px;
+  border-radius: 6px;
+  background: $bg-secondary;
+  color: $text-secondary;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.multi-agent-canvas-status {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 7px;
+  background: $bg-secondary;
+
+  span {
+    color: $text-muted;
+    font-size: 11px;
+    line-height: 15px;
+  }
+
+  strong {
+    color: $text-primary;
+    font-size: 13px;
+    line-height: 18px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
+@keyframes multi-agent-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes multi-agent-line-flow {
+  from {
+    background-position: 0 0;
+  }
+
+  to {
+    background-position: 0 180%;
+  }
+}
+
+@keyframes multi-agent-dot-wave {
+  0%,
+  80%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.32;
+  }
+
+  40% {
+    transform: translateY(-3px);
+    opacity: 0.9;
+  }
+}
+
+@keyframes multi-agent-strip-scan {
+  0% {
+    transform: translateX(-100%);
+  }
+
+  55%,
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes multi-agent-pulse-ring {
+  0% {
+    transform: scale(0.7);
+    opacity: 0.24;
+  }
+
+  100% {
+    transform: scale(1.45);
+    opacity: 0;
+  }
+}
+
+@keyframes multi-agent-bar-wave {
+  0%,
+  80%,
+  100% {
+    transform: scaleY(0.65);
+    opacity: 0.45;
+  }
+
+  40% {
+    transform: scaleY(1.8);
+    opacity: 0.95;
+  }
+}
+
+.chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 21px 20px;
+  border-bottom: 1px solid $border-color;
+  flex-shrink: 0;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+}
+
+.header-session-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: $text-primary;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.source-badge {
+  font-size: 10px;
+  color: $text-muted;
+  background: rgba($text-muted, 0.12);
+  padding: 1px 7px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  line-height: 16px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.header-model-button {
+  max-width: 220px;
+}
+
+.header-model-button :deep(.n-button__content) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-mode-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-right: 4px;
+}
+
+@media (max-width: $breakpoint-mobile) {
+  .chat-header {
+    padding: 16px 12px 16px 52px;
+  }
+
+  .header-sidebar-toggle {
+    display: none;
+  }
+
+  .multi-agent-side-panel {
+    position: absolute;
+    right: 0;
+    top: 0;
+    height: 100%;
+    width: min(100%, 340px);
+    z-index: 35;
+    box-shadow: -6px 0 18px rgba(0, 0, 0, 0.14);
+  }
+
+  .multi-agent-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .multi-agent-planner-item {
+    grid-template-columns: 24px minmax(0, 1fr);
+    padding: 10px;
+  }
+
+  .multi-agent-planner-badge {
+    width: 24px;
+    height: 24px;
+  }
+
+  .multi-agent-task {
+    grid-template-columns: 34px minmax(0, 1fr);
+    min-height: 0;
+  }
+
+  .multi-agent-task-rail {
+    min-height: 120px;
+  }
+
+  .multi-agent-task-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .multi-agent-task-agent {
+    justify-self: start;
+  }
+
+}
+
+.workspace-badge {
+  border: 0;
+  font-size: 11px;
+  line-height: 16px;
+  color: $text-muted;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 2px 8px;
+  border-radius: 4px;
+  max-width: 160px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  cursor: pointer;
+
+  svg {
+    flex: 0 0 auto;
+  }
+
+  span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &:hover {
+    color: $text-secondary;
+    background: rgba(var(--accent-primary-rgb), 0.06);
+  }
+}
+
+.header-tool-toggle.active {
+  color: var(--accent-primary);
+  background: rgba(var(--accent-primary-rgb), 0.1);
+}
+
+.chat-tool-panel {
+  position: relative;
+  flex: 0 0 auto;
+  min-width: 320px;
+  max-width: 100%;
+  background: $bg-card;
+  border-left: 1px solid $border-color;
+  display: flex;
+  min-height: 0;
+  overflow: visible;
+}
+
+.chat-tool-resize-handle {
+  position: absolute;
+  left: -7px;
+  top: 0;
+  bottom: 0;
+  width: 14px;
+  cursor: col-resize;
+  z-index: 20;
+
+  &::after {
+    content: "";
+    position: absolute;
+    left: 6px;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background:
+      linear-gradient($border-color, $border-color) top / 1px calc(50% - 26px) no-repeat,
+      linear-gradient($border-color, $border-color) bottom / 1px calc(50% - 26px) no-repeat;
+    transition: background $transition-fast;
+    z-index: 1;
+  }
+
+  &::before {
+    content: "";
+    position: absolute;
+    left: 1px;
+    top: 50%;
+    width: 12px;
+    height: 38px;
+    transform: translateY(-50%);
+    border-radius: 6px;
+    background:
+      linear-gradient($text-muted, $text-muted) center 12px / 6px 1px no-repeat,
+      linear-gradient($text-muted, $text-muted) center 19px / 6px 1px no-repeat,
+      linear-gradient($text-muted, $text-muted) center 26px / 6px 1px no-repeat,
+      $bg-card;
+    border: 1px solid $border-color;
+    opacity: 0.9;
+    transition: all $transition-fast;
+    z-index: 2;
+  }
+
+  &:hover::after {
+    background:
+      linear-gradient(var(--accent-primary), var(--accent-primary)) top / 1px calc(50% - 26px) no-repeat,
+      linear-gradient(var(--accent-primary), var(--accent-primary)) bottom / 1px calc(50% - 26px) no-repeat;
+  }
+
+  &:hover::before {
+    background:
+      linear-gradient(var(--accent-primary), var(--accent-primary)) center 12px / 6px 1px no-repeat,
+      linear-gradient(var(--accent-primary), var(--accent-primary)) center 19px / 6px 1px no-repeat,
+      linear-gradient(var(--accent-primary), var(--accent-primary)) center 26px / 6px 1px no-repeat,
+      $bg-card;
+    border-color: var(--accent-primary);
+    opacity: 1;
+  }
+}
+
+.chat-tool-panel-inner {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.chat-tool-tabs {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid $border-color;
+}
+
+.chat-tool-tab {
+  height: 30px;
+  padding: 0 12px;
+  border: none;
+  border-radius: $radius-sm;
+  background: transparent;
+  color: $text-secondary;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: all $transition-fast;
+
+  &:hover {
+    color: $text-primary;
+    background: rgba(var(--accent-primary-rgb), 0.06);
+  }
+
+  &.active {
+    color: var(--accent-primary);
+    background: rgba(var(--accent-primary-rgb), 0.12);
+  }
+}
+
+.chat-tool-content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.chat-tool-content > * {
+  height: 100%;
+  min-height: 0;
+}
+
+@media (max-width: $breakpoint-mobile) {
+  .chat-tool-panel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 70;
+    left: 0;
+    width: 100% !important;
+    min-width: 0;
+    border-left: none;
+    box-shadow: none;
+  }
+
+  .chat-tool-resize-handle {
+    display: none;
+  }
+}
+</style>

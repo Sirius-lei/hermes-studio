@@ -20,7 +20,7 @@ import {
   shouldUseUnifiedGatewayManagement,
   shouldUseManagedGatewayRun,
   shouldUseManagedGatewayRunForAutostart,
-} from '../../packages/server/src/services/hermes/gateway-autostart'
+} from '../../packages/server/src/services/DiTing/gateway-autostart'
 
 describe('gateway autostart status parsing', () => {
   it('selects all profiles by default for gateway autostart', () => {
@@ -75,8 +75,8 @@ describe('gateway autostart status parsing', () => {
     })
   })
 
-  it('detects Hermes Agent multiplex gateway config in the default profile', () => {
-    const home = mkdtempSync(join(tmpdir(), 'hermes-gateway-multiplex-'))
+  it('detects DiTing Agent multiplex gateway config in the default profile', () => {
+    const home = mkdtempSync(join(tmpdir(), 'DiTing-gateway-multiplex-'))
     try {
       expect(gatewayMultiplexConfigEnabledForDefaultProfile(home)).toBe(false)
 
@@ -93,8 +93,8 @@ describe('gateway autostart status parsing', () => {
     }
   })
 
-  it('honors Web UI gateway management overrides around Hermes Agent multiplex config', () => {
-    const home = mkdtempSync(join(tmpdir(), 'hermes-gateway-management-'))
+  it('honors Web UI gateway management overrides around DiTing Agent multiplex config', () => {
+    const home = mkdtempSync(join(tmpdir(), 'DiTing-gateway-management-'))
     try {
       writeFileSync(join(home, 'config.yaml'), 'gateway:\n  multiplex_profiles: true\n', 'utf-8')
 
@@ -114,9 +114,9 @@ describe('gateway autostart status parsing', () => {
   })
 
   it('detects the environment-level gateway autostart disable flag', () => {
-    expect(gatewayAutostartDisabledByEnv({ HERMES_WEB_UI_DISABLE_GATEWAY_AUTOSTART: '1' })).toBe(true)
-    expect(gatewayAutostartDisabledByEnv({ HERMES_WEB_UI_DISABLE_GATEWAY_AUTOSTART: 'true' })).toBe(true)
-    expect(gatewayAutostartDisabledByEnv({ HERMES_WEB_UI_DISABLE_GATEWAY_AUTOSTART: 'off' })).toBe(false)
+    expect(gatewayAutostartDisabledByEnv({ DiTing_WEB_UI_DISABLE_GATEWAY_AUTOSTART: '1' })).toBe(true)
+    expect(gatewayAutostartDisabledByEnv({ DiTing_WEB_UI_DISABLE_GATEWAY_AUTOSTART: 'true' })).toBe(true)
+    expect(gatewayAutostartDisabledByEnv({ DiTing_WEB_UI_DISABLE_GATEWAY_AUTOSTART: 'off' })).toBe(false)
     expect(gatewayAutostartDisabledByEnv({})).toBe(false)
   })
 
@@ -178,7 +178,7 @@ describe('gateway autostart status parsing', () => {
     expect(gatewayStatusLooksRunning('Gateway is not running')).toBe(false)
   })
 
-  it('parses gateway status from hermes profile list output', () => {
+  it('parses gateway status from DiTing profile list output', () => {
     const output = `
  Profile          Model                        Gateway      Alias        Distribution
  ───────────────    ───────────────────────────    ───────────    ───────────    ────────────────────
@@ -211,58 +211,58 @@ describe('gateway autostart status parsing', () => {
   })
 
   it('uses managed gateway mode by default', () => {
-    const previous = process.env.HERMES_WEB_UI_MANAGED_GATEWAY
+    const previous = process.env.DiTing_WEB_UI_MANAGED_GATEWAY
     try {
-      delete process.env.HERMES_WEB_UI_MANAGED_GATEWAY
+      delete process.env.DiTing_WEB_UI_MANAGED_GATEWAY
       expect(shouldUseManagedGatewayRun()).toBe(true)
       expect(shouldUseManagedGatewayRunForAutostart('darwin')).toBe(true)
       expect(shouldUseManagedGatewayRunForAutostart('linux')).toBe(true)
       expect(shouldUseManagedGatewayRunForAutostart('win32')).toBe(true)
     } finally {
-      if (previous === undefined) delete process.env.HERMES_WEB_UI_MANAGED_GATEWAY
-      else process.env.HERMES_WEB_UI_MANAGED_GATEWAY = previous
+      if (previous === undefined) delete process.env.DiTing_WEB_UI_MANAGED_GATEWAY
+      else process.env.DiTing_WEB_UI_MANAGED_GATEWAY = previous
     }
   })
 
   it('keeps managed gateway mode enabled when explicitly set', () => {
-    const previous = process.env.HERMES_WEB_UI_MANAGED_GATEWAY
-    process.env.HERMES_WEB_UI_MANAGED_GATEWAY = '1'
+    const previous = process.env.DiTing_WEB_UI_MANAGED_GATEWAY
+    process.env.DiTing_WEB_UI_MANAGED_GATEWAY = '1'
     try {
       expect(shouldUseManagedGatewayRun()).toBe(true)
       expect(shouldUseManagedGatewayRunForAutostart()).toBe(true)
     } finally {
-      if (previous === undefined) delete process.env.HERMES_WEB_UI_MANAGED_GATEWAY
-      else process.env.HERMES_WEB_UI_MANAGED_GATEWAY = previous
+      if (previous === undefined) delete process.env.DiTing_WEB_UI_MANAGED_GATEWAY
+      else process.env.DiTing_WEB_UI_MANAGED_GATEWAY = previous
     }
   })
 
   it('allows managed gateway mode to be disabled by environment', () => {
-    const previous = process.env.HERMES_WEB_UI_MANAGED_GATEWAY
+    const previous = process.env.DiTing_WEB_UI_MANAGED_GATEWAY
     try {
       for (const value of ['0', 'false', 'no', 'off']) {
-        process.env.HERMES_WEB_UI_MANAGED_GATEWAY = value
+        process.env.DiTing_WEB_UI_MANAGED_GATEWAY = value
         expect(shouldUseManagedGatewayRun()).toBe(false)
         expect(shouldUseManagedGatewayRunForAutostart('win32')).toBe(false)
         expect(shouldUseManagedGatewayRunForAutostart('darwin')).toBe(false)
       }
     } finally {
-      if (previous === undefined) delete process.env.HERMES_WEB_UI_MANAGED_GATEWAY
-      else process.env.HERMES_WEB_UI_MANAGED_GATEWAY = previous
+      if (previous === undefined) delete process.env.DiTing_WEB_UI_MANAGED_GATEWAY
+      else process.env.DiTing_WEB_UI_MANAGED_GATEWAY = previous
     }
   })
 
   it('only recovers Windows desktop gateway orphans when enabled', () => {
-    expect(shouldRecoverWindowsDesktopGatewayOrphans('win32', { HERMES_DESKTOP: 'true' })).toBe(true)
-    expect(shouldRecoverWindowsDesktopGatewayOrphans('darwin', { HERMES_DESKTOP: 'true' })).toBe(false)
+    expect(shouldRecoverWindowsDesktopGatewayOrphans('win32', { DiTing_DESKTOP: 'true' })).toBe(true)
+    expect(shouldRecoverWindowsDesktopGatewayOrphans('darwin', { DiTing_DESKTOP: 'true' })).toBe(false)
     expect(shouldRecoverWindowsDesktopGatewayOrphans('win32', {})).toBe(false)
     expect(shouldRecoverWindowsDesktopGatewayOrphans('win32', {
-      HERMES_DESKTOP: 'true',
-      HERMES_WEB_UI_DISABLE_GATEWAY_STARTUP_RECOVERY: '1',
+      DiTing_DESKTOP: 'true',
+      DiTing_WEB_UI_DISABLE_GATEWAY_STARTUP_RECOVERY: '1',
     })).toBe(false)
   })
 
   it('kills Windows desktop gateway runtime PIDs and removes stale runtime files', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'hermes-gateway-recovery-'))
+    const home = mkdtempSync(join(tmpdir(), 'DiTing-gateway-recovery-'))
     const workHome = join(home, 'profiles', 'work')
     mkdirSync(workHome, { recursive: true })
     const killed: number[] = []
@@ -276,8 +276,8 @@ describe('gateway autostart status parsing', () => {
 
       const result = await recoverWindowsDesktopGatewayOrphans({
         platform: 'win32',
-        env: { HERMES_DESKTOP: 'true' },
-        hermesHome: home,
+        env: { DiTing_DESKTOP: 'true' },
+        DiTingHome: home,
         isAlive: pid => pid !== 99999,
         stopGateway: async profileDir => { stopped.push(profileDir) },
         execTaskkill: async pid => { killed.push(pid) },
@@ -298,15 +298,15 @@ describe('gateway autostart status parsing', () => {
   })
 
   it('skips recovery outside Windows desktop mode without deleting runtime files', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'hermes-gateway-recovery-skip-'))
+    const home = mkdtempSync(join(tmpdir(), 'DiTing-gateway-recovery-skip-'))
     try {
       const pidPath = join(home, 'gateway.pid')
       writeFileSync(pidPath, JSON.stringify({ pid: 11111 }), 'utf-8')
 
       const result = await recoverWindowsDesktopGatewayOrphans({
         platform: 'linux',
-        env: { HERMES_DESKTOP: 'true' },
-        hermesHome: home,
+        env: { DiTing_DESKTOP: 'true' },
+        DiTingHome: home,
         isAlive: () => {
           throw new Error('should not check liveness')
         },
@@ -320,7 +320,7 @@ describe('gateway autostart status parsing', () => {
   })
 
   it('detects managed gateway state files with a live pid', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'hermes-gateway-state-'))
+    const dir = mkdtempSync(join(tmpdir(), 'DiTing-gateway-state-'))
     try {
       writeFileSync(
         join(dir, 'gateway_state.json'),
@@ -334,15 +334,15 @@ describe('gateway autostart status parsing', () => {
   })
 
   it('prepares a profile delete by marking the gateway desired stopped', async () => {
-    const previousHermesHome = process.env.HERMES_HOME
-    const previousHermesBin = process.env.HERMES_BIN
+    const previousDiTingHome = process.env.DiTing_HOME
+    const previousDiTingBin = process.env.DiTing_BIN
     const home = mkdtempSync(join(tmpdir(), 'wui-delete-gateway-'))
     const profileDir = join(home, 'profiles', 'work')
     mkdirSync(profileDir, { recursive: true })
 
     try {
-      process.env.HERMES_HOME = home
-      process.env.HERMES_BIN = '/definitely/missing/hermes'
+      process.env.DiTing_HOME = home
+      process.env.DiTing_BIN = '/definitely/missing/DiTing'
 
       await prepareGatewayForProfileDelete('work')
 
@@ -351,50 +351,50 @@ describe('gateway autostart status parsing', () => {
         desired_state: 'stopped',
       })
     } finally {
-      if (previousHermesHome === undefined) delete process.env.HERMES_HOME
-      else process.env.HERMES_HOME = previousHermesHome
-      if (previousHermesBin === undefined) delete process.env.HERMES_BIN
-      else process.env.HERMES_BIN = previousHermesBin
+      if (previousDiTingHome === undefined) delete process.env.DiTing_HOME
+      else process.env.DiTing_HOME = previousDiTingHome
+      if (previousDiTingBin === undefined) delete process.env.DiTing_BIN
+      else process.env.DiTing_BIN = previousDiTingBin
       rmSync(home, { recursive: true, force: true })
     }
   })
 
   it('does not fail profile deletion prep when the gateway is already stopped', async () => {
-    const previousHermesHome = process.env.HERMES_HOME
-    const previousHermesBin = process.env.HERMES_BIN
+    const previousDiTingHome = process.env.DiTing_HOME
+    const previousDiTingBin = process.env.DiTing_BIN
     const home = mkdtempSync(join(tmpdir(), 'wui-delete-gateway-'))
     mkdirSync(join(home, 'profiles', 'work'), { recursive: true })
 
     try {
-      process.env.HERMES_HOME = home
-      process.env.HERMES_BIN = '/definitely/missing/hermes'
+      process.env.DiTing_HOME = home
+      process.env.DiTing_BIN = '/definitely/missing/DiTing'
 
       await expect(prepareGatewayForProfileDelete('work')).resolves.toBeUndefined()
     } finally {
-      if (previousHermesHome === undefined) delete process.env.HERMES_HOME
-      else process.env.HERMES_HOME = previousHermesHome
-      if (previousHermesBin === undefined) delete process.env.HERMES_BIN
-      else process.env.HERMES_BIN = previousHermesBin
+      if (previousDiTingHome === undefined) delete process.env.DiTing_HOME
+      else process.env.DiTing_HOME = previousDiTingHome
+      if (previousDiTingBin === undefined) delete process.env.DiTing_BIN
+      else process.env.DiTing_BIN = previousDiTingBin
       rmSync(home, { recursive: true, force: true })
     }
   })
 
   it('does not fall back to the default profile when delete prep sees a missing profile', async () => {
-    const previousHermesHome = process.env.HERMES_HOME
-    const previousHermesBin = process.env.HERMES_BIN
+    const previousDiTingHome = process.env.DiTing_HOME
+    const previousDiTingBin = process.env.DiTing_BIN
     const home = mkdtempSync(join(tmpdir(), 'wui-delete-gateway-missing-'))
 
     try {
-      process.env.HERMES_HOME = home
-      process.env.HERMES_BIN = '/definitely/missing/hermes'
+      process.env.DiTing_HOME = home
+      process.env.DiTing_BIN = '/definitely/missing/DiTing'
 
       await expect(prepareGatewayForProfileDelete('missing')).resolves.toBeUndefined()
       expect(existsSync(join(home, 'gateway_state.json'))).toBe(false)
     } finally {
-      if (previousHermesHome === undefined) delete process.env.HERMES_HOME
-      else process.env.HERMES_HOME = previousHermesHome
-      if (previousHermesBin === undefined) delete process.env.HERMES_BIN
-      else process.env.HERMES_BIN = previousHermesBin
+      if (previousDiTingHome === undefined) delete process.env.DiTing_HOME
+      else process.env.DiTing_HOME = previousDiTingHome
+      if (previousDiTingBin === undefined) delete process.env.DiTing_BIN
+      else process.env.DiTing_BIN = previousDiTingBin
       rmSync(home, { recursive: true, force: true })
     }
   })

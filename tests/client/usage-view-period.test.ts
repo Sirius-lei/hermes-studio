@@ -15,11 +15,11 @@ const mockProfilesStore = vi.hoisted(() => ({
   fetchProfiles: vi.fn(),
 }))
 
-vi.mock('@/stores/hermes/usage', () => ({
+vi.mock('@/stores/DiTing/usage', () => ({
   useUsageStore: () => mockUsageStore,
 }))
 
-vi.mock('@/stores/hermes/profiles', () => ({
+vi.mock('@/stores/DiTing/profiles', () => ({
   useProfilesStore: () => mockProfilesStore,
 }))
 
@@ -45,19 +45,19 @@ vi.mock('naive-ui', () => ({
   }),
 }))
 
-vi.mock('@/components/hermes/usage/StatCards.vue', () => ({
+vi.mock('@/components/DiTing/usage/StatCards.vue', () => ({
   default: defineComponent({ name: 'StatCards', template: '<section class="stat-cards-stub" />' }),
 }))
 
-vi.mock('@/components/hermes/usage/ModelBreakdown.vue', () => ({
+vi.mock('@/components/DiTing/usage/ModelBreakdown.vue', () => ({
   default: defineComponent({ name: 'ModelBreakdown', template: '<section class="model-breakdown-stub" />' }),
 }))
 
-vi.mock('@/components/hermes/usage/DailyTrend.vue', () => ({
+vi.mock('@/components/DiTing/usage/DailyTrend.vue', () => ({
   default: defineComponent({ name: 'DailyTrend', template: '<section class="daily-trend-stub" />' }),
 }))
 
-import UsageView from '@/views/hermes/UsageView.vue'
+import UsageView from '@/views/DiTing/UsageView.vue'
 
 describe('UsageView period selector', () => {
   beforeEach(() => {

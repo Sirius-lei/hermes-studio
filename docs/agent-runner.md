@@ -18,7 +18,7 @@ one protocol pipeline, one stream subscription model, and one persistence path.
 
 ## Non-goals
 
-- Do not rewrite the Hermes bridge runner in the first pass.
+- Do not rewrite the DiTing bridge runner in the first pass.
 - Do not change the sessions/messages schema until a missing field is proven.
 - Do not mix provider credential storage changes into the first refactor.
 - Do not make one large class that owns Koa, Socket.IO, provider fetches, and DB
@@ -29,7 +29,7 @@ one protocol pipeline, one stream subscription model, and one persistence path.
 - `proxies/claude-code-proxy.ts` exposes an Anthropic-compatible local proxy for
   Claude Code.
 - `proxies/codex-proxy.ts` exposes a Responses-compatible local proxy for Codex.
-- `run-chat/handle-bridge-run.ts` is the active Web UI Hermes bridge path.
+- `run-chat/handle-bridge-run.ts` is the active Web UI DiTing bridge path.
 - `run-chat/handle-api-run.ts` already contains a Responses-stream persistence
   path, but it remains separate from the Coding Agent runner.
 - `run-chat/response-stream.ts` already maps Responses events into in-memory
@@ -187,7 +187,7 @@ External proxy requests do not naturally know the Web UI session. The first
 implementation should support optional binding in this order:
 
 1. Target metadata created during agent launch.
-2. `X-Hermes-Session-Id` request header.
+2. `X-DiTing-Session-Id` request header.
 3. Request body metadata, only for internal callers.
 
 If no session ID is present, the proxy should not write to the chat DB.

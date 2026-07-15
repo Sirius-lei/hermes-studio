@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import type { ChatMessage, RoomInfo } from '@/api/hermes/group-chat'
+import type { ChatMessage, RoomInfo } from '@/api/DiTing/group-chat'
 
 const groupChatApiMock = vi.hoisted(() => {
   const handlers = new Map<string, Function[]>()
@@ -50,10 +50,10 @@ const authApiMock = vi.hoisted(() => ({
 }))
 const fetchMock = vi.hoisted(() => vi.fn())
 
-vi.mock('@/api/hermes/group-chat', () => groupChatApiMock)
+vi.mock('@/api/DiTing/group-chat', () => groupChatApiMock)
 vi.mock('@/api/client', () => clientApiMock)
 vi.mock('@/api/auth', () => authApiMock)
-vi.mock('@/api/hermes/download', () => ({ getDownloadUrl: vi.fn((path: string) => `/download?path=${path}`) }))
+vi.mock('@/api/DiTing/download', () => ({ getDownloadUrl: vi.fn((path: string) => `/download?path=${path}`) }))
 vi.stubGlobal('fetch', fetchMock)
 
 function emitSocket(event: string, payload: unknown) {
@@ -86,7 +86,7 @@ async function createJoinedStore(initialMessages: ChatMessage[] = []) {
     agents: [],
     members: [],
   })
-  const { useGroupChatStore } = await import('@/stores/hermes/group-chat')
+  const { useGroupChatStore } = await import('@/stores/DiTing/group-chat')
   const store = useGroupChatStore()
   store.connect()
   await store.joinRoom('room-1')
@@ -392,7 +392,7 @@ describe('group chat store streaming merge', () => {
   })
 
   it('does not rejoin when socket connects without an active room', async () => {
-    const { useGroupChatStore } = await import('@/stores/hermes/group-chat')
+    const { useGroupChatStore } = await import('@/stores/DiTing/group-chat')
     const store = useGroupChatStore()
     await store.connect()
     groupChatApiMock.socket.emit.mockClear()
@@ -440,7 +440,7 @@ describe('group chat store streaming merge', () => {
       }
       return groupChatApiMock.socket
     })
-    const { useGroupChatStore } = await import('@/stores/hermes/group-chat')
+    const { useGroupChatStore } = await import('@/stores/DiTing/group-chat')
     const store = useGroupChatStore()
 
     await store.connect()
@@ -482,7 +482,7 @@ describe('group chat store streaming merge', () => {
     expect(url).toBe('/upload')
     expect(options.method).toBe('POST')
     expect(options.headers.Authorization).toBe('Bearer test-token')
-    expect(options.headers['X-Hermes-Profile']).toBe('research')
+    expect(options.headers['X-DiTing-Profile']).toBe('research')
     expect(options.body).toBeInstanceOf(FormData)
   })
 })

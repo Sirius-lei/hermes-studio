@@ -10,7 +10,7 @@ const execFileAsync = promisify(execFile)
 let tempDir = ''
 
 beforeEach(async () => {
-  tempDir = await mkdtemp(join(tmpdir(), 'hermes-bridge-profile-env-'))
+  tempDir = await mkdtemp(join(tmpdir(), 'DiTing-bridge-profile-env-'))
 })
 
 afterEach(async () => {
@@ -19,13 +19,13 @@ afterEach(async () => {
 })
 
 async function runBridgeProbe(script: string): Promise<any> {
-  const bridgePath = resolve('packages/server/src/services/hermes/agent-bridge/python/hermes_bridge.py')
+  const bridgePath = resolve('packages/server/src/services/DiTing/agent-bridge/python/DiTing_bridge.py')
   const { stdout } = await execFileAsync('python3', ['-c', script], {
     cwd: resolve('.'),
     env: {
       ...process.env,
       BRIDGE_PATH: bridgePath,
-      TEST_HERMES_HOME: tempDir,
+      TEST_DiTing_HOME: tempDir,
     },
     maxBuffer: 1024 * 1024,
   })
@@ -40,9 +40,9 @@ import json
 import os
 import sys
 
-spec = importlib.util.spec_from_file_location("hermes_bridge", os.environ["BRIDGE_PATH"])
+spec = importlib.util.spec_from_file_location("DiTing_bridge", os.environ["BRIDGE_PATH"])
 bridge = importlib.util.module_from_spec(spec)
-sys.modules["hermes_bridge"] = bridge
+sys.modules["DiTing_bridge"] = bridge
 spec.loader.exec_module(bridge)
 
 class FakeSocket:
@@ -114,9 +114,9 @@ import json
 import os
 import sys
 
-spec = importlib.util.spec_from_file_location("hermes_bridge", os.environ["BRIDGE_PATH"])
+spec = importlib.util.spec_from_file_location("DiTing_bridge", os.environ["BRIDGE_PATH"])
 bridge = importlib.util.module_from_spec(spec)
-sys.modules["hermes_bridge"] = bridge
+sys.modules["DiTing_bridge"] = bridge
 spec.loader.exec_module(bridge)
 
 original_os_name = bridge.os.name
@@ -127,7 +127,7 @@ original_create_no_window = getattr(bridge.subprocess, "CREATE_NO_WINDOW", None)
 original_startupinfo = getattr(bridge.subprocess, "STARTUPINFO", None)
 original_startf = getattr(bridge.subprocess, "STARTF_USESHOWWINDOW", None)
 original_sw_hide = getattr(bridge.subprocess, "SW_HIDE", None)
-original_installed = getattr(bridge.subprocess, "_hermes_hidden_defaults_installed", None)
+original_installed = getattr(bridge.subprocess, "_DiTing_hidden_defaults_installed", None)
 
 class FakePopen:
     calls = []
@@ -152,7 +152,7 @@ class FakeStartupInfo:
 
 try:
     bridge.os.name = "nt"
-    bridge.os.environ["HERMES_DESKTOP"] = "true"
+    bridge.os.environ["DiTing_DESKTOP"] = "true"
     bridge.subprocess.Popen = FakePopen
     bridge.asyncio.create_subprocess_exec = fake_create_subprocess_exec
     bridge.asyncio.create_subprocess_shell = fake_create_subprocess_shell
@@ -160,8 +160,8 @@ try:
     bridge.subprocess.STARTUPINFO = FakeStartupInfo
     bridge.subprocess.STARTF_USESHOWWINDOW = 0x00000001
     bridge.subprocess.SW_HIDE = 0
-    if hasattr(bridge.subprocess, "_hermes_hidden_defaults_installed"):
-        delattr(bridge.subprocess, "_hermes_hidden_defaults_installed")
+    if hasattr(bridge.subprocess, "_DiTing_hidden_defaults_installed"):
+        delattr(bridge.subprocess, "_DiTing_hidden_defaults_installed")
 
     bridge._install_windows_hidden_subprocess_defaults()
     bridge.subprocess.Popen(["git", "status"], creationflags=0x00000200)
@@ -199,11 +199,11 @@ finally:
             setattr(bridge.subprocess, name, original)
     if original_installed is None:
         try:
-            delattr(bridge.subprocess, "_hermes_hidden_defaults_installed")
+            delattr(bridge.subprocess, "_DiTing_hidden_defaults_installed")
         except AttributeError:
             pass
     else:
-        bridge.subprocess._hermes_hidden_defaults_installed = original_installed
+        bridge.subprocess._DiTing_hidden_defaults_installed = original_installed
 
 print(json.dumps({
     "flags": flags,
@@ -237,7 +237,7 @@ print(json.dumps({
 })
 
 describe('agent bridge profile environment', () => {
-  it('runs agent calls with the requested profile HERMES_HOME and restores the bridge home', async () => {
+  it('runs agent calls with the requested profile DiTing_HOME and restores the bridge home', async () => {
     const profileHome = join(tempDir, 'profiles', 'work')
     await mkdir(profileHome, { recursive: true })
     await writeFile(join(tempDir, 'config.yaml'), 'model:\n  default: default-model\n', 'utf-8')
@@ -252,15 +252,15 @@ import json
 import os
 import sys
 
-spec = importlib.util.spec_from_file_location("hermes_bridge", os.environ["BRIDGE_PATH"])
+spec = importlib.util.spec_from_file_location("DiTing_bridge", os.environ["BRIDGE_PATH"])
 bridge = importlib.util.module_from_spec(spec)
-sys.modules["hermes_bridge"] = bridge
+sys.modules["DiTing_bridge"] = bridge
 spec.loader.exec_module(bridge)
 
-root = os.environ["TEST_HERMES_HOME"]
+root = os.environ["TEST_DiTing_HOME"]
 profile_home = os.path.join(root, "profiles", "work")
-os.environ["HERMES_HOME"] = root
-os.environ["HERMES_AGENT_BRIDGE_BASE_HOME"] = root
+os.environ["DiTing_HOME"] = root
+os.environ["DiTing_AGENT_BRIDGE_BASE_HOME"] = root
 os.environ["OPENAI_API_KEY"] = "shell-openai"
 os.environ["GLM_API_KEY"] = "shell-glm"
 
@@ -272,7 +272,7 @@ class FakeAgent:
         self.seen_base_only = None
 
     def run_conversation(self, message, **kwargs):
-        self.seen_home = os.environ.get("HERMES_HOME")
+        self.seen_home = os.environ.get("DiTing_HOME")
         self.seen_openai = os.environ.get("OPENAI_API_KEY")
         self.seen_glm = os.environ.get("GLM_API_KEY")
         self.seen_base_only = os.environ.get("BASE_ONLY_TOKEN")
@@ -287,7 +287,7 @@ print(json.dumps({
     "seen_openai": agent.seen_openai,
     "seen_glm": agent.seen_glm,
     "seen_base_only": agent.seen_base_only,
-    "restored_home": os.environ.get("HERMES_HOME"),
+    "restored_home": os.environ.get("DiTing_HOME"),
     "restored_openai": os.environ.get("OPENAI_API_KEY"),
     "restored_glm": os.environ.get("GLM_API_KEY"),
     "restored_base_only": os.environ.get("BASE_ONLY_TOKEN"),
@@ -308,8 +308,8 @@ print(json.dumps({
     })
   })
 
-  it('normalizes a profile-scoped bridge home back to the Hermes root for profile lookup', async () => {
-    const agentRoot = join(tempDir, 'hermes-agent')
+  it('normalizes a profile-scoped bridge home back to the DiTing root for profile lookup', async () => {
+    const agentRoot = join(tempDir, 'diting-agent')
     const profileHome = join(tempDir, 'profiles', 'work')
     await mkdir(agentRoot, { recursive: true })
     await mkdir(profileHome, { recursive: true })
@@ -324,19 +324,19 @@ import json
 import os
 import sys
 
-spec = importlib.util.spec_from_file_location("hermes_bridge", os.environ["BRIDGE_PATH"])
+spec = importlib.util.spec_from_file_location("DiTing_bridge", os.environ["BRIDGE_PATH"])
 bridge = importlib.util.module_from_spec(spec)
-sys.modules["hermes_bridge"] = bridge
+sys.modules["DiTing_bridge"] = bridge
 spec.loader.exec_module(bridge)
 
-root = os.environ["TEST_HERMES_HOME"]
-agent_root = os.path.join(root, "hermes-agent")
+root = os.environ["TEST_DiTing_HOME"]
+agent_root = os.path.join(root, "diting-agent")
 profile_home = os.path.join(root, "profiles", "work")
 bridge._set_path_env(agent_root, profile_home)
 
 print(json.dumps({
-    "home": os.environ.get("HERMES_HOME"),
-    "base": os.environ.get("HERMES_AGENT_BRIDGE_BASE_HOME"),
+    "home": os.environ.get("DiTing_HOME"),
+    "base": os.environ.get("DiTing_AGENT_BRIDGE_BASE_HOME"),
     "profile_home": str(bridge._profile_home("work")),
 }))
 `)
@@ -348,13 +348,13 @@ print(json.dumps({
     })
   })
 
-  it('falls back to package imports when no Hermes Agent source root exists', async () => {
+  it('falls back to package imports when no DiTing Agent source root exists', async () => {
     const packageDir = join(tempDir, 'site-packages')
-    const hermesHome = join(tempDir, 'home')
+    const DiTingHome = join(tempDir, 'home')
     await mkdir(packageDir, { recursive: true })
-    await mkdir(hermesHome, { recursive: true })
+    await mkdir(DiTingHome, { recursive: true })
     await writeFile(join(packageDir, 'run_agent.py'), 'class AIAgent: pass\n', 'utf-8')
-    const expectedHermesHome = await realpath(hermesHome)
+    const expectedDiTingHome = await realpath(DiTingHome)
 
     const result = await runBridgeProbe(`
 import importlib.util
@@ -362,33 +362,33 @@ import json
 import os
 import sys
 
-spec = importlib.util.spec_from_file_location("hermes_bridge", os.environ["BRIDGE_PATH"])
+spec = importlib.util.spec_from_file_location("DiTing_bridge", os.environ["BRIDGE_PATH"])
 bridge = importlib.util.module_from_spec(spec)
-sys.modules["hermes_bridge"] = bridge
+sys.modules["DiTing_bridge"] = bridge
 spec.loader.exec_module(bridge)
 
-package_dir = os.path.join(os.environ["TEST_HERMES_HOME"], "site-packages")
-hermes_home = os.path.join(os.environ["TEST_HERMES_HOME"], "home")
+package_dir = os.path.join(os.environ["TEST_DiTing_HOME"], "site-packages")
+DiTing_home = os.path.join(os.environ["TEST_DiTing_HOME"], "home")
 sys.path.insert(0, package_dir)
 bridge._candidate_agent_roots = lambda raw=None: []
-os.environ.pop("HERMES_AGENT_ROOT", None)
+os.environ.pop("DiTing_AGENT_ROOT", None)
 
-bridge._set_path_env(None, hermes_home)
+bridge._set_path_env(None, DiTing_home)
 bridge._ensure_agent_imports()
 from run_agent import AIAgent
 
 print(json.dumps({
-    "agent_root": os.environ.get("HERMES_AGENT_ROOT"),
-    "home": os.environ.get("HERMES_HOME"),
-    "base": os.environ.get("HERMES_AGENT_BRIDGE_BASE_HOME"),
+    "agent_root": os.environ.get("DiTing_AGENT_ROOT"),
+    "home": os.environ.get("DiTing_HOME"),
+    "base": os.environ.get("DiTing_AGENT_BRIDGE_BASE_HOME"),
     "agent_class": AIAgent.__name__,
 }))
 `)
 
     expect(result).toEqual({
       agent_root: null,
-      home: expectedHermesHome,
-      base: expectedHermesHome,
+      home: expectedDiTingHome,
+      base: expectedDiTingHome,
       agent_class: 'AIAgent',
     })
   })
@@ -405,14 +405,14 @@ import json
 import os
 import sys
 
-spec = importlib.util.spec_from_file_location("hermes_bridge", os.environ["BRIDGE_PATH"])
+spec = importlib.util.spec_from_file_location("DiTing_bridge", os.environ["BRIDGE_PATH"])
 bridge = importlib.util.module_from_spec(spec)
-sys.modules["hermes_bridge"] = bridge
+sys.modules["DiTing_bridge"] = bridge
 spec.loader.exec_module(bridge)
 
-root = os.environ["TEST_HERMES_HOME"]
-os.environ["HERMES_HOME"] = root
-os.environ["HERMES_AGENT_BRIDGE_BASE_HOME"] = root
+root = os.environ["TEST_DiTing_HOME"]
+os.environ["DiTing_HOME"] = root
+os.environ["DiTing_AGENT_BRIDGE_BASE_HOME"] = root
 os.environ["OPENAI_API_KEY"] = "shell-openai"
 os.environ["GLM_API_KEY"] = "shell-glm"
 
@@ -452,14 +452,14 @@ import os
 import sys
 import types
 
-spec = importlib.util.spec_from_file_location("hermes_bridge", os.environ["BRIDGE_PATH"])
+spec = importlib.util.spec_from_file_location("DiTing_bridge", os.environ["BRIDGE_PATH"])
 bridge = importlib.util.module_from_spec(spec)
-sys.modules["hermes_bridge"] = bridge
+sys.modules["DiTing_bridge"] = bridge
 spec.loader.exec_module(bridge)
 
-root = os.environ["TEST_HERMES_HOME"]
-os.environ["HERMES_HOME"] = root
-os.environ["HERMES_AGENT_BRIDGE_BASE_HOME"] = root
+root = os.environ["TEST_DiTing_HOME"]
+os.environ["DiTing_HOME"] = root
+os.environ["DiTing_AGENT_BRIDGE_BASE_HOME"] = root
 
 events = []
 
@@ -469,7 +469,7 @@ sys.modules["tools"] = tools_pkg
 
 mcp_tool = types.ModuleType("tools.mcp_tool")
 def discover_mcp_tools():
-    events.append({"event": "discover", "home": os.environ.get("HERMES_HOME")})
+    events.append({"event": "discover", "home": os.environ.get("DiTing_HOME")})
     return ["mcp_anysearch_search"]
 mcp_tool.discover_mcp_tools = discover_mcp_tools
 sys.modules["tools.mcp_tool"] = mcp_tool
@@ -479,7 +479,7 @@ class FakeAgent:
     def __init__(self, **kwargs):
         events.append({
             "event": "agent",
-            "home": os.environ.get("HERMES_HOME"),
+            "home": os.environ.get("DiTing_HOME"),
             "enabled_toolsets": kwargs.get("enabled_toolsets"),
         })
         self.tools = []
@@ -505,7 +505,7 @@ session = pool.get_or_create("session-1", profile="work")
 print(json.dumps({
     "events": events,
     "mcp_tool_count": session.config.get("mcp_tool_count"),
-    "restored_home": os.environ.get("HERMES_HOME"),
+    "restored_home": os.environ.get("DiTing_HOME"),
 }))
 `)
 
@@ -530,14 +530,14 @@ import sys
 import time
 import types
 
-spec = importlib.util.spec_from_file_location("hermes_bridge", os.environ["BRIDGE_PATH"])
+spec = importlib.util.spec_from_file_location("DiTing_bridge", os.environ["BRIDGE_PATH"])
 bridge = importlib.util.module_from_spec(spec)
-sys.modules["hermes_bridge"] = bridge
+sys.modules["DiTing_bridge"] = bridge
 spec.loader.exec_module(bridge)
 
-root = os.environ["TEST_HERMES_HOME"]
-os.environ["HERMES_HOME"] = root
-os.environ["HERMES_AGENT_BRIDGE_BASE_HOME"] = root
+root = os.environ["TEST_DiTing_HOME"]
+os.environ["DiTing_HOME"] = root
+os.environ["DiTing_AGENT_BRIDGE_BASE_HOME"] = root
 
 run_agent = types.ModuleType("run_agent")
 class FakeAgent:
@@ -612,14 +612,14 @@ import sys
 import time
 import types
 
-spec = importlib.util.spec_from_file_location("hermes_bridge", os.environ["BRIDGE_PATH"])
+spec = importlib.util.spec_from_file_location("DiTing_bridge", os.environ["BRIDGE_PATH"])
 bridge = importlib.util.module_from_spec(spec)
-sys.modules["hermes_bridge"] = bridge
+sys.modules["DiTing_bridge"] = bridge
 spec.loader.exec_module(bridge)
 
-root = os.environ["TEST_HERMES_HOME"]
-os.environ["HERMES_HOME"] = root
-os.environ["HERMES_AGENT_BRIDGE_BASE_HOME"] = root
+root = os.environ["TEST_DiTing_HOME"]
+os.environ["DiTing_HOME"] = root
+os.environ["DiTing_AGENT_BRIDGE_BASE_HOME"] = root
 
 allowlist_homes = []
 tools_pkg = types.ModuleType("tools")
@@ -628,7 +628,7 @@ sys.modules["tools"] = tools_pkg
 
 approval = types.ModuleType("tools.approval")
 def load_permanent_allowlist():
-    allowlist_homes.append(os.environ.get("HERMES_HOME", ""))
+    allowlist_homes.append(os.environ.get("DiTing_HOME", ""))
     return {"script execution via -e/-c flag"}
 def set_current_session_key(session_key):
     return None
@@ -707,9 +707,9 @@ import json
 import os
 import sys
 
-spec = importlib.util.spec_from_file_location("hermes_bridge", os.environ["BRIDGE_PATH"])
+spec = importlib.util.spec_from_file_location("DiTing_bridge", os.environ["BRIDGE_PATH"])
 bridge = importlib.util.module_from_spec(spec)
-sys.modules["hermes_bridge"] = bridge
+sys.modules["DiTing_bridge"] = bridge
 spec.loader.exec_module(bridge)
 
 class EmptyStdoutResult:
@@ -719,7 +719,7 @@ def fake_run_empty(*args, **kwargs):
     return EmptyStdoutResult()
 
 class NetstatResult:
-    stdout = "  TCP    127.0.0.1:18765    0.0.0.0:0    LISTENING    4321\\r\\n"
+    stdout = "  TCP    127.0.0.1:28765    0.0.0.0:0    LISTENING    4321\\r\\n"
 
 def fake_run_listener(*args, **kwargs):
     return NetstatResult()
@@ -731,9 +731,9 @@ try:
     bridge.os.name = "nt"
     bridge.os.getpid = lambda: 1234
     bridge.subprocess.run = fake_run_empty
-    empty = bridge._windows_listening_pids_on_port(18765)
+    empty = bridge._windows_listening_pids_on_port(28765)
     bridge.subprocess.run = fake_run_listener
-    listener = bridge._windows_listening_pids_on_port(18765)
+    listener = bridge._windows_listening_pids_on_port(28765)
 finally:
     bridge.os.name = original_name
     bridge.os.getpid = original_pid

@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 
-const STORAGE_KEY = 'hermes_show_tool_calls'
+const STORAGE_KEY = 'DiTing_show_tool_calls'
 
 function readInitialValue(): boolean {
   try {

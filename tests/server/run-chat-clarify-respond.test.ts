@@ -5,7 +5,7 @@ const bridgeMock = vi.hoisted(() => ({
   statusIfLoaded: vi.fn(),
 }))
 
-vi.mock('../../packages/server/src/services/hermes/agent-bridge', () => ({
+vi.mock('../../packages/server/src/services/DiTing/agent-bridge', () => ({
   AgentBridgeClient: vi.fn(() => bridgeMock),
 }))
 
@@ -17,14 +17,14 @@ vi.mock('../../packages/server/src/services/logger', () => ({
   },
 }))
 
-vi.mock('../../packages/server/src/db/hermes/session-store', () => ({
+vi.mock('../../packages/server/src/db/DiTing/session-store', () => ({
   getSession: vi.fn(() => null),
   getSessionDetail: vi.fn(() => null),
 }))
 
-vi.mock('../../packages/server/src/services/hermes/hermes-profile', () => ({
+vi.mock('../../packages/server/src/services/DiTing/DiTing-profile', () => ({
   getActiveProfileName: vi.fn(() => 'default'),
-  getProfileDir: vi.fn(() => '/tmp/hermes-default'),
+  getProfileDir: vi.fn(() => '/tmp/DiTing-default'),
   listProfileNamesFromDisk: vi.fn(() => ['default']),
 }))
 
@@ -33,7 +33,7 @@ vi.mock('../../packages/server/src/middleware/user-auth', () => ({
   isAuthEnabled: vi.fn(async () => false),
 }))
 
-vi.mock('../../packages/server/src/db/hermes/users-store', () => ({
+vi.mock('../../packages/server/src/db/DiTing/users-store', () => ({
   userCanAccessProfile: vi.fn(() => true),
 }))
 
@@ -73,7 +73,7 @@ describe('ChatRunSocket clarify responses', () => {
 
   it('forwards clarify.respond events to the bridge and emits clarify.resolved', async () => {
     bridgeMock.clarifyRespond.mockResolvedValue({ ok: true, resolved: true })
-    const { ChatRunSocket } = await import('../../packages/server/src/services/hermes/run-chat')
+    const { ChatRunSocket } = await import('../../packages/server/src/services/DiTing/run-chat')
     const { handlers, io, namespace, namespaceEmit, socket } = createSocketHarness()
     const server = new ChatRunSocket(io as any)
 
@@ -96,7 +96,7 @@ describe('ChatRunSocket clarify responses', () => {
 
   it('does not replay answered clarify prompts when the session resumes', async () => {
     bridgeMock.clarifyRespond.mockResolvedValue({ ok: true, resolved: true })
-    const { ChatRunSocket } = await import('../../packages/server/src/services/hermes/run-chat')
+    const { ChatRunSocket } = await import('../../packages/server/src/services/DiTing/run-chat')
     const { handlers, io, socket } = createSocketHarness()
     const server = new ChatRunSocket(io as any)
     const toolEvent = {
@@ -138,7 +138,7 @@ describe('ChatRunSocket clarify responses', () => {
 
   it('emits an unresolved clarify result when the bridge rejects the response', async () => {
     bridgeMock.clarifyRespond.mockRejectedValue(new Error('unknown clarify request'))
-    const { ChatRunSocket } = await import('../../packages/server/src/services/hermes/run-chat')
+    const { ChatRunSocket } = await import('../../packages/server/src/services/DiTing/run-chat')
     const { handlers, namespaceEmit, socket } = createSocketHarness()
     const namespace = {
       adapter: { rooms: new Map([['session:session-1', new Set(['socket-1'])]]) },

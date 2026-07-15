@@ -18,7 +18,7 @@ const originalEnv = { ...process.env }
 const tempDirs: string[] = []
 
 function tempDir(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'hermes-desktop-runtime-paths-'))
+  const dir = mkdtempSync(join(tmpdir(), 'DiTing-desktop-runtime-paths-'))
   tempDirs.push(dir)
   return dir
 }
@@ -29,20 +29,20 @@ function createRuntime(root: string, version: string) {
     mkdirSync(join(root, 'node'), { recursive: true })
     mkdirSync(join(root, 'git', 'cmd'), { recursive: true })
     writeFileSync(join(root, 'python', 'python.exe'), '')
-    writeFileSync(join(root, 'python', 'Scripts', 'hermes.exe'), '')
+    writeFileSync(join(root, 'python', 'Scripts', 'DiTing.exe'), '')
     writeFileSync(join(root, 'node', 'node.exe'), '')
     writeFileSync(join(root, 'git', 'cmd', 'git.exe'), '')
   } else {
     mkdirSync(join(root, 'python', 'bin'), { recursive: true })
     mkdirSync(join(root, 'node', 'bin'), { recursive: true })
     writeFileSync(join(root, 'python', 'bin', 'python3'), '')
-    writeFileSync(join(root, 'python', 'bin', 'hermes'), '')
+    writeFileSync(join(root, 'python', 'bin', 'DiTing'), '')
     writeFileSync(join(root, 'node', 'bin', 'node'), '')
   }
   writeFileSync(join(root, 'runtime-manifest.json'), JSON.stringify({
     schema: 1,
     platform: process.platform,
-    hermesAgentVersion: version,
+    DiTingAgentVersion: version,
   }))
 }
 
@@ -52,14 +52,14 @@ function createRuntimeWithoutManifest(root: string) {
     mkdirSync(join(root, 'node'), { recursive: true })
     mkdirSync(join(root, 'git', 'cmd'), { recursive: true })
     writeFileSync(join(root, 'python', 'python.exe'), '')
-    writeFileSync(join(root, 'python', 'Scripts', 'hermes.exe'), '')
+    writeFileSync(join(root, 'python', 'Scripts', 'DiTing.exe'), '')
     writeFileSync(join(root, 'node', 'node.exe'), '')
     writeFileSync(join(root, 'git', 'cmd', 'git.exe'), '')
   } else {
     mkdirSync(join(root, 'python', 'bin'), { recursive: true })
     mkdirSync(join(root, 'node', 'bin'), { recursive: true })
     writeFileSync(join(root, 'python', 'bin', 'python3'), '')
-    writeFileSync(join(root, 'python', 'bin', 'hermes'), '')
+    writeFileSync(join(root, 'python', 'bin', 'DiTing'), '')
     writeFileSync(join(root, 'node', 'bin', 'node'), '')
   }
 }
@@ -70,7 +70,7 @@ describe('desktop runtime paths', () => {
     process.env = { ...originalEnv }
     const resourcesPath = tempDir()
     process.resourcesPath = resourcesPath
-    process.env.HERMES_WEB_UI_HOME = tempDir()
+    process.env.DiTing_WEB_UI_HOME = tempDir()
     mockElectronApp.isPackaged = false
     mockElectronApp.getAppPath = () => process.cwd()
   })
@@ -111,7 +111,7 @@ describe('desktop runtime paths', () => {
     const appPath = tempDir()
     const runtimeDir = tempDir()
     const webUiDir = tempDir()
-    process.env.HERMES_WEB_UI_HOME = homeDir
+    process.env.DiTing_WEB_UI_HOME = homeDir
     mockElectronApp.getAppPath = () => appPath
 
     const { runtimePlatformKey } = await import('../../packages/desktop/src/main/runtime-paths')
@@ -119,7 +119,7 @@ describe('desktop runtime paths', () => {
     mkdirSync(join(homeDir, 'desktop-runtime'), { recursive: true })
     writeFileSync(join(homeDir, 'desktop-runtime', 'active-version.json'), JSON.stringify({
       schema: 1,
-      hermesRuntimeVersion: '0.15.1',
+      DiTingRuntimeVersion: '0.15.1',
       webUiVersion: '0.6.10',
       runtimeDirectory: runtimeDir,
       webUiDirectory: webUiDir,
@@ -130,7 +130,7 @@ describe('desktop runtime paths', () => {
 
     expect(desktopRuntimeDir()).toBe(runtimeDir)
     expect(webuiDir()).toBe(webUiDir)
-    expect(targetDesktopRuntimeDir()).toBe(join(homeDir, 'desktop-runtime', 'hermes', '0.15.2', runtimePlatformKey()))
+    expect(targetDesktopRuntimeDir()).toBe(join(homeDir, 'desktop-runtime', 'DiTing', '0.15.2', runtimePlatformKey()))
   })
 
   it('removes downloaded Web UI caches below 0.6.14 so startup falls back to the bundled Web UI', async () => {
@@ -138,7 +138,7 @@ describe('desktop runtime paths', () => {
     const appPath = tempDir()
     const legacyWebUiDir = join(homeDir, 'webui', '0.6.13')
     const currentWebUiDir = join(homeDir, 'webui', '0.6.14')
-    process.env.HERMES_WEB_UI_HOME = homeDir
+    process.env.DiTing_WEB_UI_HOME = homeDir
     mockElectronApp.getAppPath = () => appPath
 
     const { runtimePlatformKey } = await import('../../packages/desktop/src/main/runtime-paths')
@@ -164,20 +164,20 @@ describe('desktop runtime paths', () => {
 
   it('falls back to the newest installed runtime when the active runtime was deleted', async () => {
     const homeDir = tempDir()
-    const deletedRuntimeDir = join(homeDir, 'desktop-runtime', 'hermes', '0.15.2', 'missing')
-    process.env.HERMES_WEB_UI_HOME = homeDir
+    const deletedRuntimeDir = join(homeDir, 'desktop-runtime', 'DiTing', '0.15.2', 'missing')
+    process.env.DiTing_WEB_UI_HOME = homeDir
 
     const { runtimePlatformKey } = await import('../../packages/desktop/src/main/runtime-paths')
     const platformKey = runtimePlatformKey()
-    const runtime015 = join(homeDir, 'desktop-runtime', 'hermes', '0.15.2', platformKey)
-    const runtime016 = join(homeDir, 'desktop-runtime', 'hermes', '0.16.0', platformKey)
+    const runtime015 = join(homeDir, 'desktop-runtime', 'DiTing', '0.15.2', platformKey)
+    const runtime016 = join(homeDir, 'desktop-runtime', 'DiTing', '0.16.0', platformKey)
     createRuntime(runtime015, '0.15.2')
     createRuntime(runtime016, '0.16.0')
 
     mkdirSync(join(homeDir, 'desktop-runtime'), { recursive: true })
     writeFileSync(join(homeDir, 'desktop-runtime', 'active-version.json'), JSON.stringify({
       schema: 1,
-      hermesRuntimeVersion: '0.15.2',
+      DiTingRuntimeVersion: '0.15.2',
       runtimeDirectory: deletedRuntimeDir,
       platform: platformKey,
     }))
@@ -189,21 +189,21 @@ describe('desktop runtime paths', () => {
 
   it('keeps using the active local runtime even when the packaged runtime version is newer', async () => {
     const homeDir = tempDir()
-    process.env.HERMES_WEB_UI_HOME = homeDir
-    process.env.HERMES_DESKTOP_RUNTIME_RELEASE_TAG = 'hermes-0.16.0-runtime'
+    process.env.DiTing_WEB_UI_HOME = homeDir
+    process.env.DiTing_DESKTOP_RUNTIME_RELEASE_TAG = 'DiTing-0.16.0-runtime'
     mockElectronApp.isPackaged = true
 
     const { runtimePlatformKey } = await import('../../packages/desktop/src/main/runtime-paths')
     const platformKey = runtimePlatformKey()
-    const runtime015 = join(homeDir, 'desktop-runtime', 'hermes', '0.15.2', platformKey)
-    const runtime016 = join(homeDir, 'desktop-runtime', 'hermes', '0.16.0', platformKey)
+    const runtime015 = join(homeDir, 'desktop-runtime', 'DiTing', '0.15.2', platformKey)
+    const runtime016 = join(homeDir, 'desktop-runtime', 'DiTing', '0.16.0', platformKey)
     createRuntime(runtime015, '0.15.2')
     createRuntime(runtime016, '0.16.0')
 
     mkdirSync(join(homeDir, 'desktop-runtime'), { recursive: true })
     writeFileSync(join(homeDir, 'desktop-runtime', 'active-version.json'), JSON.stringify({
       schema: 1,
-      hermesRuntimeVersion: '0.15.2',
+      DiTingRuntimeVersion: '0.15.2',
       runtimeDirectory: runtime015,
       platform: platformKey,
     }))
@@ -214,12 +214,12 @@ describe('desktop runtime paths', () => {
     expect(targetDesktopRuntimeDir()).toBe(runtime016)
   })
 
-  it('uses installed runtime directories under desktop-runtime/hermes when executable files are present', async () => {
+  it('uses installed runtime directories under desktop-runtime/DiTing when executable files are present', async () => {
     const homeDir = tempDir()
-    process.env.HERMES_WEB_UI_HOME = homeDir
+    process.env.DiTing_WEB_UI_HOME = homeDir
 
     const { runtimePlatformKey } = await import('../../packages/desktop/src/main/runtime-paths')
-    const runtimeDir = join(homeDir, 'desktop-runtime', 'hermes', '0.15.2', runtimePlatformKey())
+    const runtimeDir = join(homeDir, 'desktop-runtime', 'DiTing', '0.15.2', runtimePlatformKey())
     createRuntimeWithoutManifest(runtimeDir)
 
     const { desktopRuntimeDir, targetDesktopRuntimeDir } = await import('../../packages/desktop/src/main/paths')

@@ -51,7 +51,7 @@ vi.mock('vue-i18n', () => ({
   }),
 }))
 
-vi.mock('@/stores/hermes/kanban', () => ({
+vi.mock('@/stores/DiTing/kanban', () => ({
   DEFAULT_KANBAN_BOARD: 'default',
   useKanbanStore: () => ({
     ...storeState,
@@ -70,14 +70,14 @@ vi.mock('@/stores/hermes/kanban', () => ({
   }),
 }))
 
-vi.mock('@/stores/hermes/profiles', () => ({
+vi.mock('@/stores/DiTing/profiles', () => ({
   useProfilesStore: () => ({
     profiles: profilesState.profiles,
     fetchProfiles: mockFetchProfiles,
   }),
 }))
 
-vi.mock('@/components/hermes/kanban/KanbanTaskCard.vue', () => ({
+vi.mock('@/components/DiTing/kanban/KanbanTaskCard.vue', () => ({
   default: defineComponent({
     name: 'KanbanTaskCard',
     props: { task: { type: Object, required: true }, assigneeAvatar: { type: Object, required: false } },
@@ -85,7 +85,7 @@ vi.mock('@/components/hermes/kanban/KanbanTaskCard.vue', () => ({
   }),
 }))
 
-vi.mock('@/components/hermes/kanban/KanbanTaskDrawer.vue', () => ({
+vi.mock('@/components/DiTing/kanban/KanbanTaskDrawer.vue', () => ({
   default: defineComponent({
     name: 'KanbanTaskDrawer',
     emits: ['updated', 'close'],
@@ -93,7 +93,7 @@ vi.mock('@/components/hermes/kanban/KanbanTaskDrawer.vue', () => ({
   }),
 }))
 
-vi.mock('@/components/hermes/kanban/KanbanCreateForm.vue', () => ({
+vi.mock('@/components/DiTing/kanban/KanbanCreateForm.vue', () => ({
   default: defineComponent({
     name: 'KanbanCreateForm',
     emits: ['created', 'close'],
@@ -143,7 +143,7 @@ vi.mock('naive-ui', () => ({
   }),
 }))
 
-import KanbanView from '@/views/hermes/KanbanView.vue'
+import KanbanView from '@/views/DiTing/KanbanView.vue'
 
 describe('KanbanView', () => {
   beforeEach(() => {

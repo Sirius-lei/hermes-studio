@@ -25,15 +25,15 @@ describe('pending subagent task store', () => {
   })
 
   it('persists and restores clarify_required tasks with mixed clarification field styles', async () => {
-    const { initAllHermesTables } = await import('../../packages/server/src/db/hermes/schemas')
+    const { initAllDiTingTables } = await import('../../packages/server/src/db/DiTing/schemas')
     const {
       deletePendingSubagentTask,
       getPendingSubagentTask,
       listPendingSubagentTasks,
       upsertPendingSubagentTask,
-    } = await import('../../packages/server/src/db/hermes/pending-subagent-task-store')
+    } = await import('../../packages/server/src/db/DiTing/pending-subagent-task-store')
 
-    initAllHermesTables()
+    initAllDiTingTables()
 
     const record = upsertPendingSubagentTask({
       session_id: 'sess-1',

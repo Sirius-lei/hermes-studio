@@ -4,12 +4,12 @@ import {
   resolveSubagentAssistantContent,
   resolveSubagentArtifactUrl,
   sanitizeSubagentDisplayText,
-} from '../../packages/server/src/services/hermes/run-chat/handle-subagent-run'
+} from '../../packages/server/src/services/DiTing/run-chat/handle-subagent-run'
 
 describe('handle subagent run helpers', () => {
   it('normalizes delegated subagent session ids to a conservative runtime-safe format', () => {
-    expect(buildSubagentSessionId('mr03:7f5l/e5am67', 'data:agent')).toBe('hermes-mr03:7f5l-e5am67-data:agent')
-    expect(buildSubagentSessionId(':::bad:::', '***')).toBe('hermes-bad')
+    expect(buildSubagentSessionId('mr03:7f5l/e5am67', 'data:agent')).toBe('DiTing-mr03:7f5l-e5am67-data:agent')
+    expect(buildSubagentSessionId(':::bad:::', '***')).toBe('DiTing-bad')
   })
 
   it('keeps direct assistant output visible while blocking ungrounded finalization', () => {

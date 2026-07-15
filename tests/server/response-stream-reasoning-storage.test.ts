@@ -1,12 +1,12 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
-import { applyResponseStreamEvent, flushResponseRunToDb } from '../../packages/server/src/services/hermes/run-chat/response-stream'
-import type { SessionState } from '../../packages/server/src/services/hermes/run-chat/types'
+import { applyResponseStreamEvent, flushResponseRunToDb } from '../../packages/server/src/services/DiTing/run-chat/response-stream'
+import type { SessionState } from '../../packages/server/src/services/DiTing/run-chat/types'
 
 const { addMessageMock } = vi.hoisted(() => ({
   addMessageMock: vi.fn(),
 }))
 
-vi.mock('../../packages/server/src/db/hermes/session-store', () => ({
+vi.mock('../../packages/server/src/db/DiTing/session-store', () => ({
   addMessage: addMessageMock,
 }))
 

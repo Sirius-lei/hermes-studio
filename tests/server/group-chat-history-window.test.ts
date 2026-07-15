@@ -37,10 +37,10 @@ vi.mock('../../packages/server/src/services/auth', () => ({
 }))
 
 import { countTokens, SUMMARY_PREFIX } from '../../packages/server/src/lib/context-compressor'
-import { initAllHermesTables } from '../../packages/server/src/db/hermes/schemas'
-import { GroupChatServer } from '../../packages/server/src/services/hermes/group-chat'
-import { AgentClients, mentionMessageToStoredContextMessage } from '../../packages/server/src/services/hermes/group-chat/agent-clients'
-import { sortGroupMessagesCanonical } from '../../packages/server/src/services/hermes/group-chat/group-message-ordering'
+import { initAllDiTingTables } from '../../packages/server/src/db/DiTing/schemas'
+import { GroupChatServer } from '../../packages/server/src/services/DiTing/group-chat'
+import { AgentClients, mentionMessageToStoredContextMessage } from '../../packages/server/src/services/DiTing/group-chat/agent-clients'
+import { sortGroupMessagesCanonical } from '../../packages/server/src/services/DiTing/group-chat/group-message-ordering'
 
 function makeDb(): DatabaseSync {
   return new DatabaseSync(':memory:')
@@ -81,7 +81,7 @@ describe('group chat history windows', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     dbMock.current = makeDb()
-    initAllHermesTables()
+    initAllDiTingTables()
     httpServer = createServer()
     groupServer = new GroupChatServer(httpServer)
   })

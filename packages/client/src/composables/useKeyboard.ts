@@ -1,6 +1,6 @@
 import { onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { useChatStore } from '@/stores/hermes/chat'
+import { useChatStore } from '@/stores/DiTing/chat'
 import { useSessionSearch } from './useSessionSearch'
 
 export function useKeyboard() {
@@ -19,7 +19,7 @@ export function useKeyboard() {
 
     if (mod && e.key === 'j') {
       e.preventDefault()
-      router.push({ name: 'hermes.jobs' })
+      router.push({ name: 'DiTing.jobs' })
       return
     }
 

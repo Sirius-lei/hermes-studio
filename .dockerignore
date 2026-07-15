@@ -2,6 +2,15 @@
 .gitignore
 node_modules
 dist
-hermes_data
+diting_data
+diting_webui_data
+runtime/diting-agent/**/__pycache__
+runtime/diting-agent/**/*.pyc
+runtime/diting-agent/.venv
+runtime/diting-agent/build
+runtime/diting-agent/*.egg-info
+runtime/diting-agent/apps
+runtime/diting-agent/website
+runtime/diting-agent/tests
 *.log
 .DS_Store

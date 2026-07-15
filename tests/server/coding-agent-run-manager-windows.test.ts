@@ -74,7 +74,7 @@ describe('coding agent Windows process launch', () => {
       model: 'claude-test',
       sessionId: 'chat-session-1',
       command: 'C:\\Users\\Administrator\\AppData\\Roaming\\npm\\claude.cmd',
-      args: ['--settings', 'C:\\Users\\Administrator\\.hermes-web-ui\\settings.json'],
+      args: ['--settings', 'C:\\Users\\Administrator\\.diting-web-ui\\settings.json'],
       shellCommand: 'claude',
       workspaceDir: process.cwd(),
       state: { messages: [], isWorking: false, events: [], queue: [] },

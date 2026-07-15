@@ -46,10 +46,10 @@ export interface VoiceSettingsData {
   doubaoStylePrompt: string
 }
 
-const STORAGE_KEY = 'hermes-tts-settings-v2'
+const STORAGE_KEY = 'DiTing-tts-settings-v2'
 
 function migrateOldKeys() {
-  const oldKey = 'hermes-tts-settings'
+  const oldKey = 'DiTing-tts-settings'
   try {
     const old = localStorage.getItem(oldKey)
     if (old) {

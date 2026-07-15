@@ -1,15 +1,15 @@
 # Architecture
 
-Hermes Web UI is a TypeScript monorepo that ships a browser dashboard, a Koa
-backend, and an Electron desktop distribution around Hermes Agent.
+DiTing Web UI is a TypeScript monorepo that ships a browser dashboard, a Koa
+backend, and an Electron desktop distribution around DiTing Agent.
 
 ## Package Boundaries
 
 | Area | Path | Responsibility |
 | --- | --- | --- |
 | Client | `packages/client/src` | Vue UI, routing, Pinia stores, API wrappers, i18n, browser-visible state. |
-| Server | `packages/server/src` | HTTP API, auth, Socket.IO, SQLite stores, file access, Hermes runtime integration. |
-| Desktop | `packages/desktop` | Electron shell, local Web UI server bootstrap, updater, bundled Python/Hermes runtime. |
+| Server | `packages/server/src` | HTTP API, auth, Socket.IO, SQLite stores, file access, DiTing runtime integration. |
+| Desktop | `packages/desktop` | Electron shell, local Web UI server bootstrap, updater, bundled Python/DiTing runtime. |
 | Tests | `tests` | Vitest unit/integration tests and Playwright browser tests. |
 | CI | `.github/workflows` | Build, e2e, lockfile, Docker, and desktop release automation. |
 
@@ -19,7 +19,7 @@ backend, and an Electron desktop distribution around Hermes Agent.
 2. Client modules call API helpers from `packages/client/src/api`.
 3. Server routes in `packages/server/src/routes` wire HTTP paths to controllers.
 4. Controllers validate request concerns and delegate reusable behavior to services.
-5. Services own side effects: files, SQLite, Hermes profiles, subprocesses, bridges, and credentials.
+5. Services own side effects: files, SQLite, DiTing profiles, subprocesses, bridges, and credentials.
 6. Long-running chat and group-chat flows use Socket.IO namespaces managed by server services.
 
 Keep each layer narrow. Routes should not grow business logic, and client code
@@ -27,12 +27,12 @@ should not duplicate server persistence rules.
 
 ## State And Data Ownership
 
-- Web UI state defaults to `~/.hermes-web-ui` through `config.appHome`.
-- `HERMES_WEB_UI_HOME` and `HERMES_WEBUI_STATE_DIR` override Web UI state location.
-- Hermes Agent state lives under Hermes profile directories and must stay distinct from Web UI state.
+- Web UI state defaults to `~/.diting-web-ui` through `config.appHome`.
+- `DiTing_WEB_UI_HOME` and `DiTing_WEBUI_STATE_DIR` override Web UI state location.
+- DiTing Agent state lives under DiTing profile directories and must stay distinct from Web UI state.
 - Uploads default to `config.uploadDir`, which is derived from the Web UI home unless `UPLOAD_DIR` is set.
 - Runtime data directories must also live under the Web UI home, not beside built `dist` assets.
-- Profile-scoped Hermes data should use existing profile helpers instead of manually joining paths.
+- Profile-scoped DiTing data should use existing profile helpers instead of manually joining paths.
 
 ## Server Structure
 

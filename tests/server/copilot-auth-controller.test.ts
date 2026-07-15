@@ -32,13 +32,13 @@ vi.mock('../../packages/server/src/services/config-helpers', () => ({
   updateConfigYaml: mockUpdateConfigYaml,
 }))
 
-vi.mock('../../packages/server/src/services/hermes/copilot-models', () => ({
+vi.mock('../../packages/server/src/services/DiTing/copilot-models', () => ({
   resolveCopilotOAuthTokenWithSource: mockResolveWithSource,
   invalidateAllCaches: mockInvalidate,
 }))
 
-vi.mock('../../packages/server/src/services/hermes/hermes-profile', () => ({
-  getActiveEnvPath: () => '/fake/home/.hermes/.env',
+vi.mock('../../packages/server/src/services/DiTing/DiTing-profile', () => ({
+  getActiveEnvPath: () => '/fake/home/.diting/.env',
 }))
 
 vi.mock('../../packages/server/src/services/app-config', () => ({
@@ -50,7 +50,7 @@ vi.mock('../../packages/server/src/services/logger', () => ({
   logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn() },
 }))
 
-import * as ctrl from '../../packages/server/src/controllers/hermes/copilot-auth'
+import * as ctrl from '../../packages/server/src/controllers/DiTing/copilot-auth'
 
 function makeCtx(): any {
   return { params: {}, request: { body: {} }, body: undefined, status: 200 }
@@ -107,7 +107,7 @@ describe('copilot-auth controller — enable', () => {
 })
 
 describe('copilot-auth controller — disable', () => {
-  it('clears ~/.hermes/.env when token source is env', async () => {
+  it('clears ~/.diting/.env when token source is env', async () => {
     mockResolveWithSource.mockResolvedValue({ token: 'gho_xxx', source: 'env' })
     process.env.COPILOT_GITHUB_TOKEN = 'gho_xxx'
     const ctx = makeCtx()

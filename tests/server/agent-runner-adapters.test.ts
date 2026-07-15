@@ -148,17 +148,17 @@ describe('agent runner Responses adapters', () => {
     })
   })
 
-  it('expands Hermes MCP namespace tools for Chat and Anthropic providers', () => {
+  it('expands DiTing MCP namespace tools for Chat and Anthropic providers', () => {
     const body = {
       input: [{ role: 'user', content: [{ type: 'input_text', text: 'list devices' }] }],
-      tools: [{ type: 'namespace', name: 'mcp__hermes_studio', description: 'Hermes tools' }],
+      tools: [{ type: 'namespace', name: 'mcp__DiTing_studio', description: 'DiTing tools' }],
     }
 
     expect(responsesToOpenAiChat(body, target).tools).toEqual(expect.arrayContaining([
       expect.objectContaining({
         type: 'function',
         function: expect.objectContaining({
-          name: 'hermes_studio_lan_devices_scan',
+          name: 'DiTing_studio_lan_devices_scan',
           parameters: expect.objectContaining({
             properties: expect.objectContaining({
               profile: expect.any(Object),
@@ -171,7 +171,7 @@ describe('agent runner Responses adapters', () => {
 
     expect(responsesToAnthropicMessages(body, target).tools).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        name: 'hermes_studio_lan_devices_scan',
+        name: 'DiTing_studio_lan_devices_scan',
         input_schema: expect.objectContaining({
           properties: expect.objectContaining({
             profile: expect.any(Object),
@@ -230,7 +230,7 @@ describe('agent runner Responses adapters', () => {
     })
   })
 
-  it('marks expanded Hermes MCP Chat tool calls with their Responses namespace', () => {
+  it('marks expanded DiTing MCP Chat tool calls with their Responses namespace', () => {
     expect(openAiChatToResponses({
       id: 'chatcmpl_1',
       created: 123,
@@ -238,7 +238,7 @@ describe('agent runner Responses adapters', () => {
         message: {
           tool_calls: [{
             id: 'call_1',
-            function: { name: 'hermes_studio_lan_devices_scan', arguments: '{"profile":"default"}' },
+            function: { name: 'DiTing_studio_lan_devices_scan', arguments: '{"profile":"default"}' },
           }],
         },
       }],
@@ -246,8 +246,8 @@ describe('agent runner Responses adapters', () => {
       output: [{
         type: 'function_call',
         call_id: 'call_1',
-        name: 'hermes_studio_lan_devices_scan',
-        namespace: 'mcp__hermes_studio',
+        name: 'DiTing_studio_lan_devices_scan',
+        namespace: 'mcp__DiTing_studio',
       }],
     })
   })
@@ -300,19 +300,19 @@ describe('agent runner Responses adapters', () => {
     })
   })
 
-  it('marks expanded Hermes MCP Anthropic tool calls with their Responses namespace', () => {
+  it('marks expanded DiTing MCP Anthropic tool calls with their Responses namespace', () => {
     expect(anthropicMessageToResponses({
       id: 'msg_1',
       content: [
-        { type: 'tool_use', id: 'toolu_1', name: 'hermes_studio_lan_devices_list', input: { profile: 'default' } },
+        { type: 'tool_use', id: 'toolu_1', name: 'DiTing_studio_lan_devices_list', input: { profile: 'default' } },
       ],
       usage: { input_tokens: 1, output_tokens: 1 },
     }, target)).toMatchObject({
       output: [{
         type: 'function_call',
         call_id: 'toolu_1',
-        name: 'hermes_studio_lan_devices_list',
-        namespace: 'mcp__hermes_studio',
+        name: 'DiTing_studio_lan_devices_list',
+        namespace: 'mcp__DiTing_studio',
       }],
     })
   })
@@ -381,9 +381,9 @@ describe('agent runner Responses stream adapters', () => {
     })
   })
 
-  it('marks expanded Hermes MCP Chat SSE tool calls with their Responses namespace', async () => {
+  it('marks expanded DiTing MCP Chat SSE tool calls with their Responses namespace', async () => {
     const events = await collectEvents(openAiChatSseToResponsesEvents(encodedChunks([
-      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"hermes_studio_lan_devices_scan","arguments":"{}"}}]}}]}\n\n',
+      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"DiTing_studio_lan_devices_scan","arguments":"{}"}}]}}]}\n\n',
       'data: [DONE]\n\n',
     ]), codexTarget))
 
@@ -394,8 +394,8 @@ describe('agent runner Responses stream adapters', () => {
           item: expect.objectContaining({
             type: 'function_call',
             call_id: 'call_1',
-            name: 'hermes_studio_lan_devices_scan',
-            namespace: 'mcp__hermes_studio',
+            name: 'DiTing_studio_lan_devices_scan',
+            namespace: 'mcp__DiTing_studio',
           }),
         }),
       }),
@@ -442,10 +442,10 @@ describe('agent runner Responses stream adapters', () => {
     })
   })
 
-  it('marks expanded Hermes MCP Anthropic SSE tool calls with their Responses namespace', async () => {
+  it('marks expanded DiTing MCP Anthropic SSE tool calls with their Responses namespace', async () => {
     const events = await collectEvents(anthropicMessagesSseToResponsesEvents(encodedChunks([
       'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_1"}}\n\n',
-      'event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"hermes_studio_lan_devices_list","input":{}}}\n\n',
+      'event: content_block_start\ndata: {"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_1","name":"DiTing_studio_lan_devices_list","input":{}}}\n\n',
       'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\\"profile\\":\\"default\\"}"}}\n\n',
       'event: message_stop\ndata: {"type":"message_stop"}\n\n',
     ]), codexTarget))
@@ -457,8 +457,8 @@ describe('agent runner Responses stream adapters', () => {
           item: expect.objectContaining({
             type: 'function_call',
             call_id: 'toolu_1',
-            name: 'hermes_studio_lan_devices_list',
-            namespace: 'mcp__hermes_studio',
+            name: 'DiTing_studio_lan_devices_list',
+            namespace: 'mcp__DiTing_studio',
           }),
         }),
       }),

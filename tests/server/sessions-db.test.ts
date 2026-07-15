@@ -15,13 +15,13 @@ const prepareMock = vi.fn((sql: string) => {
 })
 const closeMock = vi.fn()
 const databaseSyncMock = vi.fn(() => ({ prepare: prepareMock, close: closeMock }))
-const getActiveProfileDirMock = vi.fn(() => '/tmp/hermes-profile')
+const getActiveProfileDirMock = vi.fn(() => '/tmp/DiTing-profile')
 
 vi.doMock('node:sqlite', () => ({
   DatabaseSync: databaseSyncMock,
 }))
 
-vi.mock('../../packages/server/src/services/hermes/hermes-profile', () => ({
+vi.mock('../../packages/server/src/services/DiTing/DiTing-profile', () => ({
   getActiveProfileDir: getActiveProfileDirMock,
 }))
 
@@ -38,7 +38,7 @@ describe('session DB summaries', () => {
     closeMock.mockClear()
     databaseSyncMock.mockClear()
     getActiveProfileDirMock.mockReset()
-    getActiveProfileDirMock.mockReturnValue('/tmp/hermes-profile')
+    getActiveProfileDirMock.mockReturnValue('/tmp/DiTing-profile')
   })
 
   it('queries sqlite for lightweight session summaries', async () => {
@@ -68,10 +68,10 @@ describe('session DB summaries', () => {
       },
     ])
 
-    const mod = await import('../../packages/server/src/db/hermes/sessions-db')
+    const mod = await import('../../packages/server/src/db/DiTing/sessions-db')
     const rows = await mod.listSessionSummaries(undefined, 50)
 
-    expect(databaseSyncMock).toHaveBeenCalledWith('/tmp/hermes-profile/state.db', { open: true, readOnly: true })
+    expect(databaseSyncMock).toHaveBeenCalledWith('/tmp/DiTing-profile/state.db', { open: true, readOnly: true })
     expect(prepareMock).toHaveBeenCalledWith(expect.stringContaining("s.source != 'tool'"))
     expect(allMock).toHaveBeenCalledWith(200)
     expect(closeMock).toHaveBeenCalled()
@@ -129,7 +129,7 @@ describe('session DB summaries', () => {
       },
     ])
 
-    const mod = await import('../../packages/server/src/db/hermes/sessions-db')
+    const mod = await import('../../packages/server/src/db/DiTing/sessions-db')
     const rows = await mod.listSessionSummaries('telegram', 2)
 
     expect(prepareMock).toHaveBeenCalledWith(expect.stringContaining("s.source != 'tool'"))
@@ -223,7 +223,7 @@ describe('session DB summaries', () => {
       },
     ])
 
-    const mod = await import('../../packages/server/src/db/hermes/sessions-db')
+    const mod = await import('../../packages/server/src/db/DiTing/sessions-db')
     const rows = await mod.searchSessionSummaries('docker', undefined, 10)
 
     expect(prepareMock).toHaveBeenCalledWith(expect.stringContaining('messages_fts MATCH'))
@@ -270,7 +270,7 @@ describe('session DB summaries', () => {
       },
     ])
 
-    const mod = await import('../../packages/server/src/db/hermes/sessions-db')
+    const mod = await import('../../packages/server/src/db/DiTing/sessions-db')
     const rows = await mod.searchSessionSummaries('.', undefined, 10)
 
     expect(contentAllMock).not.toHaveBeenCalled()
@@ -310,7 +310,7 @@ describe('session DB summaries', () => {
       },
     ])
 
-    const mod = await import('../../packages/server/src/db/hermes/sessions-db')
+    const mod = await import('../../packages/server/src/db/DiTing/sessions-db')
     const rows = await mod.searchSessionSummaries('node.js', undefined, 10)
 
     expect(contentAllMock).toHaveBeenCalled()
@@ -377,7 +377,7 @@ describe('session DB summaries', () => {
       },
     ])
 
-    const mod = await import('../../packages/server/src/db/hermes/sessions-db')
+    const mod = await import('../../packages/server/src/db/DiTing/sessions-db')
     const rows = await mod.searchSessionSummaries('node.js*', undefined, 10)
 
     expect(titleAllMock).toHaveBeenCalledWith('%node.js%', 200)
@@ -446,7 +446,7 @@ describe('session DB summaries', () => {
       },
     ])
 
-    const mod = await import('../../packages/server/src/db/hermes/sessions-db')
+    const mod = await import('../../packages/server/src/db/DiTing/sessions-db')
     const rows = await mod.searchSessionSummaries('"node.js"*', undefined, 10)
 
     expect(titleAllMock).toHaveBeenCalledWith('%node.js%', 200)
@@ -488,7 +488,7 @@ describe('session DB summaries', () => {
       },
     ])
 
-    const mod = await import('../../packages/server/src/db/hermes/sessions-db')
+    const mod = await import('../../packages/server/src/db/DiTing/sessions-db')
     const rows = await mod.searchSessionSummaries('naïve.js', undefined, 10)
 
     expect(contentAllMock).toHaveBeenCalledWith('"naïve.js"', 200)
@@ -528,7 +528,7 @@ describe('session DB summaries', () => {
       },
     ])
 
-    const mod = await import('../../packages/server/src/db/hermes/sessions-db')
+    const mod = await import('../../packages/server/src/db/DiTing/sessions-db')
     const rows = await mod.searchSessionSummaries('100%', undefined, 10)
 
     expect(titleAllMock).toHaveBeenCalledWith('%100\\%%', 200)
@@ -568,7 +568,7 @@ describe('session DB summaries', () => {
       },
     ])
 
-    const mod = await import('../../packages/server/src/db/hermes/sessions-db')
+    const mod = await import('../../packages/server/src/db/DiTing/sessions-db')
     const rows = await mod.searchSessionSummaries('记忆断裂', undefined, 10)
 
     expect(contentAllMock).not.toHaveBeenCalled()
@@ -638,7 +638,7 @@ describe('session DB summaries', () => {
       },
     ])
 
-    const mod = await import('../../packages/server/src/db/hermes/sessions-db')
+    const mod = await import('../../packages/server/src/db/DiTing/sessions-db')
     const rows = await mod.searchSessionSummaries('记忆断裂', undefined, 10)
 
     expect(likeAllMock).toHaveBeenCalledWith('记忆断裂', '%记忆断裂%', 200)
@@ -654,7 +654,7 @@ describe('session DB summaries', () => {
       throw new Error('database malformed')
     })
 
-    const mod = await import('../../packages/server/src/db/hermes/sessions-db')
+    const mod = await import('../../packages/server/src/db/DiTing/sessions-db')
 
     const rows = await mod.searchSessionSummaries('docker', undefined, 10)
     expect(rows).toEqual([])
@@ -667,7 +667,7 @@ describe('session DB summaries', () => {
       throw new Error('no such table: messages_fts')
     })
 
-    const mod = await import('../../packages/server/src/db/hermes/sessions-db')
+    const mod = await import('../../packages/server/src/db/DiTing/sessions-db')
 
     const rows = await mod.searchSessionSummaries('123', undefined, 10)
     expect(rows).toEqual([])
@@ -680,7 +680,7 @@ describe('session DB summaries', () => {
       throw new Error('no such table: messages_fts')
     })
 
-    const mod = await import('../../packages/server/src/db/hermes/sessions-db')
+    const mod = await import('../../packages/server/src/db/DiTing/sessions-db')
 
     const rows = await mod.searchSessionSummaries('123', 'telegram', 10)
     expect(rows).toEqual([])
@@ -719,7 +719,7 @@ describe('session DB summaries', () => {
       throw new Error('no such table: messages_fts')
     })
 
-    const mod = await import('../../packages/server/src/db/hermes/sessions-db')
+    const mod = await import('../../packages/server/src/db/DiTing/sessions-db')
 
     const rows = await mod.searchSessionSummaries('123', undefined, 10)
     expect(rows).toHaveLength(1)
@@ -733,7 +733,7 @@ describe('session DB summaries', () => {
       throw new Error('no such table: messages_fts')
     })
 
-    const mod = await import('../../packages/server/src/db/hermes/sessions-db')
+    const mod = await import('../../packages/server/src/db/DiTing/sessions-db')
 
     const rows = await mod.searchSessionSummaries('docker', undefined, 10)
     expect(rows).toEqual([])
@@ -745,7 +745,7 @@ describe('session DB summaries', () => {
       throw new Error('database malformed')
     })
 
-    const mod = await import('../../packages/server/src/db/hermes/sessions-db')
+    const mod = await import('../../packages/server/src/db/DiTing/sessions-db')
 
     const rows = await mod.searchSessionSummaries('123', undefined, 10)
     expect(rows).toEqual([])

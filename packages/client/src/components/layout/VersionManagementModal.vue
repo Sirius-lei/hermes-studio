@@ -18,7 +18,7 @@ import {
   type VersionDownloadJobStatus,
   type VersionDownloadKind,
   type VersionDownloadSource,
-} from '@/api/hermes/runtime-versions'
+} from '@/api/DiTing/runtime-versions'
 
 const props = defineProps<{ show: boolean }>()
 const emit = defineEmits<{ (event: 'update:show', value: boolean): void }>()
@@ -34,11 +34,11 @@ const loadError = ref('')
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
 const currentPlatformRuntime = computed(() =>
-  (status.value?.hermes.installed || []).filter(item => item.platform === status.value?.platform),
+  (status.value?.DiTing.installed || []).filter(item => item.platform === status.value?.platform),
 )
 
 const runtimeVersions = computed(() => uniqueVersions([
-  ...(status.value?.hermes.remoteVersions || []),
+  ...(status.value?.DiTing.remoteVersions || []),
   ...currentPlatformRuntime.value.map(item => item.version),
 ]))
 
@@ -271,8 +271,8 @@ async function removeWebUi(version: string) {
             <NButton size="small" secondary @click="loadAll">{{ t('runtimeVersions.refresh') }}</NButton>
           </div>
           <div class="active-path">
-            <span>{{ t('runtimeVersions.activeVersion') }}: {{ status?.hermes.activeVersion || '-' }}</span>
-            <span :title="status?.hermes.activeDirectory || ''">{{ status?.hermes.activeDirectory || '-' }}</span>
+            <span>{{ t('runtimeVersions.activeVersion') }}: {{ status?.DiTing.activeVersion || '-' }}</span>
+            <span :title="status?.DiTing.activeDirectory || ''">{{ status?.DiTing.activeDirectory || '-' }}</span>
           </div>
           <div class="version-list">
             <div v-for="version in runtimeVersions" :key="`runtime-${version}`" class="version-row">

@@ -13,8 +13,8 @@ describe('file path clipboard helpers', () => {
   it('prefers absolute path metadata when available', () => {
     expect(getClipboardPathForEntry({
       ...baseEntry,
-      absolutePath: '/home/agent/.hermes/logs/app.log',
-    })).toBe('/home/agent/.hermes/logs/app.log')
+      absolutePath: '/home/agent/.diting/logs/app.log',
+    })).toBe('/home/agent/.diting/logs/app.log')
   })
 
   it('falls back to the relative operation path for older API responses', () => {

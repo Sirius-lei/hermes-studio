@@ -4,21 +4,21 @@
 
 本次提交是一个阶段性快照，不是最终版本。
 
-目标是先把 Hermes Studio 从单一聊天界面推进到“任务规划 + 子智能体委派 + 右侧执行路径展示”的基础形态，便于后续继续迭代。
+目标是先把 DiTing Studio 从单一聊天界面推进到“任务规划 + 子智能体委派 + 右侧执行路径展示”的基础形态，便于后续继续迭代。
 
 ## 本次已落地内容
 
 ### 1. 聊天页加入多智能体协作入口
 
-- 在 `/#/hermes/chat` 的输入区工具栏增加了“多智能体”开关
+- 在 `/#/DiTing/chat` 的输入区工具栏增加了“多智能体”开关
 - 用户开启后，右侧会展开协作面板
 - 协作面板不再依赖单纯静态 mock，而是消费运行时路由事件和子智能体事件
 
 相关文件：
 
-- `packages/client/src/components/hermes/chat/ChatInput.vue`
-- `packages/client/src/components/hermes/chat/ChatPanel.vue`
-- `packages/client/src/stores/hermes/chat.ts`
+- `packages/client/src/components/DiTing/chat/ChatInput.vue`
+- `packages/client/src/components/DiTing/chat/ChatPanel.vue`
+- `packages/client/src/stores/DiTing/chat.ts`
 
 ### 2. 增加任务规划与执行路径的前端展示骨架
 
@@ -30,7 +30,7 @@
   - 子智能体回传活动流
 - 节点状态支持 `todo / doing / done / blocked`
 
-当前展示更接近 Plan 模式的可视化侧栏，但仍然是 Hermes 内部状态投影，不是完整通用工作流引擎。
+当前展示更接近 Plan 模式的可视化侧栏，但仍然是 DiTing 内部状态投影，不是完整通用工作流引擎。
 
 ### 3. 增加子智能体管理与任务规划页面骨架
 
@@ -39,12 +39,12 @@
 
 相关文件：
 
-- `packages/client/src/views/hermes/SubAgentsView.vue`
-- `packages/client/src/views/hermes/TaskPlansView.vue`
-- `packages/client/src/api/hermes/task-plans.ts`
-- `packages/server/src/controllers/hermes/task-plans.ts`
-- `packages/server/src/routes/hermes/task-plans.ts`
-- `packages/server/src/db/hermes/task-plan-store.ts`
+- `packages/client/src/views/DiTing/SubAgentsView.vue`
+- `packages/client/src/views/DiTing/TaskPlansView.vue`
+- `packages/client/src/api/DiTing/task-plans.ts`
+- `packages/server/src/controllers/DiTing/task-plans.ts`
+- `packages/server/src/routes/DiTing/task-plans.ts`
+- `packages/server/src/db/DiTing/task-plan-store.ts`
 - `packages/server/src/services/task-planner.ts`
 
 ### 4. 增加多智能体路由与子智能体委派链路
@@ -55,10 +55,10 @@
 
 相关文件：
 
-- `packages/server/src/services/hermes/run-chat/multi-agent-routing.ts`
-- `packages/server/src/services/hermes/run-chat/index.ts`
-- `packages/server/src/services/hermes/run-chat/types.ts`
-- `packages/client/src/api/hermes/chat.ts`
+- `packages/server/src/services/DiTing/run-chat/multi-agent-routing.ts`
+- `packages/server/src/services/DiTing/run-chat/index.ts`
+- `packages/server/src/services/DiTing/run-chat/types.ts`
+- `packages/client/src/api/DiTing/chat.ts`
 
 ### 5. 子智能体调用已对齐 `subAgent-pi` 的 OpenAI-compatible 流式接口
 
@@ -83,7 +83,7 @@
 
 相关文件：
 
-- `packages/server/src/services/hermes/run-chat/handle-subagent-run.ts`
+- `packages/server/src/services/DiTing/run-chat/handle-subagent-run.ts`
 
 ### 6. 清理右侧执行路径中的脏标签
 
@@ -101,9 +101,9 @@
 
 相关文件：
 
-- `packages/server/src/services/hermes/run-chat/handle-subagent-run.ts`
+- `packages/server/src/services/DiTing/run-chat/handle-subagent-run.ts`
 - `packages/client/src/utils/agent-display-text.ts`
-- `packages/client/src/stores/hermes/chat.ts`
+- `packages/client/src/stores/DiTing/chat.ts`
 
 ### 7. 已补基础测试
 
@@ -130,7 +130,7 @@
 
 ### 3. 主从智能体通信协议尚未标准化
 
-现在仍然是 Hermes 直连 `subAgent-pi` 运行时。
+现在仍然是 DiTing 直连 `subAgent-pi` 运行时。
 
 还没有落成：
 

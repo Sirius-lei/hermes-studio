@@ -23,15 +23,15 @@ import {
   webuiDir,
 } from './paths'
 import {
-  compareHermesAgentVersions,
-  hermesAgentVersionFromRuntimeTag,
-  runtimeManifestMatchesHermesAgentVersion,
+  compareDiTingAgentVersions,
+  DiTingAgentVersionFromRuntimeTag,
+  runtimeManifestMatchesDiTingAgentVersion,
 } from './runtime-version'
 import { extractTarGzipArchive } from './runtime-archive'
 import { t } from './desktop-i18n'
 
 const DEFAULT_RUNTIME_BASE_URL = 'https://download.ekkolearnai.com'
-const DEFAULT_RUNTIME_GITHUB_REPO = 'EKKOLearnAI/hermes-studio'
+const DEFAULT_RUNTIME_GITHUB_REPO = 'EKKOLearnAI/DiTing-studio'
 const RUNTIME_MANIFEST_NAME = 'runtime-manifest.json'
 const PACKAGED_RUNTIME_RELEASE_NAME = 'runtime-release.json'
 const ACTIVE_RUNTIME_VERSION_NAME = 'active-version.json'
@@ -41,7 +41,7 @@ export type RuntimeDownloadSource = 'cf' | 'github'
 type RuntimeManifest = {
   schema: number
   platform: string
-  hermesAgentVersion?: string
+  DiTingAgentVersion?: string
   asset?: {
     name: string
     url?: string
@@ -54,12 +54,12 @@ type RuntimeDescriptor = {
   name: string
   url: string
   sha256?: string
-  hermesAgentVersion?: string
+  DiTingAgentVersion?: string
 }
 
 type PackagedRuntimeRelease = {
   tag?: string
-  hermesAgentVersion?: string
+  DiTingAgentVersion?: string
 }
 
 export type RuntimeProgress = {
@@ -74,7 +74,7 @@ type RuntimeProgressHandler = (progress: RuntimeProgress) => void
 
 function runtimeDownloadSource(source?: RuntimeDownloadSource): RuntimeDownloadSource | null {
   if (source) return source
-  const value = process.env.HERMES_DESKTOP_RUNTIME_SOURCE?.trim().toLowerCase()
+  const value = process.env.DiTing_DESKTOP_RUNTIME_SOURCE?.trim().toLowerCase()
   if (value === 'github' || value === 'cf') return value
   return null
 }
@@ -83,13 +83,13 @@ function requiredRuntimeFiles(root: string): string[] {
   const pythonBin = process.platform === 'win32'
     ? join(root, 'python', 'python.exe')
     : join(root, 'python', 'bin', 'python3')
-  const hermesBin = process.platform === 'win32'
-    ? join(root, 'python', 'Scripts', 'hermes.exe')
-    : join(root, 'python', 'bin', 'hermes')
+  const DiTingBin = process.platform === 'win32'
+    ? join(root, 'python', 'Scripts', 'DiTing.exe')
+    : join(root, 'python', 'bin', 'DiTing')
   const nodeBin = process.platform === 'win32'
     ? join(root, 'node', 'node.exe')
     : join(root, 'node', 'bin', 'node')
-  const files = [pythonBin, hermesBin, nodeBin, join(root, RUNTIME_MANIFEST_NAME)]
+  const files = [pythonBin, DiTingBin, nodeBin, join(root, RUNTIME_MANIFEST_NAME)]
   if (process.platform === 'win32') files.push(join(root, 'git', 'cmd', 'git.exe'))
   return files
 }
@@ -105,7 +105,7 @@ function runtimeReady(): boolean {
 function rootRuntimeReady(root: string): boolean {
   const gitPath = process.platform === 'win32' ? join(root, 'git', 'cmd', 'git.exe') : null
   return existsSync(process.platform === 'win32' ? join(root, 'python', 'python.exe') : join(root, 'python', 'bin', 'python3'))
-    && existsSync(process.platform === 'win32' ? join(root, 'python', 'Scripts', 'hermes.exe') : join(root, 'python', 'bin', 'hermes'))
+    && existsSync(process.platform === 'win32' ? join(root, 'python', 'Scripts', 'DiTing.exe') : join(root, 'python', 'bin', 'DiTing'))
     && existsSync(process.platform === 'win32' ? join(root, 'node', 'node.exe') : join(root, 'node', 'bin', 'node'))
     && (!gitPath || existsSync(gitPath))
 }
@@ -115,7 +115,7 @@ export function isDesktopRuntimeReady(): boolean {
 }
 
 function releaseTagCandidates(): string[] {
-  const override = process.env.HERMES_DESKTOP_RUNTIME_RELEASE_TAG?.trim()
+  const override = process.env.DiTing_DESKTOP_RUNTIME_RELEASE_TAG?.trim()
   if (override) return [override]
 
   const version = app.getVersion()
@@ -131,11 +131,11 @@ function packagedRuntimeReleaseMetadata(): PackagedRuntimeRelease | null {
   for (const candidate of candidates) {
     if (!existsSync(candidate)) continue
     try {
-      const metadata = JSON.parse(readFileSync(candidate, 'utf-8')) as { tag?: unknown; hermesAgentVersion?: unknown }
+      const metadata = JSON.parse(readFileSync(candidate, 'utf-8')) as { tag?: unknown; DiTingAgentVersion?: unknown }
       return {
         tag: typeof metadata.tag === 'string' && metadata.tag.trim() ? metadata.tag.trim() : undefined,
-        hermesAgentVersion: typeof metadata.hermesAgentVersion === 'string' && metadata.hermesAgentVersion.trim()
-          ? metadata.hermesAgentVersion.trim()
+        DiTingAgentVersion: typeof metadata.DiTingAgentVersion === 'string' && metadata.DiTingAgentVersion.trim()
+          ? metadata.DiTingAgentVersion.trim()
           : undefined,
       }
     } catch {}
@@ -152,31 +152,31 @@ function packagedRuntimeReleaseTag(): string | null {
 
 export function cachedRuntimeNeedsPackagedReleaseUpdate(): boolean {
   const metadata = packagedRuntimeReleaseMetadata()
-  const expectedVersion = process.env.HERMES_DESKTOP_RUNTIME_RELEASE_TAG
-    ? hermesAgentVersionFromRuntimeTag(process.env.HERMES_DESKTOP_RUNTIME_RELEASE_TAG)
-    : metadata?.hermesAgentVersion || hermesAgentVersionFromRuntimeTag(metadata?.tag)
+  const expectedVersion = process.env.DiTing_DESKTOP_RUNTIME_RELEASE_TAG
+    ? DiTingAgentVersionFromRuntimeTag(process.env.DiTing_DESKTOP_RUNTIME_RELEASE_TAG)
+    : metadata?.DiTingAgentVersion || DiTingAgentVersionFromRuntimeTag(metadata?.tag)
   if (!expectedVersion) return false
   const manifest = readCachedRuntimeManifest(desktopRuntimeDir())
   const assetVersion = typeof manifest?.asset?.name === 'string'
-    ? manifest.asset.name.match(/hermes-agent-([^-]+)-/)?.[1]
+    ? manifest.asset.name.match(/diting-agent-([^-]+)-/)?.[1]
     : undefined
-  const cachedVersion = manifest?.hermesAgentVersion || assetVersion
-  const comparison = compareHermesAgentVersions(cachedVersion, expectedVersion)
+  const cachedVersion = manifest?.DiTingAgentVersion || assetVersion
+  const comparison = compareDiTingAgentVersions(cachedVersion, expectedVersion)
   if (comparison !== null) return comparison < 0
-  const match = runtimeManifestMatchesHermesAgentVersion(manifest, expectedVersion)
+  const match = runtimeManifestMatchesDiTingAgentVersion(manifest, expectedVersion)
   return match === false
 }
 
 function runtimeAssetUrl(assetName: string, tag: string, source: RuntimeDownloadSource): string {
   if (source === 'github') {
-    const repo = process.env.HERMES_DESKTOP_RUNTIME_REPO?.trim() || DEFAULT_RUNTIME_GITHUB_REPO
+    const repo = process.env.DiTing_DESKTOP_RUNTIME_REPO?.trim() || DEFAULT_RUNTIME_GITHUB_REPO
     if (tag === 'latest') {
       return `https://github.com/${repo}/releases/latest/download/${encodeURIComponent(assetName)}`
     }
     return `https://github.com/${repo}/releases/download/${encodeURIComponent(tag)}/${encodeURIComponent(assetName)}`
   }
 
-  const template = process.env.HERMES_DESKTOP_RUNTIME_BASE_URL?.trim() || DEFAULT_RUNTIME_BASE_URL
+  const template = process.env.DiTing_DESKTOP_RUNTIME_BASE_URL?.trim() || DEFAULT_RUNTIME_BASE_URL
   if (template.includes('{asset}') || template.includes('{tag}')) {
     return template
       .replace(/\{asset\}/g, encodeURIComponent(assetName))
@@ -199,16 +199,16 @@ async function fetchJson<T>(url: string): Promise<T> {
 }
 
 async function resolveRuntimeDescriptor(source?: RuntimeDownloadSource): Promise<RuntimeDescriptor> {
-  const directUrl = process.env.HERMES_DESKTOP_RUNTIME_URL?.trim()
+  const directUrl = process.env.DiTing_DESKTOP_RUNTIME_URL?.trim()
   if (directUrl) {
-    return { name: basename(new URL(directUrl).pathname) || 'hermes-runtime.tar.gz', url: directUrl }
+    return { name: basename(new URL(directUrl).pathname) || 'DiTing-runtime.tar.gz', url: directUrl }
   }
 
   const downloadSource = runtimeDownloadSource(source)
-  const platformManifestName = `hermes-runtime-${runtimePlatformKey()}.json`
-  const manifestOverride = process.env.HERMES_DESKTOP_RUNTIME_MANIFEST_URL?.trim()
+  const platformManifestName = `DiTing-runtime-${runtimePlatformKey()}.json`
+  const manifestOverride = process.env.DiTing_DESKTOP_RUNTIME_MANIFEST_URL?.trim()
   if (!downloadSource && !manifestOverride) {
-    throw new Error('Hermes runtime download source is not selected')
+    throw new Error('DiTing runtime download source is not selected')
   }
 
   const candidates = manifestOverride
@@ -218,7 +218,7 @@ async function resolveRuntimeDescriptor(source?: RuntimeDownloadSource): Promise
   let lastError: Error | null = null
   for (const candidate of candidates) {
     try {
-      console.log(`[runtime] resolving Hermes runtime from ${downloadSource || 'custom'}: ${candidate.url}`)
+      console.log(`[runtime] resolving DiTing runtime from ${downloadSource || 'custom'}: ${candidate.url}`)
       const manifest = await fetchJson<RuntimeManifest>(candidate.url)
       if (!manifest.asset?.name) {
         throw new Error(`runtime manifest is missing asset.name: ${candidate.url}`)
@@ -230,14 +230,14 @@ async function resolveRuntimeDescriptor(source?: RuntimeDownloadSource): Promise
         name: manifest.asset.name,
         url: manifest.asset.url || runtimeAssetUrl(manifest.asset.name, candidate.tag, downloadSource!),
         sha256: manifest.asset.sha256,
-        hermesAgentVersion: manifest.hermesAgentVersion,
+        DiTingAgentVersion: manifest.DiTingAgentVersion,
       }
     } catch (err) {
       lastError = err instanceof Error ? err : new Error(String(err))
     }
   }
 
-  throw lastError || new Error('Unable to resolve Hermes desktop runtime package')
+  throw lastError || new Error('Unable to resolve DiTing desktop runtime package')
 }
 
 function readCachedRuntimeManifest(root: string): RuntimeManifest | null {
@@ -261,12 +261,12 @@ function webUiVersion(): string {
 
 export function writeActiveRuntimeVersion(runtimeRoot = desktopRuntimeDir()): void {
   const manifest = readCachedRuntimeManifest(runtimeRoot)
-  const hermesRuntimeVersion = manifest?.hermesAgentVersion || desktopRuntimeVersion()
+  const DiTingRuntimeVersion = manifest?.DiTingAgentVersion || desktopRuntimeVersion()
   const activeVersionPath = join(webUiHome(), 'desktop-runtime', ACTIVE_RUNTIME_VERSION_NAME)
   mkdirSync(dirname(activeVersionPath), { recursive: true })
   writeFileSync(activeVersionPath, JSON.stringify({
     schema: 1,
-    hermesRuntimeVersion,
+    DiTingRuntimeVersion,
     webUiVersion: webUiVersion(),
     runtimeDirectory: runtimeRoot,
     webUiDirectory: webuiDir(),
@@ -373,17 +373,17 @@ export async function ensureDesktopRuntime(
     onProgress?.({ stage: 'resolve', message: t('runtime.checking') })
     descriptor = await resolveRuntimeDescriptor(source)
   } catch (err) {
-    if (runtimeReady() && !process.env.HERMES_DESKTOP_RUNTIME_FORCE_UPDATE) {
-      console.warn(`[runtime] using cached Hermes runtime because update check failed: ${err instanceof Error ? err.message : String(err)}`)
+    if (runtimeReady() && !process.env.DiTing_DESKTOP_RUNTIME_FORCE_UPDATE) {
+      console.warn(`[runtime] using cached DiTing runtime because update check failed: ${err instanceof Error ? err.message : String(err)}`)
       return
     }
     throw err
   }
 
-  if (cachedRuntimeMatches(runtimeRoot, descriptor) && !process.env.HERMES_DESKTOP_RUNTIME_FORCE_UPDATE) return
+  if (cachedRuntimeMatches(runtimeRoot, descriptor) && !process.env.DiTing_DESKTOP_RUNTIME_FORCE_UPDATE) return
 
   const archive = join(dirname(runtimeRoot), `${descriptor.name}.download`)
-  console.log(`[runtime] downloading Hermes runtime ${descriptor.name}`)
+  console.log(`[runtime] downloading DiTing runtime ${descriptor.name}`)
   onProgress?.({ stage: 'download', message: t('runtime.downloadingPackage', { name: descriptor.name }) })
   let archiveSize = 0
   try {
@@ -408,7 +408,7 @@ export async function ensureDesktopRuntime(
     writeFileSync(manifestPath, JSON.stringify({
       schema: 1,
       platform: runtimePlatformKey(),
-      hermesAgentVersion: descriptor.hermesAgentVersion,
+      DiTingAgentVersion: descriptor.DiTingAgentVersion,
       asset: {
         name: descriptor.name,
         sha256: descriptor.sha256,
@@ -418,5 +418,5 @@ export async function ensureDesktopRuntime(
   }
   onProgress?.({ stage: 'ready', message: t('runtime.ready') })
   writeActiveRuntimeVersion(runtimeRoot)
-  console.log(`[runtime] Hermes runtime ready at ${runtimeRoot}`)
+  console.log(`[runtime] DiTing runtime ready at ${runtimeRoot}`)
 }

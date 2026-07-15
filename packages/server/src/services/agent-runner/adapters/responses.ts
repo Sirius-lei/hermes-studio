@@ -2,36 +2,36 @@ export interface ResponsesAdapterTarget {
   model: string
 }
 
-const HERMES_STUDIO_NAMESPACE = 'mcp__hermes_studio'
+const DiTing_STUDIO_NAMESPACE = 'mcp__DiTing_studio'
 
-const HERMES_STUDIO_MCP_TOOLS = [
+const DiTing_STUDIO_MCP_TOOLS = [
   {
-    name: 'hermes_studio_lan_devices_list',
-    description: 'List known LAN and remote devices from Hermes Web UI, including pairing and online status.',
+    name: 'DiTing_studio_lan_devices_list',
+    description: 'List known LAN and remote devices from DiTing Web UI, including pairing and online status.',
     inputSchema: inputSchema(),
   },
   {
-    name: 'hermes_studio_lan_devices_scan',
+    name: 'DiTing_studio_lan_devices_scan',
     description: 'Refresh LAN device discovery cache and return known devices with pairing and online status.',
     inputSchema: inputSchema(),
   },
   {
-    name: 'hermes_studio_lan_peer_connect',
+    name: 'DiTing_studio_lan_peer_connect',
     description: 'Connect to a paired LAN device by device id.',
     inputSchema: inputSchema({ device_id: { type: 'string' } }, ['device_id']),
   },
   {
-    name: 'hermes_studio_lan_peer_connections',
+    name: 'DiTing_studio_lan_peer_connections',
     description: 'List active LAN peer socket connections.',
     inputSchema: inputSchema(),
   },
   {
-    name: 'hermes_studio_lan_peer_disconnect',
+    name: 'DiTing_studio_lan_peer_disconnect',
     description: 'Disconnect an active LAN peer socket connection.',
     inputSchema: inputSchema({ connection_id: { type: 'string' } }, ['connection_id']),
   },
   {
-    name: 'hermes_studio_lan_terminal_create',
+    name: 'DiTing_studio_lan_terminal_create',
     description: 'Create an interactive terminal on a connected LAN peer.',
     inputSchema: inputSchema({
       connection_id: { type: 'string' },
@@ -41,12 +41,12 @@ const HERMES_STUDIO_MCP_TOOLS = [
     }, ['connection_id']),
   },
   {
-    name: 'hermes_studio_lan_terminal_list',
+    name: 'DiTing_studio_lan_terminal_list',
     description: 'List interactive terminals tracked for a connected LAN peer, including IDs that can be read or closed.',
     inputSchema: inputSchema({ connection_id: { type: 'string' } }, ['connection_id']),
   },
   {
-    name: 'hermes_studio_lan_terminal_input',
+    name: 'DiTing_studio_lan_terminal_input',
     description: 'Write input to an interactive terminal on a connected LAN peer.',
     inputSchema: inputSchema({
       connection_id: { type: 'string' },
@@ -55,7 +55,7 @@ const HERMES_STUDIO_MCP_TOOLS = [
     }, ['connection_id', 'terminal_id', 'data']),
   },
   {
-    name: 'hermes_studio_lan_terminal_read',
+    name: 'DiTing_studio_lan_terminal_read',
     description: 'Read buffered terminal output from an interactive terminal.',
     inputSchema: inputSchema({
       connection_id: { type: 'string' },
@@ -63,7 +63,7 @@ const HERMES_STUDIO_MCP_TOOLS = [
     }, ['connection_id', 'terminal_id']),
   },
   {
-    name: 'hermes_studio_lan_terminal_resize',
+    name: 'DiTing_studio_lan_terminal_resize',
     description: 'Resize an interactive terminal on a connected LAN peer.',
     inputSchema: inputSchema({
       connection_id: { type: 'string' },
@@ -73,7 +73,7 @@ const HERMES_STUDIO_MCP_TOOLS = [
     }, ['connection_id', 'terminal_id', 'cols', 'rows']),
   },
   {
-    name: 'hermes_studio_lan_terminal_close',
+    name: 'DiTing_studio_lan_terminal_close',
     description: 'Close an interactive terminal on a connected LAN peer.',
     inputSchema: inputSchema({
       connection_id: { type: 'string' },
@@ -81,7 +81,7 @@ const HERMES_STUDIO_MCP_TOOLS = [
     }, ['connection_id', 'terminal_id']),
   },
   {
-    name: 'hermes_studio_lan_command_exec',
+    name: 'DiTing_studio_lan_command_exec',
     description: 'Run a command on a connected LAN peer using command plus args, without shell string execution.',
     inputSchema: inputSchema({
       connection_id: { type: 'string' },
@@ -92,7 +92,7 @@ const HERMES_STUDIO_MCP_TOOLS = [
     }, ['connection_id', 'command']),
   },
   {
-    name: 'hermes_studio_lan_file_download',
+    name: 'DiTing_studio_lan_file_download',
     description: 'Download a file from a connected LAN peer remote path to a local path on this machine.',
     inputSchema: inputSchema({
       connection_id: { type: 'string' },
@@ -102,7 +102,7 @@ const HERMES_STUDIO_MCP_TOOLS = [
     }, ['connection_id', 'remote_path', 'local_path']),
   },
   {
-    name: 'hermes_studio_lan_file_upload',
+    name: 'DiTing_studio_lan_file_upload',
     description: 'Upload a local file path from this machine to a connected LAN peer remote path.',
     inputSchema: inputSchema({
       connection_id: { type: 'string' },
@@ -113,7 +113,7 @@ const HERMES_STUDIO_MCP_TOOLS = [
   },
 ]
 
-const HERMES_STUDIO_MCP_TOOL_NAMES = new Set(HERMES_STUDIO_MCP_TOOLS.map(tool => tool.name))
+const DiTing_STUDIO_MCP_TOOL_NAMES = new Set(DiTing_STUDIO_MCP_TOOLS.map(tool => tool.name))
 
 function inputSchema(properties: Record<string, unknown> = {}, required: string[] = []) {
   return {
@@ -121,11 +121,11 @@ function inputSchema(properties: Record<string, unknown> = {}, required: string[
     properties: {
       token: {
         type: 'string',
-        description: 'Optional Hermes Web UI bearer token. Usually omit this and pass profile so the MCP server can read the temporary profile token.',
+        description: 'Optional DiTing Web UI bearer token. Usually omit this and pass profile so the MCP server can read the temporary profile token.',
       },
       profile: {
         type: 'string',
-        description: 'Hermes profile name for profile-scoped Web UI requests and temporary profile token lookup.',
+        description: 'DiTing profile name for profile-scoped Web UI requests and temporary profile token lookup.',
       },
       ...properties,
     },
@@ -159,14 +159,14 @@ function expandedResponseTools(tools: unknown): any[] {
       addFunctionTool(tool)
       continue
     }
-    if (tool?.type === 'namespace' && normalizedNamespaceName(tool?.name) === HERMES_STUDIO_NAMESPACE) {
-      for (const mcpTool of HERMES_STUDIO_MCP_TOOLS) {
+    if (tool?.type === 'namespace' && normalizedNamespaceName(tool?.name) === DiTing_STUDIO_NAMESPACE) {
+      for (const mcpTool of DiTing_STUDIO_MCP_TOOLS) {
         addFunctionTool({
           type: 'function',
           name: mcpTool.name,
-          description: `${mcpTool.description} MCP namespace: ${HERMES_STUDIO_NAMESPACE}.`,
+          description: `${mcpTool.description} MCP namespace: ${DiTing_STUDIO_NAMESPACE}.`,
           parameters: mcpTool.inputSchema,
-          namespace: HERMES_STUDIO_NAMESPACE,
+          namespace: DiTing_STUDIO_NAMESPACE,
         })
       }
       continue
@@ -203,7 +203,7 @@ function expandedResponseTools(tools: unknown): any[] {
 }
 
 export function responseToolNamespaceForName(name: unknown): string | undefined {
-  return HERMES_STUDIO_MCP_TOOL_NAMES.has(String(name || '')) ? HERMES_STUDIO_NAMESPACE : undefined
+  return DiTing_STUDIO_MCP_TOOL_NAMES.has(String(name || '')) ? DiTing_STUDIO_NAMESPACE : undefined
 }
 
 export function normalizeResponseFunctionCall(name: unknown, argumentsValue: unknown): { name: string; arguments: string; namespace?: string } {

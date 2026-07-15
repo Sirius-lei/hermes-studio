@@ -13,9 +13,9 @@ import { AgentTargetRegistry, type AgentTargetInput } from '../../packages/serve
 import { teeAsyncIterable } from '../../packages/server/src/services/agent-runner/stream-tee'
 import { CodingAgentRunManager, codingAgentGatewayErrorMessage, sanitizeCodingAgentTerminalOutput } from '../../packages/server/src/services/agent-runner/coding-agent-run-manager'
 import { mapCodingAgentResponseEvent } from '../../packages/server/src/services/agent-runner/coding-agent-event-mapper'
-import { applyResponseStreamEvent } from '../../packages/server/src/services/hermes/run-chat/response-stream'
-import { initAllHermesTables } from '../../packages/server/src/db/hermes/schemas'
-import { addMessage, getSession, getSessionDetail, listSessions } from '../../packages/server/src/db/hermes/session-store'
+import { applyResponseStreamEvent } from '../../packages/server/src/services/DiTing/run-chat/response-stream'
+import { initAllDiTingTables } from '../../packages/server/src/db/DiTing/schemas'
+import { addMessage, getSession, getSessionDetail, listSessions } from '../../packages/server/src/db/DiTing/session-store'
 
 describe('agent runner endpoint resolver', () => {
   it('adds v1 for provider hosts without an API root path', () => {
@@ -192,7 +192,7 @@ describe('coding agent terminal output sanitizer', () => {
 })
 
 describe('coding agent run state', () => {
-  it('marks existing scoped Codex runners incompatible when Hermes MCP config is missing', () => {
+  it('marks existing scoped Codex runners incompatible when DiTing MCP config is missing', () => {
     const codexHome = mkdtempSync(join(tmpdir(), 'hwui-codex-mcp-compat-'))
     try {
       writeFileSync(join(codexHome, 'config.toml'), 'model = "gpt-test"\n')
@@ -223,7 +223,7 @@ describe('coding agent run state', () => {
         model: 'gpt-test',
       })).toBe(false)
 
-      writeFileSync(join(codexHome, 'config.toml'), '[mcp_servers.hermes-studio]\ncommand = "node"\n')
+      writeFileSync(join(codexHome, 'config.toml'), '[mcp_servers.diting-studio]\ncommand = "node"\n')
       expect(manager.isSessionLaunchCompatible('chat-session-1', {
         agentId: 'codex',
         mode: 'scoped',
@@ -286,7 +286,7 @@ describe('coding agent run state', () => {
   })
 
   it('clears shared chat session run state when a print turn completes', () => {
-    initAllHermesTables()
+    initAllDiTingTables()
     const manager = new CodingAgentRunManager()
     const state: any = { messages: [], isWorking: false, events: [], queue: [] }
     ;(manager as any).ensureDbSession = () => {}
@@ -333,7 +333,7 @@ describe('coding agent run state', () => {
   })
 
   it('leaves coding agent session titles empty for the existing fallback title logic', () => {
-    initAllHermesTables()
+    initAllDiTingTables()
     const manager = new CodingAgentRunManager()
     const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
     const agentSessionId = `agent-session-empty-title-${suffix}`
@@ -365,7 +365,7 @@ describe('coding agent run state', () => {
   })
 
   it('uses the first coding agent user message as the listed session title when title and preview are empty', () => {
-    initAllHermesTables()
+    initAllDiTingTables()
     const manager = new CodingAgentRunManager()
     const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
     const agentSessionId = `agent-session-title-fallback-${suffix}`
@@ -406,7 +406,7 @@ describe('coding agent run state', () => {
   })
 
   it('starts Codex chat runner without a hidden PTY process', () => {
-    initAllHermesTables()
+    initAllDiTingTables()
     const manager = new CodingAgentRunManager()
     const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
     const result = manager.start({
@@ -433,7 +433,7 @@ describe('coding agent run state', () => {
   })
 
   it('maps Codex exec JSONL assistant deltas into chat messages', () => {
-    initAllHermesTables()
+    initAllDiTingTables()
     const manager = new CodingAgentRunManager()
     const state: any = { messages: [], isWorking: false, events: [], queue: [] }
     const emitted: Array<{ event: string; payload: any }> = []
@@ -495,7 +495,7 @@ describe('coding agent run state', () => {
   })
 
   it('does not duplicate replayed Codex assistant message text', () => {
-    initAllHermesTables()
+    initAllDiTingTables()
     const manager = new CodingAgentRunManager()
     const state: any = { messages: [], isWorking: false, events: [], queue: [] }
     const emitted: Array<{ event: string; payload: any }> = []
@@ -564,7 +564,7 @@ describe('coding agent run state', () => {
   })
 
   it('deduplicates repeated full Codex streaming deltas', () => {
-    initAllHermesTables()
+    initAllDiTingTables()
     const manager = new CodingAgentRunManager()
     const state: any = { messages: [], isWorking: false, events: [], queue: [] }
     const emitted: Array<{ event: string; payload: any }> = []
@@ -620,7 +620,7 @@ describe('coding agent run state', () => {
   })
 
   it('keeps repeated short Codex markdown chunks while deduplicating final replay', () => {
-    initAllHermesTables()
+    initAllDiTingTables()
     const manager = new CodingAgentRunManager()
     const state: any = { messages: [], isWorking: false, events: [], queue: [] }
     const emitted: Array<{ event: string; payload: any }> = []
@@ -685,7 +685,7 @@ describe('coding agent run state', () => {
   })
 
   it('normalizes Codex full-text snapshot deltas before emitting chat deltas', () => {
-    initAllHermesTables()
+    initAllDiTingTables()
     const manager = new CodingAgentRunManager()
     const state: any = { messages: [], isWorking: false, events: [], queue: [] }
     const emitted: Array<{ event: string; payload: any }> = []
@@ -746,7 +746,7 @@ describe('coding agent run state', () => {
   })
 
   it('stores Codex reasoning items in the response run state', () => {
-    initAllHermesTables()
+    initAllDiTingTables()
     const manager = new CodingAgentRunManager()
     const state: any = { messages: [], isWorking: false, events: [], queue: [] }
     const emitted: Array<{ event: string; payload: any }> = []
@@ -816,7 +816,7 @@ describe('coding agent run state', () => {
   })
 
   it('does not append unrelated Codex final text without a tool boundary', () => {
-    initAllHermesTables()
+    initAllDiTingTables()
     const manager = new CodingAgentRunManager()
     const state: any = { messages: [], isWorking: false, events: [], queue: [] }
     const emitted: Array<{ event: string; payload: any }> = []
@@ -871,7 +871,7 @@ describe('coding agent run state', () => {
   })
 
   it('keeps repeated short Codex streaming deltas', () => {
-    initAllHermesTables()
+    initAllDiTingTables()
     const manager = new CodingAgentRunManager()
     const state: any = { messages: [], isWorking: false, events: [], queue: [] }
     const emitted: Array<{ event: string; payload: any }> = []
@@ -927,7 +927,7 @@ describe('coding agent run state', () => {
   })
 
   it('waits for Codex process exit before flushing final text after tools', () => {
-    initAllHermesTables()
+    initAllDiTingTables()
     const manager = new CodingAgentRunManager()
     const state: any = { messages: [], isWorking: false, events: [], queue: [] }
     const emitted: Array<{ event: string; payload: any }> = []
@@ -1081,7 +1081,7 @@ describe('coding agent run state', () => {
   })
 
   it('truncates large coding-agent tool outputs before emitting and flushing to SQLite', () => {
-    initAllHermesTables()
+    initAllDiTingTables()
     const manager = new CodingAgentRunManager()
     const state: any = { messages: [], isWorking: false, events: [], queue: [] }
     const emitted: Array<{ event: string; payload: any }> = []
@@ -1166,7 +1166,7 @@ describe('coding agent run state', () => {
   })
 
   it('records Codex thread id so follow-up turns can resume the native session', () => {
-    initAllHermesTables()
+    initAllDiTingTables()
     const manager = new CodingAgentRunManager()
     const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
     const agentSessionId = `agent-session-codex-thread-${suffix}`
@@ -1196,7 +1196,7 @@ describe('coding agent run state', () => {
   })
 
   it('does not report a completed idle coding-agent session cleanup as a run failure', () => {
-    initAllHermesTables()
+    initAllDiTingTables()
     const manager = new CodingAgentRunManager()
     const emitted: Array<{ event: string; payload: any }> = []
     ;(manager as any).emitToChat = (_sessionId: string, event: string, payload: any) => {
@@ -1231,7 +1231,7 @@ describe('coding agent run state', () => {
   })
 
   it('does not emit run.failed when a print coding-agent session is stopped by abort', () => {
-    initAllHermesTables()
+    initAllDiTingTables()
     const manager = new CodingAgentRunManager()
     const emitted: Array<{ event: string; payload: any }> = []
     ;(manager as any).emitToChat = (_sessionId: string, event: string, payload: any) => {
@@ -1263,7 +1263,7 @@ describe('coding agent run state', () => {
   })
 
   it('defers queued-run release until a print coding-agent child exits', () => {
-    initAllHermesTables()
+    initAllDiTingTables()
     const manager = new CodingAgentRunManager()
     const state: any = { messages: [], isWorking: false, events: [], queue: [{ queue_id: 'queued-1', input: 'next' }] }
     const completed = vi.fn()

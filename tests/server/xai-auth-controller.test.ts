@@ -3,22 +3,22 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { dirname, join } from 'path'
 import { tmpdir } from 'os'
 import YAML from 'js-yaml'
-import { applyXaiOAuthDefaultModel, saveXaiOAuthTokensForProfile, status } from '../../packages/server/src/controllers/hermes/xai-auth'
+import { applyXaiOAuthDefaultModel, saveXaiOAuthTokensForProfile, status } from '../../packages/server/src/controllers/DiTing/xai-auth'
 
-let hermesHome = ''
+let DiTingHome = ''
 
 function writeFile(relativePath: string, content: string) {
-  const target = join(hermesHome, relativePath)
+  const target = join(DiTingHome, relativePath)
   mkdirSync(dirname(target), { recursive: true })
   writeFileSync(target, content)
 }
 
 function readYaml(relativePath: string) {
-  return YAML.load(readFileSync(join(hermesHome, relativePath), 'utf-8')) as any
+  return YAML.load(readFileSync(join(DiTingHome, relativePath), 'utf-8')) as any
 }
 
 function readJson(relativePath: string) {
-  return JSON.parse(readFileSync(join(hermesHome, relativePath), 'utf-8'))
+  return JSON.parse(readFileSync(join(DiTingHome, relativePath), 'utf-8'))
 }
 
 function makeCtx(profile: string): any {
@@ -34,14 +34,14 @@ function makeCtx(profile: string): any {
 
 describe('xAI auth controller', () => {
   beforeEach(() => {
-    hermesHome = mkdtempSync(join(tmpdir(), 'hwui-xai-auth-'))
-    process.env.HERMES_HOME = hermesHome
+    DiTingHome = mkdtempSync(join(tmpdir(), 'hwui-xai-auth-'))
+    process.env.DiTing_HOME = DiTingHome
   })
 
   afterEach(() => {
-    delete process.env.HERMES_HOME
-    if (hermesHome) rmSync(hermesHome, { recursive: true, force: true })
-    hermesHome = ''
+    delete process.env.DiTing_HOME
+    if (DiTingHome) rmSync(DiTingHome, { recursive: true, force: true })
+    DiTingHome = ''
   })
 
   it('does not keep a non-xAI model when switching the default provider to xai-oauth', () => {
@@ -75,7 +75,7 @@ describe('xAI auth controller', () => {
   })
 
   it('persists OAuth credentials and default model in the request-scoped profile only', async () => {
-    mkdirSync(join(hermesHome, 'profiles', 'research'), { recursive: true })
+    mkdirSync(join(DiTingHome, 'profiles', 'research'), { recursive: true })
     writeFile('config.yaml', 'model:\n  provider: deepseek\n  default: deepseek-chat\n')
     writeFile('profiles/research/config.yaml', 'model:\n  provider: openrouter\n  default: openrouter-model\n')
 
@@ -93,7 +93,7 @@ describe('xAI auth controller', () => {
       },
     )
 
-    expect(existsSync(join(hermesHome, 'auth.json'))).toBe(false)
+    expect(existsSync(join(DiTingHome, 'auth.json'))).toBe(false)
     const auth = readJson('profiles/research/auth.json')
     expect(auth.providers['xai-oauth'].tokens.access_token).toBe('research-access-token')
     expect(auth.credential_pool['xai-oauth'][0].refresh_token).toBe('research-refresh-token')
@@ -103,7 +103,7 @@ describe('xAI auth controller', () => {
   })
 
   it('checks xAI OAuth status against the request-scoped profile', async () => {
-    mkdirSync(join(hermesHome, 'profiles', 'research'), { recursive: true })
+    mkdirSync(join(DiTingHome, 'profiles', 'research'), { recursive: true })
     writeFile('auth.json', JSON.stringify({ version: 1, providers: {}, credential_pool: {} }, null, 2))
     writeFile('profiles/research/auth.json', JSON.stringify({
       version: 1,

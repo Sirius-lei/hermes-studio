@@ -5,7 +5,7 @@ import {
   isReservedMentionName,
   resolveMentionTargets,
   stripMentionRoutingTokens,
-} from '../../packages/server/src/services/hermes/group-chat/mention-routing'
+} from '../../packages/server/src/services/DiTing/group-chat/mention-routing'
 
 type TestAgent = { name: string; id?: string; agentId?: string; profile?: string }
 

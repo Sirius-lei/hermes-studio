@@ -5,16 +5,16 @@ import { get as httpsGet } from 'https'
 import { basename, dirname, join, relative, resolve } from 'path'
 import * as tar from 'tar'
 import { config } from '../config'
-import { getHermesWebUiVersion } from './system-info'
+import { getDiTingWebUiVersion } from './system-info'
 
 const ACTIVE_VERSION_FILE = 'active-version.json'
-const DEFAULT_REMOTE_MANIFEST_URL = 'https://hermes-studio.ai/versions.json'
+const DEFAULT_REMOTE_MANIFEST_URL = 'https://DiTing-studio.ai/versions.json'
 const DEFAULT_DOWNLOAD_BASE_URL = 'https://download.ekkolearnai.com'
-const DEFAULT_GITHUB_REPO = 'EKKOLearnAI/hermes-studio'
+const DEFAULT_GITHUB_REPO = 'EKKOLearnAI/DiTing-studio'
 
 export interface ActiveVersionManifest {
   schema: number
-  hermesRuntimeVersion?: string
+  DiTingRuntimeVersion?: string
   webUiVersion?: string
   runtimeDirectory?: string
   webUiDirectory?: string
@@ -27,7 +27,7 @@ export interface InstalledRuntimeVersion {
   platform: string
   directory: string
   active: boolean
-  manifestHermesRuntimeVersion?: string
+  manifestDiTingRuntimeVersion?: string
 }
 
 export interface InstalledWebUiVersion {
@@ -38,7 +38,7 @@ export interface InstalledWebUiVersion {
 
 export interface RemoteVersionManifest {
   schema?: number
-  hermes?: string[]
+  DiTing?: string[]
   webui?: string[]
 }
 
@@ -70,7 +70,7 @@ export interface RuntimeVersionStatus {
   activeVersionPath: string
   remoteManifestUrl: string
   remoteError: string
-  hermes: {
+  DiTing: {
     activeVersion: string
     activeDirectory: string
     installed: InstalledRuntimeVersion[]
@@ -86,7 +86,7 @@ export interface RuntimeVersionStatus {
 }
 
 interface RuntimePackageManifest {
-  hermesAgentVersion?: string
+  DiTingAgentVersion?: string
   asset?: {
     name?: string
     url?: string
@@ -119,12 +119,12 @@ function activeVersionPath(): string {
 }
 
 function downloadBaseUrl(): string {
-  return (process.env.HERMES_WEB_UI_DOWNLOAD_BASE_URL || DEFAULT_DOWNLOAD_BASE_URL).trim().replace(/\/$/, '')
+  return (process.env.DiTing_WEB_UI_DOWNLOAD_BASE_URL || DEFAULT_DOWNLOAD_BASE_URL).trim().replace(/\/$/, '')
 }
 
 function downloadAssetUrl(assetName: string, tag: string, source: VersionDownloadSource): string {
   if (source === 'github') {
-    const repo = process.env.HERMES_WEB_UI_DOWNLOAD_GITHUB_REPO?.trim() || DEFAULT_GITHUB_REPO
+    const repo = process.env.DiTing_WEB_UI_DOWNLOAD_GITHUB_REPO?.trim() || DEFAULT_GITHUB_REPO
     return `https://github.com/${repo}/releases/download/${encodeURIComponent(tag)}/${encodeURIComponent(assetName)}`
   }
   return `${downloadBaseUrl()}/${encodeURIComponent(tag)}/${encodeURIComponent(assetName)}`
@@ -150,12 +150,12 @@ function normalizeStringList(value: unknown): string[] {
 }
 
 function readRuntimeManifestVersion(runtimeDir: string): string | undefined {
-  const manifest = readJsonFile<{ hermesAgentVersion?: unknown; asset?: { name?: unknown } }>(join(runtimeDir, 'runtime-manifest.json'))
-  if (typeof manifest?.hermesAgentVersion === 'string' && manifest.hermesAgentVersion.trim()) {
-    return manifest.hermesAgentVersion.trim()
+  const manifest = readJsonFile<{ DiTingAgentVersion?: unknown; asset?: { name?: unknown } }>(join(runtimeDir, 'runtime-manifest.json'))
+  if (typeof manifest?.DiTingAgentVersion === 'string' && manifest.DiTingAgentVersion.trim()) {
+    return manifest.DiTingAgentVersion.trim()
   }
   const assetName = typeof manifest?.asset?.name === 'string' ? manifest.asset.name : ''
-  const match = assetName.match(/hermes-agent-([^-]+)-/)
+  const match = assetName.match(/diting-agent-([^-]+)-/)
   return match?.[1]
 }
 
@@ -163,13 +163,13 @@ function requiredRuntimeFiles(root: string): string[] {
   const pythonBin = process.platform === 'win32'
     ? join(root, 'python', 'python.exe')
     : join(root, 'python', 'bin', 'python3')
-  const hermesBin = process.platform === 'win32'
-    ? join(root, 'python', 'Scripts', 'hermes.exe')
-    : join(root, 'python', 'bin', 'hermes')
+  const DiTingBin = process.platform === 'win32'
+    ? join(root, 'python', 'Scripts', 'DiTing.exe')
+    : join(root, 'python', 'bin', 'DiTing')
   const nodeBin = process.platform === 'win32'
     ? join(root, 'node', 'node.exe')
     : join(root, 'node', 'bin', 'node')
-  const files = [pythonBin, hermesBin, nodeBin, join(root, 'runtime-manifest.json')]
+  const files = [pythonBin, DiTingBin, nodeBin, join(root, 'runtime-manifest.json')]
   if (process.platform === 'win32') files.push(join(root, 'git', 'cmd', 'git.exe'))
   return files
 }
@@ -179,7 +179,7 @@ function missingRuntimeFiles(root: string): string[] {
 }
 
 export function listInstalledRuntimeVersions(active = readActiveVersionManifest()): InstalledRuntimeVersion[] {
-  const root = join(desktopRuntimeRoot(), 'hermes')
+  const root = join(desktopRuntimeRoot(), 'DiTing')
   if (!existsSync(root)) return []
 
   const currentPlatform = runtimePlatformKey()
@@ -198,7 +198,7 @@ export function listInstalledRuntimeVersions(active = readActiveVersionManifest(
         platform: platformEntry.name,
         directory,
         active: activeDir === resolve(directory),
-        manifestHermesRuntimeVersion: readRuntimeManifestVersion(directory),
+        manifestDiTingRuntimeVersion: readRuntimeManifestVersion(directory),
       })
     }
   }
@@ -236,7 +236,7 @@ export function listInstalledWebUiVersions(active = readActiveVersionManifest())
 }
 
 async function fetchRemoteVersions(): Promise<{ manifest: RemoteVersionManifest | null; error: string }> {
-  const url = process.env.HERMES_WEB_UI_VERSION_MANIFEST_URL?.trim() || DEFAULT_REMOTE_MANIFEST_URL
+  const url = process.env.DiTing_WEB_UI_VERSION_MANIFEST_URL?.trim() || DEFAULT_REMOTE_MANIFEST_URL
   try {
     const response = await fetch(url, { signal: AbortSignal.timeout(5000) })
     if (!response.ok) return { manifest: null, error: `GET ${url} returned ${response.status}` }
@@ -249,19 +249,19 @@ async function fetchRemoteVersions(): Promise<{ manifest: RemoteVersionManifest 
 export async function getRuntimeVersionStatus(): Promise<RuntimeVersionStatus> {
   const active = readActiveVersionManifest()
   const { manifest, error } = await fetchRemoteVersions()
-  const webUiVersion = getHermesWebUiVersion()
+  const webUiVersion = getDiTingWebUiVersion()
 
   return {
     active,
     platform: runtimePlatformKey(),
     activeVersionPath: activeVersionPath(),
-    remoteManifestUrl: process.env.HERMES_WEB_UI_VERSION_MANIFEST_URL?.trim() || DEFAULT_REMOTE_MANIFEST_URL,
+    remoteManifestUrl: process.env.DiTing_WEB_UI_VERSION_MANIFEST_URL?.trim() || DEFAULT_REMOTE_MANIFEST_URL,
     remoteError: error,
-    hermes: {
-      activeVersion: active?.hermesRuntimeVersion || '',
+    DiTing: {
+      activeVersion: active?.DiTingRuntimeVersion || '',
       activeDirectory: active?.runtimeDirectory || '',
       installed: listInstalledRuntimeVersions(active),
-      remoteVersions: normalizeStringList(manifest?.hermes),
+      remoteVersions: normalizeStringList(manifest?.DiTing),
     },
     webui: {
       currentVersion: webUiVersion,
@@ -346,8 +346,8 @@ export async function downloadRuntimeVersion(version: string, source: VersionDow
   if (!cleanVersion) throw new Error('Runtime version is required')
 
   const platform = runtimePlatformKey()
-  const releaseTag = `hermes-${cleanVersion}-runtime`
-  const manifestName = `hermes-runtime-${platform}.json`
+  const releaseTag = `DiTing-${cleanVersion}-runtime`
+  const manifestName = `DiTing-runtime-${platform}.json`
   const manifestUrl = downloadAssetUrl(manifestName, releaseTag, source)
   onProgress?.({ stage: 'resolve', message: 'runtimeVersions.jobStage.resolveRuntime' })
   const manifest = await fetchJson<RuntimePackageManifest>(manifestUrl)
@@ -356,7 +356,7 @@ export async function downloadRuntimeVersion(version: string, source: VersionDow
   const assetName = asset.name
 
   const assetUrl = downloadAssetUrl(assetName, releaseTag, source)
-  const targetRoot = join(desktopRuntimeRoot(), 'hermes', cleanVersion, platform)
+  const targetRoot = join(desktopRuntimeRoot(), 'DiTing', cleanVersion, platform)
   const archive = join(desktopRuntimeRoot(), `${basename(assetName)}.download`)
   const tempRoot = join(desktopRuntimeRoot(), `.runtime-download-${process.pid}-${Date.now()}`)
 
@@ -391,7 +391,7 @@ export async function downloadRuntimeVersion(version: string, source: VersionDow
     platform,
     directory: targetRoot,
     active: false,
-    manifestHermesRuntimeVersion: manifest.hermesAgentVersion || cleanVersion,
+    manifestDiTingRuntimeVersion: manifest.DiTingAgentVersion || cleanVersion,
   }
 }
 
@@ -400,8 +400,8 @@ export async function downloadWebUiVersion(version: string, source: VersionDownl
   if (!cleanVersion) throw new Error('Web UI version is required')
 
   const releaseTag = `v${cleanVersion}`
-  const assetName = `hermes-web-ui-${cleanVersion}.tar.gz`
-  const manifestName = `hermes-web-ui-${cleanVersion}.json`
+  const assetName = `diting-web-ui-${cleanVersion}.tar.gz`
+  const manifestName = `diting-web-ui-${cleanVersion}.json`
   const manifestUrl = downloadAssetUrl(manifestName, releaseTag, source)
   onProgress?.({ stage: 'resolve', message: 'runtimeVersions.jobStage.resolveWebUi' })
   const manifest = await fetchJson<{ asset?: { sha256?: string; size?: number } }>(manifestUrl)
@@ -424,7 +424,7 @@ export async function downloadWebUiVersion(version: string, source: VersionDownl
     onProgress?.({ stage: 'extract', message: 'runtimeVersions.jobStage.extractWebUi' })
     await extractTarGzip(archive, tempRoot)
     const extractedRoot = join(tempRoot, 'webui')
-    for (const required of ['package.json', 'bin/hermes-web-ui.mjs', 'dist/server/index.js']) {
+    for (const required of ['package.json', 'bin/diting-web-ui.mjs', 'dist/server/index.js']) {
       if (!existsSync(join(extractedRoot, required))) throw new Error(`Web UI archive is missing required file: ${required}`)
     }
     onProgress?.({ stage: 'install', message: 'runtimeVersions.jobStage.installWebUi' })
@@ -450,8 +450,8 @@ export function activateInstalledRuntimeVersion(version: string): ActiveVersionM
 
   const next: ActiveVersionManifest = {
     schema: 1,
-    hermesRuntimeVersion: target.manifestHermesRuntimeVersion || target.version,
-    webUiVersion: active?.webUiVersion || getHermesWebUiVersion(),
+    DiTingRuntimeVersion: target.manifestDiTingRuntimeVersion || target.version,
+    webUiVersion: active?.webUiVersion || getDiTingWebUiVersion(),
     runtimeDirectory: target.directory,
     webUiDirectory: active?.webUiDirectory || '',
     platform: target.platform,
@@ -493,7 +493,7 @@ export function activateDownloadedWebUiVersion(version: string): ActiveVersionMa
   const active = readActiveVersionManifest()
   const next: ActiveVersionManifest = {
     schema: 1,
-    hermesRuntimeVersion: active?.hermesRuntimeVersion || '',
+    DiTingRuntimeVersion: active?.DiTingRuntimeVersion || '',
     webUiVersion: cleanVersion,
     runtimeDirectory: active?.runtimeDirectory || '',
     webUiDirectory: directory,

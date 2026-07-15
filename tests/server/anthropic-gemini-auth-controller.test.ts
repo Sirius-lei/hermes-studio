@@ -7,28 +7,28 @@ import {
   applyAnthropicOAuthDefaultModel,
   saveAnthropicOAuthTokensForProfile,
   status as anthropicStatus,
-} from '../../packages/server/src/controllers/hermes/anthropic-auth'
+} from '../../packages/server/src/controllers/DiTing/anthropic-auth'
 import {
   applyGeminiOAuthDefaultModel,
   resolveGeminiOAuthClientCredentials,
   saveGeminiOAuthTokensForProfile,
   status as geminiStatus,
-} from '../../packages/server/src/controllers/hermes/gemini-auth'
+} from '../../packages/server/src/controllers/DiTing/gemini-auth'
 
-let hermesHome = ''
+let DiTingHome = ''
 
 function writeFile(relativePath: string, content: string) {
-  const target = join(hermesHome, relativePath)
+  const target = join(DiTingHome, relativePath)
   mkdirSync(dirname(target), { recursive: true })
   writeFileSync(target, content)
 }
 
 function readYaml(relativePath: string) {
-  return YAML.load(readFileSync(join(hermesHome, relativePath), 'utf-8')) as any
+  return YAML.load(readFileSync(join(DiTingHome, relativePath), 'utf-8')) as any
 }
 
 function readJson(relativePath: string) {
-  return JSON.parse(readFileSync(join(hermesHome, relativePath), 'utf-8'))
+  return JSON.parse(readFileSync(join(DiTingHome, relativePath), 'utf-8'))
 }
 
 function makeCtx(profile: string): any {
@@ -43,24 +43,24 @@ function makeCtx(profile: string): any {
 }
 
 describe('Anthropic and Gemini OAuth controllers', () => {
-  const originalGeminiClientId = process.env.HERMES_GEMINI_CLIENT_ID
-  const originalGeminiClientSecret = process.env.HERMES_GEMINI_CLIENT_SECRET
+  const originalGeminiClientId = process.env.DiTing_GEMINI_CLIENT_ID
+  const originalGeminiClientSecret = process.env.DiTing_GEMINI_CLIENT_SECRET
 
   beforeEach(() => {
-    hermesHome = mkdtempSync(join(tmpdir(), 'hwui-oauth-providers-'))
-    process.env.HERMES_HOME = hermesHome
-    delete process.env.HERMES_GEMINI_CLIENT_ID
-    delete process.env.HERMES_GEMINI_CLIENT_SECRET
+    DiTingHome = mkdtempSync(join(tmpdir(), 'hwui-oauth-providers-'))
+    process.env.DiTing_HOME = DiTingHome
+    delete process.env.DiTing_GEMINI_CLIENT_ID
+    delete process.env.DiTing_GEMINI_CLIENT_SECRET
   })
 
   afterEach(() => {
-    delete process.env.HERMES_HOME
-    if (originalGeminiClientId === undefined) delete process.env.HERMES_GEMINI_CLIENT_ID
-    else process.env.HERMES_GEMINI_CLIENT_ID = originalGeminiClientId
-    if (originalGeminiClientSecret === undefined) delete process.env.HERMES_GEMINI_CLIENT_SECRET
-    else process.env.HERMES_GEMINI_CLIENT_SECRET = originalGeminiClientSecret
-    if (hermesHome) rmSync(hermesHome, { recursive: true, force: true })
-    hermesHome = ''
+    delete process.env.DiTing_HOME
+    if (originalGeminiClientId === undefined) delete process.env.DiTing_GEMINI_CLIENT_ID
+    else process.env.DiTing_GEMINI_CLIENT_ID = originalGeminiClientId
+    if (originalGeminiClientSecret === undefined) delete process.env.DiTing_GEMINI_CLIENT_SECRET
+    else process.env.DiTing_GEMINI_CLIENT_SECRET = originalGeminiClientSecret
+    if (DiTingHome) rmSync(DiTingHome, { recursive: true, force: true })
+    DiTingHome = ''
   })
 
   it('uses provider-compatible default models when applying OAuth defaults', () => {
@@ -78,8 +78,8 @@ describe('Anthropic and Gemini OAuth controllers', () => {
     expect(defaults.clientId).toMatch(/^681255809395-.+\.apps\.googleusercontent\.com$/)
     expect(defaults.clientSecret).toMatch(/^GOCSPX-.+$/)
 
-    process.env.HERMES_GEMINI_CLIENT_ID = 'custom-client-id'
-    process.env.HERMES_GEMINI_CLIENT_SECRET = 'custom-client-secret'
+    process.env.DiTing_GEMINI_CLIENT_ID = 'custom-client-id'
+    process.env.DiTing_GEMINI_CLIENT_SECRET = 'custom-client-secret'
 
     expect(resolveGeminiOAuthClientCredentials()).toEqual({
       clientId: 'custom-client-id',
@@ -88,7 +88,7 @@ describe('Anthropic and Gemini OAuth controllers', () => {
   })
 
   it('persists Anthropic OAuth credentials in the request-scoped profile only', async () => {
-    mkdirSync(join(hermesHome, 'profiles', 'research'), { recursive: true })
+    mkdirSync(join(DiTingHome, 'profiles', 'research'), { recursive: true })
     writeFile('config.yaml', 'model:\n  provider: deepseek\n  default: deepseek-chat\n')
     writeFile('profiles/research/config.yaml', 'model:\n  provider: openrouter\n  default: openrouter-model\n')
 
@@ -98,7 +98,7 @@ describe('Anthropic and Gemini OAuth controllers', () => {
       expires_in: 3600,
     })
 
-    expect(existsSync(join(hermesHome, 'auth.json'))).toBe(false)
+    expect(existsSync(join(DiTingHome, 'auth.json'))).toBe(false)
     const auth = readJson('profiles/research/auth.json')
     expect(auth.providers['claude-oauth'].tokens.access_token).toBe('anthropic-access-token')
     expect(auth.credential_pool['claude-oauth'][0].refresh_token).toBe('anthropic-refresh-token')
@@ -114,7 +114,7 @@ describe('Anthropic and Gemini OAuth controllers', () => {
   })
 
   it('persists Gemini OAuth credentials in the request-scoped profile only', async () => {
-    mkdirSync(join(hermesHome, 'profiles', 'research'), { recursive: true })
+    mkdirSync(join(DiTingHome, 'profiles', 'research'), { recursive: true })
     writeFile('config.yaml', 'model:\n  provider: deepseek\n  default: deepseek-chat\n')
     writeFile('profiles/research/config.yaml', 'model:\n  provider: openrouter\n  default: openrouter-model\n')
 
@@ -124,7 +124,7 @@ describe('Anthropic and Gemini OAuth controllers', () => {
       expires_in: 3600,
     }, 'user@example.com')
 
-    expect(existsSync(join(hermesHome, 'auth.json'))).toBe(false)
+    expect(existsSync(join(DiTingHome, 'auth.json'))).toBe(false)
     const auth = readJson('profiles/research/auth.json')
     expect(auth.providers['google-gemini-cli'].access_token).toBe('gemini-access-token')
     expect(auth.credential_pool['google-gemini-cli'][0].refresh_token).toBe('gemini-refresh-token')

@@ -1,5 +1,5 @@
 import { request } from './client'
-import type { ProviderApiMode } from './hermes/system'
+import type { ProviderApiMode } from './DiTing/system'
 
 export type CodingAgentId = 'claude-code' | 'codex'
 export const CODING_AGENT_API_MODES = [

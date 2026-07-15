@@ -1,10 +1,10 @@
 import { expect, test } from '@playwright/test'
-import { mockHermesApi, TEST_ACCESS_KEY } from './fixtures'
+import { mockDiTingApi, TEST_ACCESS_KEY } from './fixtures'
 
 test('redirects protected routes to the login screen without a token', async ({ page }) => {
-  const api = await mockHermesApi(page)
+  const api = await mockDiTingApi(page)
 
-  await page.goto('/#/hermes/jobs')
+  await page.goto('/#/DiTing/jobs')
 
   await expect(page).toHaveURL(/#\/$/)
   await expect(page.getByRole('heading', { name: 'Agent Workspace' })).toBeVisible()
@@ -14,7 +14,7 @@ test('redirects protected routes to the login screen without a token', async ({ 
 })
 
 test('rejects invalid credentials without persisting a token', async ({ page }) => {
-  const api = await mockHermesApi(page, { tokenValidationStatus: 401 })
+  const api = await mockDiTingApi(page, { tokenValidationStatus: 401 })
 
   await page.goto('/')
   await page.getByPlaceholder('Username').fill('playwright')
@@ -23,20 +23,20 @@ test('rejects invalid credentials without persisting a token', async ({ page }) 
 
   await expect(page.getByText('Invalid username or password')).toBeVisible()
   await expect(page).toHaveURL(/#\/$/)
-  await expect(page.evaluate(() => window.localStorage.getItem('hermes_api_key'))).resolves.toBeNull()
+  await expect(page.evaluate(() => window.localStorage.getItem('DiTing_api_key'))).resolves.toBeNull()
   expect(api.unexpectedRequests).toEqual([])
 })
 
 test('logs in with password through the BFF before entering the app', async ({ page }) => {
-  const api = await mockHermesApi(page)
+  const api = await mockDiTingApi(page)
 
   await page.goto('/')
   await page.getByPlaceholder('Username').fill('playwright')
   await page.getByPlaceholder('Password').fill('correct-password')
   await page.getByRole('button', { name: 'Login' }).click()
 
-  await expect(page).toHaveURL(/#\/hermes\/chat$/)
-  await expect(page.evaluate(() => window.localStorage.getItem('hermes_api_key'))).resolves.toBe(TEST_ACCESS_KEY)
+  await expect(page).toHaveURL(/#\/DiTing\/chat$/)
+  await expect(page.evaluate(() => window.localStorage.getItem('DiTing_api_key'))).resolves.toBe(TEST_ACCESS_KEY)
   await expect.poll(() => api.requests.some((request) => request.pathname === '/health')).toBe(true)
 
   const loginRequest = api.requests.find((request) => request.pathname === '/api/auth/login')

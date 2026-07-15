@@ -1,12 +1,12 @@
-# Hermes Studio
+# DiTing Studio
 
-Electron desktop distribution for Hermes Studio.
+Electron desktop distribution for DiTing Studio.
 
 ## Install
 
 Download the latest macOS, Windows, or Linux installer for your CPU
 architecture from the project
-[GitHub Releases](https://github.com/EKKOLearnAI/hermes-studio/releases/latest).
+[GitHub Releases](https://github.com/EKKOLearnAI/DiTing-studio/releases/latest).
 
 The desktop app bundles the Web UI runtime and launches it locally from the
 native shell app.
@@ -17,25 +17,25 @@ After the packaged desktop app starts, it installs managed command shims:
 
 | Command | Description |
 | --- | --- |
-| `hermes-studio` | Open the Hermes Studio desktop app |
-| `hermes-studio cli ...` | Run the bundled Hermes Agent CLI |
-| `hermes-studio web ...` | Run the bundled `hermes-web-ui` command |
-| `hermes-studio -h` | Show wrapper help |
-| `hermes-studio-mcp` | Run the managed Web UI MCP bridge |
+| `DiTing-studio` | Open the DiTing Studio desktop app |
+| `DiTing-studio cli ...` | Run the bundled DiTing Agent CLI |
+| `DiTing-studio web ...` | Run the bundled `diting-web-ui` command |
+| `DiTing-studio -h` | Show wrapper help |
+| `diting-studio-mcp` | Run the managed Web UI MCP bridge |
 
-Use `hermes-studio cli -h` for Hermes Agent CLI help and
-`hermes-studio web -h` for Web UI CLI help.
+Use `DiTing-studio cli -h` for DiTing Agent CLI help and
+`DiTing-studio web -h` for Web UI CLI help.
 
 ## Data directories
 
-Hermes Agent data is stored in the same platform-specific location as native
-Hermes installs:
+DiTing Agent data is stored in the same platform-specific location as native
+DiTing installs:
 
-- Windows: `%LOCALAPPDATA%\hermes` (falls back to `%APPDATA%\hermes`)
-- macOS/Linux: `~/.hermes`
+- Windows: `%LOCALAPPDATA%\DiTing` (falls back to `%APPDATA%\DiTing`)
+- macOS/Linux: `~/.diting`
 
 The desktop wrapper's own Web UI state is stored separately in
-`~/.hermes-web-ui` unless `HERMES_WEB_UI_HOME` is set.
+`~/.diting-web-ui` unless `DiTing_WEB_UI_HOME` is set.
 
 ## China mirror environment
 

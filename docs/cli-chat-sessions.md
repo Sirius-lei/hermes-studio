@@ -9,10 +9,10 @@
 > 维护要求：后续 PR 如果修改本文列出的普通 Chat 链路核心文件，需要新增
 > `docs/chat-chain-changes/` 下的独立变更片段。每个 PR 一个变更片段，写清楚
 > 修改时间、PR/commit、动到的功能和行为影响，避免多个 PR 同时改本文产生冲突。
-> `packages/server/src/services/hermes/agent-bridge/` 是普通 Chat 的核心链路，
+> `packages/server/src/services/DiTing/agent-bridge/` 是普通 Chat 的核心链路，
 > 该目录下任何改动都算 Chat 链路改动；即使只是启动、环境变量、日志或品牌
 > attribution，也要记录影响范围，必要时明确“运行行为无变化”。
-> `packages/server/src/services/hermes/group-chat/`、`/group-chat` Socket.IO、
+> `packages/server/src/services/DiTing/group-chat/`、`/group-chat` Socket.IO、
 > group-chat 前端 store/API/component、共享压缩器和 context-engine 也属于核心
 > 聊天链路，改动时同样需要记录。
 
@@ -23,17 +23,17 @@
 ```text
 ChatPanel / ChatInput
   -> Pinia chat store
-  -> packages/client/src/api/hermes/chat.ts
+  -> packages/client/src/api/DiTing/chat.ts
   -> Socket.IO namespace /chat-run
   -> ChatRunSocket
   -> handleBridgeRun()
   -> AgentBridgeClient
-  -> hermes_bridge.py broker
+  -> DiTing_bridge.py broker
   -> profile worker
-  -> AIAgent / Hermes Agent tools
+  -> AIAgent / DiTing Agent tools
 ```
 
-也就是说，当前 Web UI 普通聊天默认不是走 Hermes Gateway `/v1/responses`，
+也就是说，当前 Web UI 普通聊天默认不是走 DiTing Gateway `/v1/responses`，
 而是走 `source=cli` 的 Agent Bridge 路径。代码里仍保留 `api_server`
 类型和 `handle-api-run.ts`，但 `resolveRunSource()` 当前固定返回 `cli`。
 
@@ -42,7 +42,7 @@ ChatPanel / ChatInput
 - UI 只有一套普通 Chat 页面，不再有单独 CLI Chat 页面。
 - 所有长连接事件统一走 `/chat-run`。
 - 所有普通会话都落 Web UI 自己的 SQLite `sessions/messages` 表。
-- Hermes profile、model、provider、workspace、source 都是 session 级上下文。
+- DiTing profile、model、provider、workspace、source 都是 session 级上下文。
 - 多 tab / 页面刷新通过 `resume` 重新加入同一个 `session:{id}` room。
 - 同一个 session 同时只跑一个 active run，后续输入进入 session 队列。
 - 工具审批、用户澄清、压缩、abort、usage、slash command 都复用同一条
@@ -76,44 +76,44 @@ PR 号。
 
 | 文件 | 职责 |
 | --- | --- |
-| `packages/client/src/components/hermes/chat/ChatPanel.vue` | 普通 Chat 页面容器，组合消息列表、输入框、审批条、澄清条、抽屉面板。 |
-| `packages/client/src/components/hermes/chat/ChatInput.vue` | 输入框、发送、附件、停止按钮入口。 |
-| `packages/client/src/components/hermes/chat/MessageList.vue` / `VirtualMessageList.vue` | 消息列表渲染和虚拟滚动。 |
-| `packages/client/src/components/hermes/chat/MessageItem.vue` | 单条消息渲染，包含 assistant、tool、reasoning、附件等 UI。 |
-| `packages/client/src/stores/hermes/chat.ts` | Chat 核心状态机：session 列表、发送、resume、队列、流式事件、审批、澄清、abort、压缩状态。 |
-| `packages/client/src/api/hermes/chat.ts` | `/chat-run` Socket.IO 客户端，负责连接、全局事件分发、run/resume/abort/approval/clarify 协议。 |
-| `packages/client/src/api/hermes/sessions.ts` | HTTP session API：列表、详情分页、删除、重命名、模型更新。 |
-| `packages/client/src/api/hermes/group-chat.ts` | `/group-chat` Socket.IO 客户端和 group-chat HTTP room/agent/config API。 |
-| `packages/client/src/stores/hermes/group-chat.ts` | Group Chat 状态机：rooms、members、messages、agents、streaming、context/compression 状态。 |
-| `packages/client/src/components/hermes/group-chat/*` | Group Chat 页面、输入框、消息列表、成员/agent 展示和房间创建配置。 |
+| `packages/client/src/components/DiTing/chat/ChatPanel.vue` | 普通 Chat 页面容器，组合消息列表、输入框、审批条、澄清条、抽屉面板。 |
+| `packages/client/src/components/DiTing/chat/ChatInput.vue` | 输入框、发送、附件、停止按钮入口。 |
+| `packages/client/src/components/DiTing/chat/MessageList.vue` / `VirtualMessageList.vue` | 消息列表渲染和虚拟滚动。 |
+| `packages/client/src/components/DiTing/chat/MessageItem.vue` | 单条消息渲染，包含 assistant、tool、reasoning、附件等 UI。 |
+| `packages/client/src/stores/DiTing/chat.ts` | Chat 核心状态机：session 列表、发送、resume、队列、流式事件、审批、澄清、abort、压缩状态。 |
+| `packages/client/src/api/DiTing/chat.ts` | `/chat-run` Socket.IO 客户端，负责连接、全局事件分发、run/resume/abort/approval/clarify 协议。 |
+| `packages/client/src/api/DiTing/sessions.ts` | HTTP session API：列表、详情分页、删除、重命名、模型更新。 |
+| `packages/client/src/api/DiTing/group-chat.ts` | `/group-chat` Socket.IO 客户端和 group-chat HTTP room/agent/config API。 |
+| `packages/client/src/stores/DiTing/group-chat.ts` | Group Chat 状态机：rooms、members、messages、agents、streaming、context/compression 状态。 |
+| `packages/client/src/components/DiTing/group-chat/*` | Group Chat 页面、输入框、消息列表、成员/agent 展示和房间创建配置。 |
 
 ### 后端
 
 | 文件 | 职责 |
 | --- | --- |
-| `packages/server/src/services/hermes/run-chat/index.ts` | `ChatRunSocket`，`/chat-run` namespace 入口、认证、profile 校验、run/resume/abort/approval/clarify/queue 分发。 |
-| `packages/server/src/services/hermes/run-chat/handle-bridge-run.ts` | 当前主运行路径：创建/更新本地 session，构建上下文，调用 Agent Bridge，消费 bridge 事件，落库。 |
-| `packages/server/src/services/hermes/run-chat/handle-api-run.ts` | 保留的 API Server 路径实现；当前 `resolveRunSource()` 固定返回 `cli`，正常不会走到这里。 |
-| `packages/server/src/services/hermes/run-chat/session-command.ts` | slash command 解析和执行。 |
-| `packages/server/src/services/hermes/run-chat/abort.ts` | active run 中断、状态落盘、队列衔接。 |
-| `packages/server/src/services/hermes/run-chat/compression.ts` | DB history 构建、snapshot-aware history、上下文压缩。 |
-| `packages/server/src/services/hermes/run-chat/bridge-message.ts` | Bridge assistant/tool 消息的内存态与 DB flush。 |
-| `packages/server/src/services/hermes/run-chat/bridge-delta.ts` | 过滤 bridge 输出中的工具调用标记，避免 UI 文本重复或丢字符。 |
-| `packages/server/src/services/hermes/agent-bridge/client.ts` | Node 到 Python bridge 的本地 socket 客户端。 |
-| `packages/server/src/services/hermes/agent-bridge/manager.ts` | Python bridge broker 子进程生命周期管理。 |
-| `packages/server/src/services/hermes/agent-bridge/python/hermes_bridge.py` | Python broker/worker entrypoint；实现拆分在同目录的 `bridge_*.py` 模块中，覆盖 `AIAgent` 会话池、工具审批、澄清、压缩协作、goal/plan 命令等。 |
-| `packages/server/src/services/hermes/group-chat/index.ts` | `/group-chat` Socket.IO server、room/member/message 存储、agent 恢复、mention 分发、approval/interrupt 入口。 |
-| `packages/server/src/services/hermes/group-chat/agent-clients.ts` | Group Chat agent socket client，调用 Agent Bridge 执行被 mention 的 agent，并同步 tool/reasoning/context 状态。 |
-| `packages/server/src/services/hermes/context-engine/*` | Group Chat 上下文压缩和 summary cache。 |
+| `packages/server/src/services/DiTing/run-chat/index.ts` | `ChatRunSocket`，`/chat-run` namespace 入口、认证、profile 校验、run/resume/abort/approval/clarify/queue 分发。 |
+| `packages/server/src/services/DiTing/run-chat/handle-bridge-run.ts` | 当前主运行路径：创建/更新本地 session，构建上下文，调用 Agent Bridge，消费 bridge 事件，落库。 |
+| `packages/server/src/services/DiTing/run-chat/handle-api-run.ts` | 保留的 API Server 路径实现；当前 `resolveRunSource()` 固定返回 `cli`，正常不会走到这里。 |
+| `packages/server/src/services/DiTing/run-chat/session-command.ts` | slash command 解析和执行。 |
+| `packages/server/src/services/DiTing/run-chat/abort.ts` | active run 中断、状态落盘、队列衔接。 |
+| `packages/server/src/services/DiTing/run-chat/compression.ts` | DB history 构建、snapshot-aware history、上下文压缩。 |
+| `packages/server/src/services/DiTing/run-chat/bridge-message.ts` | Bridge assistant/tool 消息的内存态与 DB flush。 |
+| `packages/server/src/services/DiTing/run-chat/bridge-delta.ts` | 过滤 bridge 输出中的工具调用标记，避免 UI 文本重复或丢字符。 |
+| `packages/server/src/services/DiTing/agent-bridge/client.ts` | Node 到 Python bridge 的本地 socket 客户端。 |
+| `packages/server/src/services/DiTing/agent-bridge/manager.ts` | Python bridge broker 子进程生命周期管理。 |
+| `packages/server/src/services/DiTing/agent-bridge/python/DiTing_bridge.py` | Python broker/worker entrypoint；实现拆分在同目录的 `bridge_*.py` 模块中，覆盖 `AIAgent` 会话池、工具审批、澄清、压缩协作、goal/plan 命令等。 |
+| `packages/server/src/services/DiTing/group-chat/index.ts` | `/group-chat` Socket.IO server、room/member/message 存储、agent 恢复、mention 分发、approval/interrupt 入口。 |
+| `packages/server/src/services/DiTing/group-chat/agent-clients.ts` | Group Chat agent socket client，调用 Agent Bridge 执行被 mention 的 agent，并同步 tool/reasoning/context 状态。 |
+| `packages/server/src/services/DiTing/context-engine/*` | Group Chat 上下文压缩和 summary cache。 |
 | `packages/server/src/lib/context-compressor/*` | 普通 Chat 和 Group Chat 共用的 token 估算、摘要压缩和 context message 处理。 |
-| `packages/server/src/routes/hermes/group-chat.ts` | Group Chat HTTP room/agent/config/compress/clear-context API。 |
-| `packages/server/src/db/hermes/session-store.ts` | Web UI 本地 session/message SQLite 存储。 |
-| `packages/server/src/controllers/hermes/sessions.ts` | HTTP session 列表、详情、分页、删除、导入/导出等控制器。 |
+| `packages/server/src/routes/DiTing/group-chat.ts` | Group Chat HTTP room/agent/config/compress/clear-context API。 |
+| `packages/server/src/db/DiTing/session-store.ts` | Web UI 本地 session/message SQLite 存储。 |
+| `packages/server/src/controllers/DiTing/sessions.ts` | HTTP session 列表、详情、分页、删除、导入/导出等控制器。 |
 
 ## 3. 数据模型
 
-普通 Chat 使用 Web UI 本地 SQLite，而不是直接把 Hermes CLI 历史当作唯一状态。
-核心表由 `packages/server/src/db/hermes/schemas.ts` 初始化。
+普通 Chat 使用 Web UI 本地 SQLite，而不是直接把 DiTing CLI 历史当作唯一状态。
+核心表由 `packages/server/src/db/DiTing/schemas.ts` 初始化。
 
 ### sessions
 
@@ -122,7 +122,7 @@ PR 号。
 | 字段 | 说明 |
 | --- | --- |
 | `id` | Web UI session id。前端新建时生成，发送 run 时传入。 |
-| `profile` | Hermes profile。新 session 使用当前 active profile，已存在 session 优先使用 DB 中的 profile。 |
+| `profile` | DiTing profile。新 session 使用当前 active profile，已存在 session 优先使用 DB 中的 profile。 |
 | `source` | 当前会话来源。当前普通 Chat 实际写入 `cli`。历史数据可能存在 `api_server`。 |
 | `model` / `provider` | session 绑定模型。首轮发送会写入选中的模型/供应商，后续可更新。 |
 | `title` / `preview` | 会话标题和预览。标题可以由 `/title` 改，也可由首条用户输入生成。 |
@@ -152,7 +152,7 @@ PR 号。
 - `reasoning_details`
 - `reasoning_content`
 
-前端读取历史时通过 `mapHermesMessages()` 把 DB 行映射成 UI `Message`，包括：
+前端读取历史时通过 `mapDiTingMessages()` 把 DB 行映射成 UI `Message`，包括：
 
 - assistant 文本消息
 - reasoning 内容
@@ -386,9 +386,9 @@ handleBridgeRun(...)
 
 - `getSystemPrompt()`
 - 用户或调用方传入的 `instructions`
-- 当前 Hermes profile
+- 当前 DiTing profile
 - session workspace
-- Web UI 工具调用提示：如果工具调用 Web UI API，需要带 `X-Hermes-Profile`
+- Web UI 工具调用提示：如果工具调用 Web UI API，需要带 `X-DiTing-Profile`
 
 ### 8.3 上下文构建
 
@@ -447,18 +447,18 @@ for await (const chunk of bridge.streamOutput(run_id)) {
 
 ### 9.1 进程结构
 
-`AgentBridgeManager` 启动 `hermes_bridge.py` broker 子进程：
+`AgentBridgeManager` 启动 `DiTing_bridge.py` broker 子进程：
 
 ```text
-python hermes_bridge.py --endpoint <endpoint> --agent-root <root> --hermes-home <home>
+python DiTing_bridge.py --endpoint <endpoint> --agent-root <root> --DiTing-home <home>
 ```
 
 默认 endpoint：
 
 | 平台 | 默认 |
 | --- | --- |
-| Windows | `tcp://127.0.0.1:18765` |
-| macOS/Linux | `ipc:///tmp/hermes-agent-bridge.sock` |
+| Windows | `tcp://127.0.0.1:28765` |
+| macOS/Linux | `ipc:///tmp/diting-agent-bridge.sock` |
 
 broker 会再按 profile 路由到 worker。worker 里维护实际 `AIAgent` 会话池。
 
@@ -644,7 +644,7 @@ socket.emit("abort", { session_id })
 
 Bridge 里有两类审批来源：
 
-1. Hermes 工具层直接回调，例如 terminal/本地命令审批。
+1. DiTing 工具层直接回调，例如 terminal/本地命令审批。
 2. gateway approval notify，经 `tools.approval` 按 session key 路由。
 
 Python 侧生成：
@@ -805,9 +805,9 @@ Socket.IO `/chat-run` 负责 active run。HTTP API 负责静态数据读写：
 
 | 能力 | 路径/模块 |
 | --- | --- |
-| session list | `controllers/hermes/sessions.ts` + `session-store.ts` |
+| session list | `controllers/DiTing/sessions.ts` + `session-store.ts` |
 | session detail/page | `fetchSessionMessagesPage()` 对应后端分页 detail |
-| delete session | 删除 Web UI DB session/messages，同时尝试删除对应 Hermes profile 历史（如果存在） |
+| delete session | 删除 Web UI DB session/messages，同时尝试删除对应 DiTing profile 历史（如果存在） |
 | rename session | `renameSession()` |
 | set session model | `setSessionModel()` |
 | conversation monitor | 从本地 session/conversation summary 读，不驱动 active run |
@@ -825,14 +825,14 @@ context-compressor。
 ```text
 GroupChatPanel / GroupChatInput
   -> group-chat Pinia store
-  -> packages/client/src/api/hermes/group-chat.ts
+  -> packages/client/src/api/DiTing/group-chat.ts
   -> Socket.IO namespace /group-chat
   -> GroupChatServer
   -> AgentClients
   -> AgentBridgeClient
-  -> hermes_bridge.py broker
+  -> DiTing_bridge.py broker
   -> profile worker
-  -> AIAgent / Hermes Agent tools
+  -> AIAgent / DiTing Agent tools
 ```
 
 核心行为：
@@ -876,32 +876,32 @@ Bridge 启动失败不会阻止 Web UI server 启动，但普通 Chat run 会在
 - `ChatRunSocket.close()` abort active response stream/清理内存态。
 - `AgentBridgeManager.stop()` 默认关闭 Python broker，包括 `restart` 使用的
   `SIGUSR2`。如果需要保留 broker 和正在运行的 bridge session，可显式设置
-  `HERMES_AGENT_BRIDGE_STOP_ON_SHUTDOWN=0`。
+  `DiTing_AGENT_BRIDGE_STOP_ON_SHUTDOWN=0`。
 - 其他 WebSocket/Socket.IO 服务按 shutdown 流程停止。
 
 ## 22. 环境变量
 
 | 变量 | 说明 |
 | --- | --- |
-| `HERMES_AGENT_BRIDGE_ENDPOINT` | Node 到 Python bridge broker 的 endpoint。Windows 默认 TCP，macOS/Linux 默认 IPC。 |
-| `HERMES_AGENT_BRIDGE_WORKER_TRANSPORT` | broker 到 profile worker 的 transport，支持 `tcp`/`ipc`。 |
-| `HERMES_AGENT_BRIDGE_WORKER_PORT_BASE` | TCP worker 起始端口。 |
-| `HERMES_AGENT_BRIDGE_TIMEOUT_MS` | Node 等待 bridge 请求响应的超时，默认 120000ms。 |
-| `HERMES_AGENT_BRIDGE_CONNECT_RETRY_MS` | Node connect bridge 的短重试窗口，默认 5000ms。 |
-| `HERMES_AGENT_BRIDGE_STARTUP_TIMEOUT_MS` | bridge ready 超时，默认 120000ms。 |
-| `HERMES_AGENT_BRIDGE_STOP_ON_SHUTDOWN` | Web UI shutdown/restart 是否关闭 bridge broker，默认开启。设为 `0`/`false`/`no`/`off` 才会保留 broker。 |
-| `HERMES_AGENT_BRIDGE_AUTO_RESTART` | broker 意外退出是否自动重启，默认开启。 |
-| `HERMES_AGENT_BRIDGE_RESTART_DELAY_MS` | 自动重启基础延迟。 |
-| `HERMES_AGENT_BRIDGE_PYTHON` | 指定 Python 解释器。 |
-| `HERMES_AGENT_ROOT` | 指定 hermes-agent 根目录。 |
-| `HERMES_AGENT_BRIDGE_UV` / `UV` | 指定 uv。 |
-| `HERMES_AGENT_BRIDGE_PLATFORM` | bridge 传给 Hermes Agent 的 platform，默认 `cli`。 |
-| `HERMES_BRIDGE_PROVIDER` | 覆盖 bridge provider。 |
-| `HERMES_BRIDGE_MAX_TURNS` | 覆盖 bridge 最大轮数。 |
-| `HERMES_WEB_UI_DISABLE_GATEWAY_AUTOSTART` | 跳过启动时的 gateway 检查/自动启动；dashboard-only 部署可用。 |
-| `HERMES_WEB_UI_DISABLE_SKILL_INJECTION` | 跳过启动时的内置 skill 注入；外部管理 skills 时可用。默认注入只更新 Web UI 管理或完全相同的内置副本，用户修改的同名 skills 会跳过。 |
-| `HERMES_WEB_UI_PREVIEW_AGENT_BRIDGE_TRANSPORT` | Version Preview bridge transport。 |
-| `HERMES_WEB_UI_PREVIEW_AGENT_BRIDGE_ENDPOINT` | Version Preview bridge endpoint。 |
+| `DiTing_AGENT_BRIDGE_ENDPOINT` | Node 到 Python bridge broker 的 endpoint。Windows 默认 TCP，macOS/Linux 默认 IPC。 |
+| `DiTing_AGENT_BRIDGE_WORKER_TRANSPORT` | broker 到 profile worker 的 transport，支持 `tcp`/`ipc`。 |
+| `DiTing_AGENT_BRIDGE_WORKER_PORT_BASE` | TCP worker 起始端口。 |
+| `DiTing_AGENT_BRIDGE_TIMEOUT_MS` | Node 等待 bridge 请求响应的超时，默认 120000ms。 |
+| `DiTing_AGENT_BRIDGE_CONNECT_RETRY_MS` | Node connect bridge 的短重试窗口，默认 5000ms。 |
+| `DiTing_AGENT_BRIDGE_STARTUP_TIMEOUT_MS` | bridge ready 超时，默认 120000ms。 |
+| `DiTing_AGENT_BRIDGE_STOP_ON_SHUTDOWN` | Web UI shutdown/restart 是否关闭 bridge broker，默认开启。设为 `0`/`false`/`no`/`off` 才会保留 broker。 |
+| `DiTing_AGENT_BRIDGE_AUTO_RESTART` | broker 意外退出是否自动重启，默认开启。 |
+| `DiTing_AGENT_BRIDGE_RESTART_DELAY_MS` | 自动重启基础延迟。 |
+| `DiTing_AGENT_BRIDGE_PYTHON` | 指定 Python 解释器。 |
+| `DiTing_AGENT_ROOT` | 指定 diting-agent 根目录。 |
+| `DiTing_AGENT_BRIDGE_UV` / `UV` | 指定 uv。 |
+| `DiTing_AGENT_BRIDGE_PLATFORM` | bridge 传给 DiTing Agent 的 platform，默认 `cli`。 |
+| `DiTing_BRIDGE_PROVIDER` | 覆盖 bridge provider。 |
+| `DiTing_BRIDGE_MAX_TURNS` | 覆盖 bridge 最大轮数。 |
+| `DiTing_WEB_UI_DISABLE_GATEWAY_AUTOSTART` | 跳过启动时的 gateway 检查/自动启动；dashboard-only 部署可用。 |
+| `DiTing_WEB_UI_DISABLE_SKILL_INJECTION` | 跳过启动时的内置 skill 注入；外部管理 skills 时可用。默认注入只更新 Web UI 管理或完全相同的内置副本，用户修改的同名 skills 会跳过。 |
+| `DiTing_WEB_UI_PREVIEW_AGENT_BRIDGE_TRANSPORT` | Version Preview bridge transport。 |
+| `DiTing_WEB_UI_PREVIEW_AGENT_BRIDGE_ENDPOINT` | Version Preview bridge endpoint。 |
 
 ## 23. 当前限制和注意事项
 
@@ -910,7 +910,7 @@ Bridge 启动失败不会阻止 Web UI server 启动，但普通 Chat run 会在
 - Bridge socket 是本地 JSON line 协议，不是浏览器直接连接 Python。
 - 同一 session 只有一个 active run；并发输入走队列。
 - `sessionMap` 是进程内 transient 状态，server 重启后只能从 DB 恢复已落库内容，不能恢复已丢失的 Python 内存 run。
-- 工具审批依赖 Python bridge 和 Hermes tools 的审批回调；“始终允许”需要持久 allowlist 和进程内 allowlist cache 都更新。
+- 工具审批依赖 Python bridge 和 DiTing tools 的审批回调；“始终允许”需要持久 allowlist 和进程内 allowlist cache 都更新。
 - `workspace`、profile、model/provider 都会影响 run 上下文，排查问题时不要只看 session id。
 - group-chat 是独立 namespace `/group-chat` 和独立 store/service，但属于聊天核心链路，相关改动也要更新本文变更记录。
 

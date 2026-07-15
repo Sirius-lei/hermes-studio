@@ -9,6 +9,16 @@
  * System prompt for AI output format guidelines
  * Add this to your agent's system prompt to ensure proper formatting
  */
+export const DITING_IDENTITY_GUIDELINES = `
+# 身份
+
+你是谛听（DiTing），是当前产品中的 AI 编程与任务助手。
+
+- 当用户询问你是谁、你的名称或所属产品时，始终回答“谛听”或“DiTing”。
+- 你的产品、助手和 Agent 身份统一使用“谛听”或“DiTing”。
+- 除非用户明确询问技术实现细节，否则不要讨论内部兼容层或底层运行时。
+`;
+
 export const AI_OUTPUT_FORMAT_GUIDELINES = `
 # 输出格式规范
 
@@ -74,15 +84,15 @@ export const AI_OUTPUT_FORMAT_GUIDELINES = `
 `;
 
 /**
- * Stable Hermes Studio MCP usage guidance. This intentionally avoids runtime
+ * Stable DiTing Studio MCP usage guidance. This intentionally avoids runtime
  * values such as profile names or bearer tokens; those are supplied by MCP
  * server configuration and profile-scoped token files.
  */
-export const HERMES_MCP_USAGE_GUIDELINES = [
-  'Hermes Studio MCP usage: when the user asks to read/check the operation manual, API docs, endpoint docs, 接口文档, 接口手册, or 操作手册, immediately call hermes_studio_api_openapi_get without filters to list API module outlines.',
-  'Use the module purpose and keywords from hermes_studio_api_openapi_get to choose the right module, then call it again with a tag, path, or method filter before calling unfamiliar Web UI endpoints.',
-  'Use hermes_studio_api_request with method, relative path, and JSON body/query fields that match the OpenAPI requestBody and parameters. Do not call full URLs.',
-  'Authentication and the configured Hermes profile are provided by the MCP server; do not add Authorization headers or copy tokens into tool arguments.',
+export const DiTing_MCP_USAGE_GUIDELINES = [
+  'DiTing Studio MCP usage: when the user asks to read/check the operation manual, API docs, endpoint docs, 接口文档, 接口手册, or 操作手册, immediately call DiTing_studio_api_openapi_get without filters to list API module outlines.',
+  'Use the module purpose and keywords from DiTing_studio_api_openapi_get to choose the right module, then call it again with a tag, path, or method filter before calling unfamiliar Web UI endpoints.',
+  'Use DiTing_studio_api_request with method, relative path, and JSON body/query fields that match the OpenAPI requestBody and parameters. Do not call full URLs.',
+  'Authentication and the configured DiTing profile are provided by the MCP server; do not add Authorization headers or copy tokens into tool arguments.',
 ];
 
 export const WORKFLOW_NODE_SYSTEM_CONTEXT = `
@@ -101,6 +111,8 @@ Return the result for this node clearly and concisely. Do not describe the workf
 export function getSystemPrompt(customPrompt?: string, options?: { source?: string | null }): string {
   const parts: string[] = [];
 
+  parts.push(DITING_IDENTITY_GUIDELINES.trim());
+
   if (customPrompt) {
     parts.push(customPrompt);
   }
@@ -109,7 +121,7 @@ export function getSystemPrompt(customPrompt?: string, options?: { source?: stri
     parts.push(WORKFLOW_NODE_SYSTEM_CONTEXT.trim());
   }
 
-  parts.push(HERMES_MCP_USAGE_GUIDELINES.join('\n'));
+  parts.push(DiTing_MCP_USAGE_GUIDELINES.join('\n'));
   parts.push(AI_OUTPUT_FORMAT_GUIDELINES);
 
   return parts.join('\n\n');

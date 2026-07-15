@@ -15,7 +15,7 @@
 #include "mbedtls/base64.h"
 
 namespace {
-constexpr char kApName[] = "HStudio-WIFI";
+constexpr char kApName[] = "DiTing-WIFI";
 constexpr uint32_t kConnectTimeoutMs = 18000;
 constexpr uint32_t kMcuOtaFirstCheckMs = 30000;
 constexpr uint32_t kMcuOtaIntervalMs = 6UL * 60UL * 60UL * 1000UL;
@@ -25,9 +25,9 @@ const IPAddress kApIp(192, 168, 4, 1);
 const IPAddress kApGateway(192, 168, 4, 1);
 const IPAddress kApSubnet(255, 255, 255, 0);
 constexpr char kMissingSttPromptPcmUrl[] =
-    "https://ekko-hermes-studio.oss-cn-beijing.aliyuncs.com/current-profile-stt-not-configured-xiaohe.s16le.pcm";
+    "https://ekko-DiTing-studio.oss-cn-beijing.aliyuncs.com/current-profile-stt-not-configured-xiaohe.s16le.pcm";
 constexpr char kNoDevicePromptPcmUrl[] =
-    "https://ekko-hermes-studio.oss-cn-beijing.aliyuncs.com/no-device-connected-xiaohe-16k.pcm";
+    "https://ekko-DiTing-studio.oss-cn-beijing.aliyuncs.com/no-device-connected-xiaohe-16k.pcm";
 constexpr int kPinI2cSda = 3;
 constexpr int kPinI2cScl = 4;
 constexpr int kPinI2sDout = 5;
@@ -46,7 +46,7 @@ constexpr uint32_t kProvisionRestartDelayMs = 2500;
 constexpr uint32_t kProvisionRedirectDelayMs = 6500;
 constexpr int kMaxScannedNetworks = 20;
 constexpr uint16_t kLanDiscoveryLocalPort = 48630;
-constexpr uint16_t kHermesDiscoveryPort = 48640;
+constexpr uint16_t kDiTingDiscoveryPort = 48640;
 constexpr uint32_t kLanDiscoveryTimeoutMs = 1200;
 constexpr uint32_t kLanDiscoveryStaleMs = 30000;
 constexpr int kMaxLanDevices = 8;
@@ -458,7 +458,7 @@ String interactionStatusLabel() {
 }
 
 void drawInteractionFrame() {
-  oledDrawText(2, 1, F("HSTUDIO"), 1);
+  oledDrawText(2, 1, F("DITING"), 1);
   drawWifiGlyph(105, 1);
   oledDrawHLine(0, 10, 128);
 
@@ -508,7 +508,7 @@ void drawOledFrame() {
   bool thinking = oledMode == OledMode::Think;
   bool error = oledMode == OledMode::Error;
   bool blink = !thinking && !error && (millis() % 4300UL) > 4100UL;
-  oledDrawText(2, 1, F("HSTUDIO"), 1);
+  oledDrawText(2, 1, F("DITING"), 1);
   drawWifiGlyph(105, 1);
   oledDrawHLine(0, 10, 128);
   drawEye(19, 22, blink, thinking, error);
@@ -624,7 +624,7 @@ String deviceId() {
   String mac = WiFi.macAddress();
   mac.replace(":", "");
   mac.toLowerCase();
-  return String(F("hstudio_esp32c3_")) + mac;
+  return String(F("diting_esp32c3_")) + mac;
 }
 
 String mcuSocketStateLabel() {
@@ -1500,7 +1500,7 @@ int oldestLanDeviceSlot() {
 void rememberLanDeviceInfo(const String &json, const String &host, const String &baseUrl, uint32_t responseMs,
                            bool requireAnnouncement) {
   if (requireAnnouncement) {
-    if (jsonStringValue(json, F("type")) != F("hermes.announce")) return;
+    if (jsonStringValue(json, F("type")) != F("DiTing.announce")) return;
     if (jsonIntValue(json, F("version")) != 1) return;
   }
   String id = jsonStringValue(json, F("device_id"));
@@ -1509,7 +1509,7 @@ void rememberLanDeviceInfo(const String &json, const String &host, const String 
   uint16_t httpPort = static_cast<uint16_t>(jsonIntValue(json, F("http_port")));
   if (id.length() == 0 || httpPort == 0) return;
   if (endpointKind.length() == 0) {
-    endpointKind = httpPort == 8648 ? F("web") : (httpPort == 8748 ? F("desktop") : F("custom"));
+    endpointKind = httpPort == 18648 ? F("web") : (httpPort == 8748 ? F("desktop") : F("custom"));
   }
 
   int slot = findLanDevice(id, endpointKind, httpPort);
@@ -1527,8 +1527,8 @@ void rememberLanDeviceInfo(const String &json, const String &host, const String 
   device.httpPort = httpPort;
   device.endpointKind = endpointKind;
   device.url = baseUrl.length() > 0 ? baseUrl : String(F("http://")) + device.ip + F(":") + httpPort;
-  device.webVersion = jsonStringValue(json, F("hermes_web_ui_version"));
-  device.agentVersion = jsonStringValue(json, F("hermes_agent_version"));
+  device.webVersion = jsonStringValue(json, F("DiTing_web_ui_version"));
+  device.agentVersion = jsonStringValue(json, F("DiTing_agent_version"));
   device.responseMs = responseMs;
   device.lastSeenMs = millis();
   applySavedProfile(device);
@@ -1638,8 +1638,8 @@ IPAddress lanBroadcastIp() {
 }
 
 void sendLanDiscoveryPacket(const IPAddress &target, const String &requestId) {
-  String packet = String(F("{\"type\":\"hermes.discover\",\"version\":1,\"request_id\":\"")) + requestId + F("\"}");
-  lanUdp.beginPacket(target, kHermesDiscoveryPort);
+  String packet = String(F("{\"type\":\"DiTing.discover\",\"version\":1,\"request_id\":\"")) + requestId + F("\"}");
+  lanUdp.beginPacket(target, kDiTingDiscoveryPort);
   lanUdp.print(packet);
   lanUdp.endPacket();
 }
@@ -1749,7 +1749,7 @@ void sendWifiPage() {
   }
 
   String html = pageStart(F("连接 Wi-Fi"));
-  html += F("<section class='panel'><p class='meta'>HStudio ESP32-C3</p><h1>连接局域网 Wi-Fi</h1>");
+  html += F("<section class='panel'><p class='meta'>DiTing ESP32-C3</p><h1>连接局域网 Wi-Fi</h1>");
   if (wifiReady) {
     html += F("<p class='lead ok'>当前已联网：");
     html += escapeHtml(WiFi.SSID());
@@ -1806,7 +1806,7 @@ void sendWifiPage() {
 
 void sendStatusPage() {
   String html = pageStart(F("设备已联网"));
-  html += F("<section class='panel'><p class='meta'>HStudio ESP32-C3</p><h1>设备</h1><p class='lead'>");
+  html += F("<section class='panel'><p class='meta'>DiTing ESP32-C3</p><h1>设备</h1><p class='lead'>");
   html += escapeHtml(WiFi.SSID());
   html += F(" · IP ");
   html += WiFi.localIP().toString();
@@ -1837,7 +1837,7 @@ void sendStatusPage() {
 
   html += F("<section class='card'><h2>手动添加机器</h2>");
   html += F("<form method='post' action='/device/manual'><div class='field'><span class='label'>地址</span>");
-  html += F("<input name='url' autocomplete='off' placeholder='http://192.168.1.10:8648' required></div>");
+  html += F("<input name='url' autocomplete='off' placeholder='http://192.168.1.10:18648' required></div>");
   html += F("<div class='btn-row'><button class='btn primary' type='submit'>添加</button></div>");
   html += F("<p class='hint'>会请求对端公开机器信息接口并保存，已存在的机器会自动去重。</p></form></section>");
 
@@ -1918,7 +1918,7 @@ String otaNextCheckText() {
 
 void sendOtaPage(const String &notice = "") {
   String html = pageStart(F("OTA"));
-  html += F("<section class='panel'><p class='meta'>HStudio ESP32-C3</p><h1>OTA</h1><p class='lead'>固件在线升级</p>");
+  html += F("<section class='panel'><p class='meta'>DiTing ESP32-C3</p><h1>OTA</h1><p class='lead'>固件在线升级</p>");
   html += F("<nav class='tabs'><a class='tab' href='/device'>设备</a><a class='tab active' href='/ota'>OTA</a></nav>");
   if (notice.length() > 0) {
     html += F("<p class='hint'>");
@@ -1928,7 +1928,7 @@ void sendOtaPage(const String &notice = "") {
   html += F("<h2>固件状态</h2><div class='info-grid'>");
   appendInfoRow(html, F("当前 MD5"), ESP.getSketchMD5());
   appendInfoRow(html, F("服务端"), activeDeviceUrl.length() > 0 ? activeDeviceUrl : String(F("未连接")));
-  appendInfoRow(html, F("Manifest"), activeDeviceEndpoint(F("/api/hermes/mcu/firmware/manifest")));
+  appendInfoRow(html, F("Manifest"), activeDeviceEndpoint(F("/api/DiTing/mcu/firmware/manifest")));
   appendInfoRow(html, F("下次自动检查"), otaNextCheckText());
   appendInfoRow(html, F("OTA 条件"), String(wifiReady && WiFi.status() == WL_CONNECTED ? F("Wi-Fi OK") : F("Wi-Fi OFF")) +
                 F(" · ") + String(mcuAuthToken.length() > 0 ? F("Token OK") : F("No Token")));
@@ -1943,7 +1943,7 @@ void sendOtaPage(const String &notice = "") {
 
 void sendOtaUpdatingPage() {
   String html = pageStart(F("OTA"));
-  html += F("<section class='panel'><p class='meta'>HStudio ESP32-C3</p><h1>OTA</h1><p class='lead'>固件正在更新</p>");
+  html += F("<section class='panel'><p class='meta'>DiTing ESP32-C3</p><h1>OTA</h1><p class='lead'>固件正在更新</p>");
   html += F("<p class='hint'>固件正在下载并写入，请勿关闭单片机或断开电源。设备会自动重启，页面检测到恢复后会弹窗提示完成。</p>");
   html += F("<div class='info-grid'>");
   appendInfoRow(html, F("当前状态"), F("正在更新，请勿关闭单片机"));
@@ -2047,8 +2047,8 @@ bool runMcuLogin(LanDevice &device, const String &account, const String &passwor
   }
 
   http.addHeader(F("Content-Type"), F("application/json"));
-  http.addHeader(F("X-Hermes-Device-Id"), deviceId());
-  http.addHeader(F("X-Hermes-Device-Name"), F("HStudio ESP32-C3"));
+  http.addHeader(F("X-DiTing-Device-Id"), deviceId());
+  http.addHeader(F("X-DiTing-Device-Name"), F("DiTing ESP32-C3"));
   int code = http.POST(mcuLoginPayload(account, password));
   String response = http.getString();
   http.end();
@@ -3134,7 +3134,7 @@ String activeVoiceTurnEndpoint() {
   endpoint.trim();
   while (endpoint.endsWith("/")) endpoint.remove(endpoint.length() - 1);
   if (endpoint.length() == 0) return "";
-  endpoint += F("/api/hermes/mcu/voice-turn");
+  endpoint += F("/api/DiTing/mcu/voice-turn");
   return endpoint;
 }
 
@@ -3158,11 +3158,11 @@ bool postMcuVoiceTurn(const String &interactionId, uint8_t *wav, size_t wavLen, 
   http.addHeader(F("Content-Type"), F("audio/wav"));
   http.addHeader(F("Authorization"), String(F("Bearer ")) + mcuAuthToken);
   if (interactionId.length() > 0) {
-    http.addHeader(F("X-Hermes-Mcu-Interaction-Id"), interactionId);
+    http.addHeader(F("X-DiTing-Mcu-Interaction-Id"), interactionId);
   }
-  http.addHeader(F("X-Hermes-Mcu-Device-Id"), deviceId());
+  http.addHeader(F("X-DiTing-Mcu-Device-Id"), deviceId());
   if (selectedProfile.length() > 0) {
-    http.addHeader(F("X-Hermes-Profile"), selectedProfile);
+    http.addHeader(F("X-DiTing-Profile"), selectedProfile);
   }
 
   int code = http.POST(wav, wavLen);
@@ -3265,7 +3265,7 @@ McuOtaResult checkMcuFirmwareUpdate(bool force, bool applyUpdate, String *outFir
     return McuOtaResult::Failed;
   }
 
-  String endpoint = activeDeviceEndpoint(F("/api/hermes/mcu/firmware/manifest"));
+  String endpoint = activeDeviceEndpoint(F("/api/DiTing/mcu/firmware/manifest"));
   if (endpoint.length() == 0) return McuOtaResult::Failed;
 
   HTTPClient http;
@@ -3797,7 +3797,7 @@ String mcuSocketAuthJson() {
   json.reserve(mcuAuthToken.length() + selectedProfile.length() + 180);
   json += F("{\"token\":\"");
   json += escapeJson(mcuAuthToken);
-  json += F("\",\"role\":\"hermes-studio\",\"instanceId\":\"");
+  json += F("\",\"role\":\"DiTing-studio\",\"instanceId\":\"");
   json += escapeJson(deviceId());
   json += F("\",\"profile\":\"");
   json += escapeJson(selectedProfile);
@@ -4032,7 +4032,7 @@ void connectMcuSocketClient() {
   request += port;
   request += F("\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: ");
   request += key;
-  request += F("\r\nUser-Agent: HStudio-ESP32C3\r\n\r\n");
+  request += F("\r\nUser-Agent: DiTing-ESP32C3\r\n\r\n");
   mcuWsClient.print(request);
 
   String statusLine = mcuWsClient.readStringUntil('\n');
@@ -4061,7 +4061,7 @@ void connectMcuSocketClient() {
 void sendConnectSuccessPage(const String &ssid, const IPAddress &ip) {
   String target = deviceUrl(ip);
   String html = pageStart(F("Wi-Fi 已连接"));
-  html += F("<section class='panel'><p class='meta'>HStudio ESP32-C3</p><h1>Wi-Fi 已连接</h1>");
+  html += F("<section class='panel'><p class='meta'>DiTing ESP32-C3</p><h1>Wi-Fi 已连接</h1>");
   html += F("<p class='lead ok'>");
   html += escapeHtml(ssid);
   html += F(" · IP ");
@@ -4081,7 +4081,7 @@ void sendConnectSuccessPage(const String &ssid, const IPAddress &ip) {
 
 void sendConnectFailedPage(const String &ssid) {
   String html = pageStart(F("Wi-Fi 连接失败"));
-  html += F("<section class='panel'><p class='meta'>HStudio ESP32-C3</p><h1>Wi-Fi 连接失败</h1>");
+  html += F("<section class='panel'><p class='meta'>DiTing ESP32-C3</p><h1>Wi-Fi 连接失败</h1>");
   html += F("<p class='lead bad'>没有连上 ");
   html += escapeHtml(ssid);
   html += F("。请检查 SSID 和密码后重试。</p>");
@@ -4315,12 +4315,12 @@ void setup() {
   Serial.begin(115200);
   delay(300);
   Serial.println();
-  Serial.println(F("HStudio WiFi setup firmware boot"));
+  Serial.println(F("DiTing WiFi setup firmware boot"));
   Serial.printf("Reset reason=%d free_heap=%lu min_free_heap=%lu\n",
                 static_cast<int>(esp_reset_reason()),
                 static_cast<unsigned long>(ESP.getFreeHeap()),
                 static_cast<unsigned long>(ESP.getMinFreeHeap()));
-  esp_rom_printf("HStudio WiFi setup firmware boot\n");
+  esp_rom_printf("DiTing WiFi setup firmware boot\n");
   initOledDisplay();
   initAudioHardware();
   prefs.begin("mcu", true);

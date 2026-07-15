@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { renderHighlightedCodeBlock } from '@/components/hermes/chat/highlight'
+import { renderHighlightedCodeBlock } from '@/components/DiTing/chat/highlight'
 
 const DIFF_WITH_HTML = `diff --git a/foo.html b/foo.html
 --- a/foo.html
