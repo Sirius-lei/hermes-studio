@@ -60,28 +60,27 @@ def _skin_color(key: str, fallback: str) -> str:
 
 from diting_cli import __version__ as VERSION, __release_date__ as RELEASE_DATE
 
-DiTing_AGENT_LOGO = """[bold #FFD700]██╗  ██╗███████╗██████╗ ███╗   ███╗███████╗███████╗       █████╗  ██████╗ ███████╗███╗   ██╗████████╗[/]
-[bold #FFD700]██║  ██║██╔════╝██╔══██╗████╗ ████║██╔════╝██╔════╝      ██╔══██╗██╔════╝ ██╔════╝████╗  ██║╚══██╔══╝[/]
-[#FFBF00]███████║█████╗  ██████╔╝██╔████╔██║█████╗  ███████╗█████╗███████║██║  ███╗█████╗  ██╔██╗ ██║   ██║[/]
-[#FFBF00]██╔══██║██╔══╝  ██╔══██╗██║╚██╔╝██║██╔══╝  ╚════██║╚════╝██╔══██║██║   ██║██╔══╝  ██║╚██╗██║   ██║[/]
-[#CD7F32]██║  ██║███████╗██║  ██║██║ ╚═╝ ██║███████╗███████║      ██║  ██║╚██████╔╝███████╗██║ ╚████║   ██║[/]
-[#CD7F32]╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝╚══════╝╚══════╝      ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝[/]"""
+DiTing_AGENT_LOGO = """[bold #FFD700]██████╗ ██╗████████╗██╗███╗   ██╗ ██████╗[/]
+[bold #FFD700]██╔══██╗██║╚══██╔══╝██║████╗  ██║██╔════╝[/]
+[#FFBF00]██║  ██║██║   ██║   ██║██╔██╗ ██║██║  ███╗[/]
+[#FFBF00]██║  ██║██║   ██║   ██║██║╚██╗██║██║   ██║[/]
+[#CD7F32]██████╔╝██║   ██║   ██║██║ ╚████║╚██████╔╝[/]
+[#CD7F32]╚═════╝ ╚═╝   ╚═╝   ╚═╝╚═╝  ╚═══╝ ╚═════╝[/]"""
 
-DiTing_CADUCEUS = """[#CD7F32]⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⡀⠀⣀⣀⠀⢀⣀⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[/]
-[#CD7F32]⠀⠀⠀⠀⠀⠀⢀⣠⣴⣾⣿⣿⣇⠸⣿⣿⠇⣸⣿⣿⣷⣦⣄⡀⠀⠀⠀⠀⠀⠀[/]
-[#FFBF00]⠀⢀⣠⣴⣶⠿⠋⣩⡿⣿⡿⠻⣿⡇⢠⡄⢸⣿⠟⢿⣿⢿⣍⠙⠿⣶⣦⣄⡀⠀[/]
-[#FFBF00]⠀⠀⠉⠉⠁⠶⠟⠋⠀⠉⠀⢀⣈⣁⡈⢁⣈⣁⡀⠀⠉⠀⠙⠻⠶⠈⠉⠉⠀⠀[/]
-[#FFD700]⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣴⣿⡿⠛⢁⡈⠛⢿⣿⣦⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[/]
-[#FFD700]⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠿⣿⣦⣤⣈⠁⢠⣴⣿⠿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[/]
-[#FFBF00]⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠉⠻⢿⣿⣦⡉⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[/]
-[#FFBF00]⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⢷⣦⣈⠛⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[/]
-[#CD7F32]⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢠⣴⠦⠈⠙⠿⣦⡄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[/]
-[#CD7F32]⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠸⣿⣤⡈⠁⢤⣿⠇⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[/]
-[#B8860B]⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠛⠷⠄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[/]
-[#B8860B]⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣀⠑⢶⣄⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[/]
-[#B8860B]⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣿⠁⢰⡆⠈⡿⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[/]
-[#B8860B]⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠳⠈⣡⠞⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[/]
-[#B8860B]⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[/]"""
+DiTing_TOTEM = """[#CD7F32]⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⢀⣤⡀⠀⠀⠀⠀⢀⣤⡀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[/]
+[#CD7F32]⠀⠀⠀⠀⠀⠀⠀⠀⣠⠞⠁⠈⠳⣄⣠⠞⠁⠈⠳⣄⠀⠀⠀⠀⠀⠀⠀⠀[/]
+[#FFBF00]⠀⠀⠀⠀⠀⠀⢀⡾⠁⠀⠀⣀⣀⡀⠀⢀⣀⣀⠀⠀⠈⢷⡀⠀⠀⠀⠀⠀[/]
+[#FFBF00]⠀⠀⠀⠀⠀⢀⡾⠀⢀⣴⠟⠉⠉⠻⣦⠟⠉⠉⠻⣦⡀⠀⢷⡀⠀⠀⠀⠀[/]
+[#FFD700]⠀⠀⠀⠀⠀⣾⠁⠀⣿⠁⠀⢀⣤⡀⠈⠀⢀⣤⡀⠀⣿⠀⠈⣷⠀⠀⠀⠀[/]
+[#FFD700]⠀⠀⠀⠀⢸⡇⠀⠀⣿⠀⠀⠸⣿⠿⠁⠀⠈⠿⣿⠇⠀⣿⠀⠀⢸⡇⠀⠀⠀[/]
+[#FFBF00]⠀⠀⠀⠀⢸⡇⠀⠀⠘⣧⠀⠀⠀⠀⢠⣶⡄⠀⠀⠀⣼⠃⠀⠀⢸⡇⠀⠀⠀[/]
+[#FFBF00]⠀⠀⠀⠀⠀⢿⡄⠀⠀⠈⠳⣄⠀⠀⠘听⠃⠀⠀⣠⠞⠁⠀⠀⢠⡿⠀⠀⠀⠀[/]
+[#CD7F32]⠀⠀⠀⠀⠀⠈⢿⣄⠀⠀⠀⠈⠳⣤⣀⣀⣤⠞⠁⠀⠀⠀⣠⡿⠁⠀⠀⠀⠀[/]
+[#CD7F32]⠀⠀⠀⠀⠀⠀⠀⠙⢷⣄⠀⠀⣠⠞⢹⡇⠳⣄⠀⠀⣠⡾⠋⠀⠀⠀⠀⠀⠀[/]
+[#B8860B]⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠛⠛⠁⠀⢸⡇⠀⠈⠛⠛⠉⠀⠀⠀⠀⠀⠀⠀⠀[/]
+[#B8860B]⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⠟⠙⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[/]
+[#B8860B]⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⣠⠞⠁⠀⠀⠈⠳⣄⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[/]
+[#B8860B]⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠻⣄⣀⣀⣀⣀⣠⠟⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀[/]"""
 
 
 
@@ -584,7 +583,7 @@ def build_welcome_banner(console: "Console", model: str, cwd: str,
                          get_toolset_for_tool=None,
                          context_length: int = None,
                          provider: str = None):
-    """Build and print a welcome banner with caduceus on left and info on right.
+    """Build and print a welcome banner with the DiTing totem on the left.
 
     Args:
         console: Rich Console instance.
@@ -649,10 +648,10 @@ def build_welcome_banner(console: "Console", model: str, cwd: str,
     try:
         from diting_cli.skin_engine import get_active_skin
         _bskin = get_active_skin()
-        _hero = _bskin.banner_hero if hasattr(_bskin, 'banner_hero') and _bskin.banner_hero else DiTing_CADUCEUS
+        _hero = _bskin.banner_hero if hasattr(_bskin, 'banner_hero') and _bskin.banner_hero else DiTing_TOTEM
     except Exception:
         _bskin = None
-        _hero = DiTing_CADUCEUS
+        _hero = DiTing_TOTEM
     left_lines = ["", _hero, ""]
     if (provider or "").strip().lower() == "moa":
         # MoA virtual provider: ``model`` is a preset name. Show the preset and
