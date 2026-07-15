@@ -12,6 +12,8 @@ import tools.mcp_tool
 def test_default_banner_uses_diting_wordmark_and_totem():
     assert "██████╗ ██╗████████╗██╗███╗   ██╗ ██████╗" in banner.DiTing_AGENT_LOGO
     assert "听" in banner.DiTing_TOTEM
+    assert "◉ ◉" in banner.DiTing_TOTEM
+    assert "_/^^\\_" in banner.DiTing_TOTEM
 
 
 def test_display_toolset_name_strips_legacy_suffix():
