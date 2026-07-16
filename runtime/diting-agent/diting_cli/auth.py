@@ -1643,6 +1643,60 @@ def _get_config_hint_for_unknown_provider(provider_name: str) -> str:
         return ""
 
 
+def _is_configured_custom_provider_id(provider_id: str) -> bool:
+    """Return whether a ``custom:<name>`` id exists in the active config.
+
+    ``resolve_provider`` returns the billing/runtime class (``custom``), while
+    ``resolve_runtime_provider`` resolves the named endpoint and credentials.
+    Keeping this small bridge here prevents status/auth entry points from
+    rejecting a valid named custom provider before the runtime resolver sees it.
+    """
+    normalized = (provider_id or "").strip().lower()
+    if not normalized.startswith("custom:"):
+        return False
+    requested_name = normalized[len("custom:"):].strip()
+    if not requested_name:
+        return False
+
+    try:
+        from diting_cli.config import get_compatible_custom_providers, load_config
+
+        config = load_config() or {}
+        providers = config.get("providers")
+        if isinstance(providers, dict):
+            for key, entry in providers.items():
+                if not isinstance(entry, dict):
+                    entry = {}
+                candidates = (
+                    key,
+                    entry.get("name"),
+                    entry.get("provider_key"),
+                )
+                if any(
+                    str(candidate or "").strip().lower().replace(" ", "-")
+                    == requested_name
+                    for candidate in candidates
+                ):
+                    return True
+
+        for entry in get_compatible_custom_providers(config) or []:
+            if not isinstance(entry, dict):
+                continue
+            candidates = (
+                entry.get("name"),
+                entry.get("provider_key"),
+            )
+            if any(
+                str(candidate or "").strip().lower().replace(" ", "-")
+                == requested_name
+                for candidate in candidates
+            ):
+                return True
+    except Exception:
+        logger.debug("Could not validate named custom provider %s", provider_id, exc_info=True)
+    return False
+
+
 def resolve_provider(
     requested: Optional[str] = None,
     *,
@@ -1716,6 +1770,8 @@ def resolve_provider(
     if normalized == "openrouter":
         return "openrouter"
     if normalized == "custom":
+        return "custom"
+    if _is_configured_custom_provider_id(normalized):
         return "custom"
     if normalized in PROVIDER_REGISTRY:
         return normalized
