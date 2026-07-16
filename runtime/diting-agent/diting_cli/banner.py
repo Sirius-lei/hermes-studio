@@ -83,6 +83,91 @@ DiTing_TOTEM = """[#CD7F32]              _/^^\\_        _/^^\\_[/]
 [#B8860B]         /       \\___/  \\  \\___/       \\ [/]
 [#CD7F32]        /___________/   听   \\___________\\ [/]"""
 
+# Dot-matrix splash derived from the DiTing "Listening" launch artwork.
+# ``;``/``,`` encode cyan colon/dot glyphs; ``:``/``.`` encode gold.
+DITING_LISTENING_ART = (
+    " . .. ..                : :         : :                . ... .",
+    " . :.  . .: ..         :. .:       :. .:          .. :..  .: .",
+    "   .: .      . :.      :   : .   . :   :       .: .      .:.",
+    "      .. :.     .. :.  :.  : :: :: :  .:  . :. .     .:. .",
+    "      ..  . .: ... ... .: ;; :: :: ;; :.  . .. .. :. . . .",
+    "      :. .. :: .:: :.: :: ;,       ,; :: :. :: :. :: ... :",
+    "      .:  . .: ..; ;;; ,,             ,, ;; ;; .. :. . : .",
+    "       : :.  . ::, , ;                   ;  ,, :: .  .::",
+    "       : :   : .:; , ;                   ;  ,; :. :   ::",
+    "      :: :. .: .:; ;;; :: ,,       .. :: ;; ;; :. :.  :: :",
+    "   .. ::  ; :: ..: .;; ;; ;; ;   ; .: ;; ;; .: .. :: ;,. :..",
+    ".: .. .   ; ::       ; ;; ,  ;   ;  . ;; ;        .: ;   ... :.",
+    ":  :. .     ::         ;  ,; ;; ;, ;,  ;          ::     ..:  :",
+    ":. :.       .:         ;; ,, ;; ;; ,, ;;          ::      .: .:",
+    " . :: .      ; :     ; :: .. :: :: .. :: ;      : ;      .:: .",
+    " . :.        , ::.  ;;       .: :.       ;;  . :: ,       .: .",
+    ":: .: .         .; ;:: ,      . ;      , :: ;; ,         .:. ::",
+    ":: :. ..         , ;:: ,     .: ;,    ,, :: ;, ,       . ..: ::",
+    " . :: .     ,, ;,,  :: :: ;; ,, ;, ,; :: ::  , ,; ;,     .:: .",
+    "    . .. :: ;       :: .. ;; ;; ;; ;; .. ::        ; ::. ..",
+    "         :: .       .. :.  . :: ;, .  .: ..        . ::",
+    "         .: :. ::       . .: :: ;; :. .        :: .: :.",
+    "          . .: ... .:: .     ,; ;,     . :: :. .. :. .",
+    "                       .: .. ;, ,; .. :.",
+    "                          .. :: :: ..",
+)
+
+_LISTENING_GOLD = "#F7C555"
+_LISTENING_CYAN = "#67D8E3"
+_LISTENING_HEADER = "#A7F3F8"
+_LISTENING_RULE = "#496276"
+
+
+def _listening_art_line(encoded: str):
+    """Decode one compact color-map row into a Rich Text instance."""
+    from rich.text import Text
+
+    line = Text()
+    run = ""
+    run_color = None
+
+    def flush() -> None:
+        nonlocal run
+        if run:
+            line.append(run, style=run_color)
+            run = ""
+
+    for token in encoded:
+        if token in ";,":
+            char = ":" if token == ";" else "."
+            color = _LISTENING_CYAN
+        elif token in ":.":
+            char = token
+            color = _LISTENING_GOLD
+        else:
+            char = token
+            color = None
+        if color != run_color:
+            flush()
+            run_color = color
+        run += char
+    flush()
+    return line
+
+
+def build_listening_splash(console: "Console") -> None:
+    """Render the lightweight DiTing Listening startup splash."""
+    from rich.text import Text
+
+    terminal_width = max(32, getattr(console, "width", 80) or 80)
+    header_width = max(28, min(terminal_width - 4, 100))
+    console.print(Text("  DITING // LISTENING", style=f"bold {_LISTENING_HEADER}"))
+    console.print(Text("  " + "─" * header_width, style=_LISTENING_RULE))
+    console.print("\n\n")
+    for encoded in DITING_LISTENING_ART:
+        console.print(
+            _listening_art_line(encoded),
+            justify="center",
+            overflow="crop",
+            no_wrap=True,
+        )
+
 
 
 # =========================================================================
@@ -583,7 +668,8 @@ def build_welcome_banner(console: "Console", model: str, cwd: str,
                          session_id: str = None,
                          get_toolset_for_tool=None,
                          context_length: int = None,
-                         provider: str = None):
+                         provider: str = None,
+                         splash_only: bool = False):
     """Build and print a welcome banner with the DiTing totem on the left.
 
     Args:
@@ -598,7 +684,13 @@ def build_welcome_banner(console: "Console", model: str, cwd: str,
         provider: Active provider id. When ``"moa"``, ``model`` is a MoA
             preset name and the banner renders the aggregator instead of a
             bare model slug.
+        splash_only: Render the lightweight DiTing Listening splash instead
+            of the detailed runtime/tool inventory panel.
     """
+    if splash_only:
+        build_listening_splash(console)
+        return
+
     from model_tools import check_tool_availability, TOOLSET_REQUIREMENTS
     from rich.panel import Panel
     from rich.table import Table

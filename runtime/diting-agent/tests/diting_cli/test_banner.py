@@ -16,6 +16,17 @@ def test_default_banner_uses_diting_wordmark_and_totem():
     assert "_/^^\\_" in banner.DiTing_TOTEM
 
 
+def test_listening_splash_renders_title_and_dot_matrix():
+    console = Console(record=True, force_terminal=False, color_system=None, width=100)
+
+    banner.build_listening_splash(console)
+
+    output = console.export_text()
+    assert "DITING // LISTENING" in output
+    assert output.count(":") > 100
+    assert len(output.splitlines()) >= len(banner.DITING_LISTENING_ART) + 2
+
+
 def test_display_toolset_name_strips_legacy_suffix():
     assert banner._display_toolset_name("homeassistant_tools") == "homeassistant"
     assert banner._display_toolset_name("honcho_tools") == "honcho"

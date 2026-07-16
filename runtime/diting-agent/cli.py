@@ -6180,22 +6180,20 @@ class DiTingCLI(CLIAgentSetupMixin, CLICommandsMixin):
             self._console_print(_build_compact_banner())
             self._show_status()
         else:
-            # Get tools for display
-            tools = get_tool_definitions(enabled_toolsets=self.enabled_toolsets, quiet_mode=True)
-            
             # Get terminal working directory (where commands will execute)
             cwd = os.getenv("TERMINAL_CWD", os.getcwd())
-            
-            # Build and display the banner
+
+            # Keep startup focused on the DiTing identity. The detailed tool
+            # inventory remains available through /tools after startup.
             build_welcome_banner(
                 console=self.console,
                 model=self.model,
                 cwd=cwd,
-                tools=tools,
                 enabled_toolsets=self.enabled_toolsets,
                 session_id=self.session_id,
                 context_length=ctx_len,
                 provider=self.provider,
+                splash_only=True,
             )
         
         # Tool discovery is intentionally deferred on the Termux bare prompt
