@@ -484,6 +484,7 @@ export default {
     folderPickerSelected: 'Выбрано:',
     workspaceSet: 'Рабочая область установлена',
     workspaceSetFailed: 'Ошибка установки рабочей области',
+    sessionCreateFailed: 'Не удалось создать пространство сессии',
     setModel: 'Установить модель',
     setModelTitle: 'Установить модель сеанса',
     modelSet: 'Модель установлена',

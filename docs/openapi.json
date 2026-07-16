@@ -6045,6 +6045,42 @@
             }
           }
         ]
+      },
+      "post": {
+        "tags": [
+          "Sessions"
+        ],
+        "summary": "Create sessions",
+        "description": "POST /api/DiTing/sessions",
+        "operationId": "create",
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": true
+              }
+            }
+          }
+        }
       }
     },
     "/api/DiTing/sessions/DiTing": {

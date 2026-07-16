@@ -18,7 +18,7 @@ vi.mock('../../packages/server/src/services/DiTing/DiTing-profile', () => ({
 }))
 
 vi.mock('../../packages/server/src/services/DiTing/upload-paths', () => ({
-  getProfileUploadDir: vi.fn((profile: string) => `/tmp/diting-web-ui/upload/${profile}`),
+  getProfileUploadDir: vi.fn((profile: string, userId: string | number) => `/tmp/diting-web-ui/users/${userId}/files/${profile}`),
 }))
 
 function multipartBody(
@@ -55,17 +55,17 @@ describe('upload controller', () => {
     const ctx: any = {
       get: vi.fn((header: string) => header === 'content-type' ? `multipart/form-data; boundary=${boundary}` : ''),
       req: Readable.from([multipartBody(boundary, { filename: 'note.txt', content: 'hello' })]),
-      state: { profile: { name: 'research' } },
+      state: { profile: { name: 'research' }, user: { id: 42, role: 'admin' } },
       body: undefined,
       status: 200,
     }
 
     await handleUpload(ctx)
 
-    expect(mkdirMock).toHaveBeenCalledWith('/tmp/diting-web-ui/upload/research', { recursive: true })
+    expect(mkdirMock).toHaveBeenCalledWith('/tmp/diting-web-ui/users/42/files/research', { recursive: true })
     expect(writeFileMock).toHaveBeenCalledOnce()
     const [savedPath, data] = writeFileMock.mock.calls[0]
-    expect(normalizePath(savedPath)).toMatch(/^\/tmp\/diting-web-ui\/upload\/research\/[a-f0-9]+\.txt$/)
+    expect(normalizePath(savedPath)).toMatch(/^\/tmp\/diting-web-ui\/users\/42\/files\/research\/[a-f0-9]+\.txt$/)
     expect(data.toString('utf-8')).toBe('hello')
     expect(ctx.body.files[0]).toMatchObject({ name: 'note.txt', path: savedPath })
   })
@@ -78,7 +78,7 @@ describe('upload controller', () => {
         ? `multipart/form-data; boundary=${boundary}; charset=utf-8`
         : ''),
       req: Readable.from([multipartBody(boundary, { filenameStar: 'daily%20report.txt', content: 'hello' })]),
-      state: { profile: { name: 'research' } },
+      state: { profile: { name: 'research' }, user: { id: 42, role: 'admin' } },
       body: undefined,
       status: 200,
     }
@@ -87,7 +87,7 @@ describe('upload controller', () => {
 
     expect(writeFileMock).toHaveBeenCalledOnce()
     const [savedPath, data] = writeFileMock.mock.calls[0]
-    expect(normalizePath(savedPath)).toMatch(/^\/tmp\/diting-web-ui\/upload\/research\/[a-f0-9]+\.txt$/)
+    expect(normalizePath(savedPath)).toMatch(/^\/tmp\/diting-web-ui\/users\/42\/files\/research\/[a-f0-9]+\.txt$/)
     expect(data.toString('utf-8')).toBe('hello')
     expect(ctx.body.files[0]).toMatchObject({ name: 'daily report.txt', path: savedPath })
   })
@@ -98,7 +98,7 @@ describe('upload controller', () => {
     const ctx: any = {
       get: vi.fn((header: string) => header === 'content-type' ? `multipart/form-data; boundary=${boundary}` : ''),
       req: Readable.from([multipartBody(boundary, { filenameStar: 'bad%ZZname.txt', content: 'hello' })]),
-      state: { profile: { name: 'research' } },
+      state: { profile: { name: 'research' }, user: { id: 42, role: 'admin' } },
       body: undefined,
       status: 200,
     }

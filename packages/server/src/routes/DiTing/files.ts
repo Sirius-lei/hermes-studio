@@ -1,22 +1,39 @@
 import Router from '@koa/router'
 import {
   createFileProvider,
+  LocalFileProvider,
   resolveDiTingPath,
   isSensitivePath,
   MAX_EDIT_SIZE,
 } from '../../services/DiTing/file-provider'
 import { requireSuperAdmin } from '../../middleware/user-auth'
 import { MultipartParseError, parseMultipartBoundary, parseMultipartFilename, splitMultipart } from '../../lib/multipart'
+import { ensureUserFilesDir, resolveUserFilesPath } from '../../services/DiTing/user-storage'
 
 function requestedProfile(ctx: any): string | undefined {
   return ctx.state?.profile?.name
 }
 
+function ordinaryUserId(ctx: any): string | number | null {
+  const user = ctx.state?.user
+  if (!user || user.role === 'super_admin' || user.id == null || String(user.id).trim() === '') return null
+  return user.id
+}
+
 function resolveRequestPath(ctx: any, relativePath: string): string {
+  const userId = ordinaryUserId(ctx)
+  if (userId != null) {
+    return resolveUserFilesPath(userId, requestedProfile(ctx) || 'default', relativePath)
+  }
   return resolveDiTingPath(relativePath, requestedProfile(ctx))
 }
 
 async function createRequestFileProvider(ctx: any) {
+  const userId = ordinaryUserId(ctx)
+  if (userId != null) {
+    const root = await ensureUserFilesDir(userId, requestedProfile(ctx) || 'default')
+    return new LocalFileProvider(root)
+  }
   return createFileProvider(requestedProfile(ctx))
 }
 

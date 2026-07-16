@@ -10,6 +10,14 @@ const sendCodingAgentRunInputMock = vi.hoisted(() => vi.fn())
 const writeModelRunProfileTokenMock = vi.hoisted(() => vi.fn(async () => undefined))
 const getSystemPromptMock = vi.hoisted(() => vi.fn(() => 'system prompt'))
 const getSessionMock = vi.hoisted(() => vi.fn())
+const updateSessionMock = vi.hoisted(() => vi.fn())
+const ensureDiTingRunWorkspaceMock = vi.hoisted(() => vi.fn(async (
+  profile: string,
+  workspace?: string | null,
+  options?: { userId?: string | number | null; sessionId?: string | null },
+) => workspace || (options?.userId != null
+  ? `/tmp/users/${options.userId}/sessions/${options.sessionId}/workspace`
+  : `/tmp/profiles/${profile}/workspace`)))
 
 vi.mock('../../packages/server/src/services/agent-runner/coding-agent-run-manager', () => ({
   codingAgentRunManager: managerMock,
@@ -30,6 +38,11 @@ vi.mock('../../packages/server/src/lib/llm-prompt', () => ({
 
 vi.mock('../../packages/server/src/db/DiTing/session-store', () => ({
   getSession: getSessionMock,
+  updateSession: updateSessionMock,
+}))
+
+vi.mock('../../packages/server/src/services/DiTing/run-chat/workspace', () => ({
+  ensureDiTingRunWorkspace: ensureDiTingRunWorkspaceMock,
 }))
 
 describe('handleCodingAgentRun', () => {

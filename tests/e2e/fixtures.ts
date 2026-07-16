@@ -1,6 +1,7 @@
 import type { Page, Request, Route } from '@playwright/test'
 
 export const TEST_ACCESS_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwidXNlcm5hbWUiOiJwbGF5d3JpZ2h0Iiwicm9sZSI6InN1cGVyX2FkbWluIiwidHlwZSI6ImFjY2VzcyIsImF1ZCI6Imhlcm1lcy13ZWItdWkiLCJpYXQiOjE3NjAwMDAwMDAsImV4cCI6NDEwMjQ0NDgwMH0.playwright-signature'
+export const TEST_USER_ACCESS_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3IiwidXNlcm5hbWUiOiJwbGF5d3JpZ2h0LXVzZXIiLCJyb2xlIjoiYWRtaW4iLCJ0eXBlIjoiYWNjZXNzIiwiYXVkIjoiZGl0aW5nLXdlYi11aSIsImlhdCI6MTc2MDAwMDAwMCwiZXhwIjo0MTAyNDQ0ODAwfQ.playwright-signature'
 
 export interface MockedRequest {
   method: string
@@ -14,6 +15,7 @@ interface MockDiTingApiOptions {
   tokenValidationStatus?: number
   initialProfileName?: 'default' | 'research'
   sessions?: unknown[]
+  userRole?: 'super_admin' | 'admin'
 }
 
 const sampleModelGroup = {
@@ -136,7 +138,7 @@ export async function mockDiTingApi(page: Page, options: MockDiTingApiOptions = 
         user: {
           id: 1,
           username: 'playwright',
-          role: 'super_admin',
+          role: options.userRole ?? 'super_admin',
           status: 'active',
           created_at: 0,
           updated_at: 0,
@@ -161,6 +163,31 @@ export async function mockDiTingApi(page: Page, options: MockDiTingApiOptions = 
     }
 
     if (pathname === '/api/DiTing/sessions') {
+      if (request.method() === 'POST') {
+        const input = JSON.parse(request.postData() || '{}')
+        await route.fulfill(jsonResponse({
+          session: {
+            ...input,
+            title: input.title || null,
+            workspace: `/tmp/diting-web-ui/users/7/sessions/${input.id}/workspace`,
+            started_at: 1_700_000_000,
+            ended_at: null,
+            last_active: 1_700_000_000,
+            message_count: 0,
+            tool_call_count: 0,
+            input_tokens: 0,
+            output_tokens: 0,
+            cache_read_tokens: 0,
+            cache_write_tokens: 0,
+            reasoning_tokens: 0,
+            billing_provider: null,
+            estimated_cost_usd: 0,
+            actual_cost_usd: null,
+            cost_status: '',
+          },
+        }, 201))
+        return
+      }
       await route.fulfill(jsonResponse({ sessions: options.sessions ?? [] }, tokenValidationStatus))
       return
     }

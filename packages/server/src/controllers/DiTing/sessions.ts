@@ -32,7 +32,10 @@ import { AgentBridgeClient, getAgentBridgeManager } from '../../services/DiTing/
 import { ensureDiTingRunWorkspace } from '../../services/DiTing/run-chat/workspace'
 import {
   canAccessOwnedRecordWithContext,
+  currentUserId,
+  effectiveRequestedUserId,
   effectiveSessionOwnerId,
+  isSuperAdminUser,
 } from '../../services/DiTing/session-access'
 
 function getPendingDeletedSessionIds(): Set<string> {
@@ -57,10 +60,47 @@ function requestedProfile(ctx: any): string | undefined {
 function rawRequestedUserContext(ctx: any): string | undefined {
   const queryValue = typeof ctx.query?.user_id === 'string' ? ctx.query.user_id.trim() : ''
   if (queryValue) return queryValue
-  const headerValue = typeof ctx.headers?.['x-DiTing-user-context'] === 'string'
-    ? ctx.headers['x-DiTing-user-context'].trim()
+  const headerValue = typeof ctx.headers?.['x-diting-user-context'] === 'string'
+    ? ctx.headers['x-diting-user-context'].trim()
     : ''
-  return headerValue || undefined
+  if (headerValue) return headerValue
+  const bodyValue = typeof ctx.request?.body?.user_id === 'string' || typeof ctx.request?.body?.user_id === 'number'
+    ? String(ctx.request.body.user_id).trim()
+    : ''
+  return bodyValue || undefined
+}
+
+function sessionOwnerFilter(ctx: any): string | undefined {
+  const user = ctx.state?.user
+  if (!user) return undefined
+  const requested = effectiveRequestedUserId(user, rawRequestedUserContext(ctx))
+  if (requested) return requested
+  if (isSuperAdminUser(user)) return undefined
+  return currentUserId(user) || undefined
+}
+
+function listAccessibleLocalSessions(
+  ctx: any,
+  profile?: string,
+  source?: string,
+  limit = 2000,
+) {
+  const ownerId = sessionOwnerFilter(ctx)
+  return ownerId
+    ? localListSessions(profile, source, limit, ownerId)
+    : localListSessions(profile, source, limit)
+}
+
+function searchAccessibleLocalSessions(
+  ctx: any,
+  profile: string | undefined,
+  query: string,
+  limit: number,
+) {
+  const ownerId = sessionOwnerFilter(ctx)
+  return ownerId
+    ? localSearchSessions(profile, query, limit, ownerId)
+    : localSearchSessions(profile, query, limit)
 }
 
 function runtimeProvider(provider: string): string {
@@ -349,7 +389,7 @@ export async function listConversations(ctx: any) {
   const profile = explicitProfileFilter(ctx)
   const sessions = filterBySessionAccess(
     ctx,
-    localListSessions(profile, source, limit && limit > 0 ? limit : 200),
+    listAccessibleLocalSessions(ctx, profile, source, limit && limit > 0 ? limit : 200),
   )
   const summaries: ConversationSummary[] = sessions.map(s => ({
     id: s.id,
@@ -382,6 +422,67 @@ export async function listConversations(ctx: any) {
     thread_session_count: 1,
   }))
   ctx.body = { sessions: filterPendingDeletedConversationSummaries(filterByAllowedProfiles(ctx, summaries)) }
+}
+
+export async function create(ctx: any) {
+  const body = (ctx.request.body || {}) as {
+    id?: unknown
+    profile?: unknown
+    source?: unknown
+    model?: unknown
+    provider?: unknown
+    title?: unknown
+    user_id?: unknown
+    workspace?: unknown
+  }
+  const id = typeof body.id === 'string' ? body.id.trim() : ''
+  if (!id) {
+    ctx.status = 400
+    ctx.body = { error: 'session id is required' }
+    return
+  }
+
+  const existing = localGetSession(id)
+  if (existing) {
+    if (denySessionAccess(ctx, existing)) return
+    const workspace = await ensureDiTingRunWorkspace(existing.profile || 'default', existing.workspace, {
+      userId: existing.user_id,
+      sessionId: id,
+      allowCustomWorkspace: ctx.state?.user?.role === 'super_admin',
+    })
+    if (!existing.workspace) localUpdateSession(id, { workspace })
+    ctx.body = { session: { ...existing, workspace } }
+    return
+  }
+
+  const ownerId = effectiveSessionOwnerId(ctx.state?.user, rawRequestedUserContext(ctx))
+  if (!ownerId) {
+    ctx.status = 401
+    ctx.body = { error: 'Authenticated user is required' }
+    return
+  }
+  const profile = requestedProfile(ctx) || 'default'
+  const source = typeof body.source === 'string' && body.source.trim() ? body.source.trim() : 'cli'
+  const requestedWorkspace = ctx.state?.user?.role === 'super_admin' && typeof body.workspace === 'string'
+    ? body.workspace.trim()
+    : ''
+  const workspace = await ensureDiTingRunWorkspace(profile, requestedWorkspace, {
+    userId: ownerId,
+    sessionId: id,
+    allowCustomWorkspace: ctx.state?.user?.role === 'super_admin',
+  })
+  const session = localCreateSession({
+    id,
+    profile,
+    source,
+    user_id: ownerId,
+    model: typeof body.model === 'string' ? body.model.trim() : '',
+    provider: typeof body.provider === 'string' ? body.provider.trim() : '',
+    title: typeof body.title === 'string' ? body.title.trim() : '',
+    workspace,
+  })
+  ctx.status = 201
+  ctx.body = { session }
 }
 
 export async function getConversationMessages(ctx: any) {
@@ -421,7 +522,7 @@ export async function list(ctx: any) {
   const profile = explicitProfileFilter(ctx)
   const effectiveLimit = limit && limit > 0 ? limit : 2000
 
-  const allSessions = localListSessions(profile, source, effectiveLimit)
+  const allSessions = listAccessibleLocalSessions(ctx, profile, source, effectiveLimit)
   const knownProfiles = profile ? null : new Set(listProfileNamesFromDisk())
   ctx.body = {
     sessions: filterPendingDeletedSessions(filterBySessionAccess(ctx, filterByAllowedProfiles(ctx, allSessions)).filter(s =>
@@ -434,7 +535,7 @@ export async function list(ctx: any) {
 export async function count(ctx: any) {
   const source = (ctx.query.source as string) || undefined
   const profile = explicitProfileFilter(ctx)
-  const allSessions = localListSessions(profile, source, 2147483647)
+  const allSessions = listAccessibleLocalSessions(ctx, profile, source, 2147483647)
   const knownProfiles = profile ? null : new Set(listProfileNamesFromDisk())
   const sessions = filterPendingDeletedSessions(filterBySessionAccess(ctx, filterByAllowedProfiles(ctx, allSessions)).filter(s =>
     isRequestedSessionSource(source, s.source) &&
@@ -453,7 +554,7 @@ export async function listDiTingSessions(ctx: any) {
   const profile = requestedProfile(ctx)
   const effectiveLimit = limit && limit > 0 ? limit : 2000
 
-  const importedIds = new Set(localListSessions(profile, undefined, effectiveLimit).map(session => session.id))
+  const importedIds = new Set(listAccessibleLocalSessions(ctx, profile, undefined, effectiveLimit).map(session => session.id))
   const allSessions = (await listSessionSummaries(source, effectiveLimit, profile))
     .map(session => ({
       ...(profile ? { ...session, profile } : session),
@@ -467,7 +568,7 @@ export async function search(ctx: any) {
   const source = (ctx.query.source as string) || undefined
   const limit = ctx.query.limit ? parseInt(ctx.query.limit as string, 10) : undefined
   const profile = explicitProfileFilter(ctx)
-  const results = localSearchSessions(profile, q, limit && limit > 0 ? limit : 20)
+  const results = searchAccessibleLocalSessions(ctx, profile, q, limit && limit > 0 ? limit : 20)
   const knownProfiles = profile ? null : new Set(listProfileNamesFromDisk())
   ctx.body = {
     results: filterPendingDeletedSessions(filterBySessionAccess(ctx, filterByAllowedProfiles(ctx, results)).filter(s =>
@@ -920,16 +1021,24 @@ export async function setWorkspace(ctx: any) {
   const id = ctx.params.id
   const existing = getSession(id)
   if (denySessionAccess(ctx, existing)) return
+  const profile = existing?.profile || requestedProfile(ctx) || 'default'
+  const ownerId = existing?.user_id || effectiveSessionOwnerId(ctx.state?.user, rawRequestedUserContext(ctx))
+  const resolvedWorkspace = await ensureDiTingRunWorkspace(profile, workspace || null, {
+    userId: ownerId,
+    sessionId: id,
+    allowCustomWorkspace: ctx.state?.user?.role === 'super_admin',
+  })
   if (!existing) {
     createSession({
       id,
-      profile: requestedProfile(ctx) || 'default',
+      profile,
       title: '',
-      user_id: effectiveSessionOwnerId(ctx.state?.user, rawRequestedUserContext(ctx)),
+      user_id: ownerId,
+      workspace: resolvedWorkspace,
     })
   }
-  updateSession(id, { workspace: workspace || null } as any)
-  ctx.body = { ok: true }
+  updateSession(id, { workspace: resolvedWorkspace } as any)
+  ctx.body = { ok: true, workspace: resolvedWorkspace }
 }
 
 export async function setModel(ctx: any) {
@@ -956,6 +1065,7 @@ export async function setModel(ctx: any) {
     ? await ensureDiTingRunWorkspace(profile, existing?.workspace, {
         userId: existing?.user_id || effectiveSessionOwnerId(ctx.state?.user, rawRequestedUserContext(ctx)),
         sessionId: id,
+        allowCustomWorkspace: ctx.state?.user?.role === 'super_admin',
       })
     : undefined
   if (!existing) {

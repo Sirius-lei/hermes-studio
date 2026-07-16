@@ -39,7 +39,7 @@ import {
   type MultiAgentRouteDecision,
 } from './multi-agent-routing'
 import { handleSessionCommand, isSessionCommand, parseSessionCommand } from './session-command'
-import { contentBlocksToString, extractTextForPreview } from './content-blocks'
+import { assertContentBlocksAccessibleToUser, contentBlocksToString, extractTextForPreview } from './content-blocks'
 import type { ContentBlock, QueuedRun, SessionState } from './types'
 import { authenticateUserToken, isAuthEnabled, type AuthenticatedUser } from '../../../middleware/user-auth'
 import { userCanAccessProfile } from '../../../db/DiTing/users-store'
@@ -231,7 +231,7 @@ function currentProfileFromSocket(socket: Socket): string {
 }
 
 function requestedUserContextFromSocket(socket: Socket): string | null {
-  const queryUserId = typeof socket.handshake.query?.user_id === 'string'
+  const queryUserId = typeof socket.handshake?.query?.user_id === 'string'
     ? socket.handshake.query.user_id.trim()
     : ''
   return queryUserId || null
@@ -512,6 +512,9 @@ export class ChatRunSocket {
     }) => {
       let runProfile: string
       try {
+        assertContentBlocksAccessibleToUser(data.input, socketUser)
+        if (data.display_input) assertContentBlocksAccessibleToUser(data.display_input, socketUser)
+        if (socketUser?.role !== 'super_admin') data.workspace = null
         if (data.session_id) this.getAccessibleStoredSession(socketUser, data.session_id, requestedUserContext())
         runProfile = resolveRunProfile(data.session_id, data.profile)
       } catch (err) {
@@ -1155,6 +1158,7 @@ export class ChatRunSocket {
         const workspace = await ensureDiTingRunWorkspace(profile, sessionRow?.workspace || data.workspace, {
           userId: sessionRow?.user_id || effectiveSessionOwnerId(socketUser, requestedUserContextFromSocket(socket)) || null,
           sessionId: data.session_id,
+          allowCustomWorkspace: socketUser?.role === 'super_admin',
         })
         if (workspace) {
           const workspaceCtx = `[Current working directory: ${workspace}]`

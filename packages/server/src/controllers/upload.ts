@@ -3,6 +3,7 @@ import { mkdir, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { getActiveProfileName } from '../services/DiTing/DiTing-profile'
 import { getProfileUploadDir } from '../services/DiTing/upload-paths'
+import { effectiveSessionOwnerId } from '../services/DiTing/session-access'
 import { MultipartParseError, parseMultipartBoundary, parseMultipartFilename, splitMultipart } from '../lib/multipart'
 
 const MAX_UPLOAD_SIZE = 50 * 1024 * 1024 // 50MB
@@ -11,7 +12,20 @@ function requestedProfile(ctx: any): string {
   return ctx.state?.profile?.name || getActiveProfileName() || 'default'
 }
 
+function requestedUserContext(ctx: any): string | undefined {
+  const queryValue = typeof ctx.query?.user_id === 'string' ? ctx.query.user_id.trim() : ''
+  if (queryValue) return queryValue
+  const headerValue = typeof ctx.headers?.['x-diting-user-context'] === 'string'
+    ? ctx.headers['x-diting-user-context'].trim()
+    : ''
+  return headerValue || undefined
+}
+
 export async function handleUpload(ctx: any) {
+  const ownerId = effectiveSessionOwnerId(ctx.state?.user, requestedUserContext(ctx))
+  if (!ownerId) {
+    ctx.status = 401; ctx.body = { error: 'Authenticated user is required' }; return
+  }
   const contentType = ctx.get('content-type') || ''
   if (!contentType.startsWith('multipart/form-data')) {
     ctx.status = 400; ctx.body = { error: 'Expected multipart/form-data' }; return
@@ -32,7 +46,7 @@ export async function handleUpload(ctx: any) {
   const raw = Buffer.concat(chunks)
   const parts = splitMultipart(raw, boundaryBuf)
   const results: { name: string; path: string }[] = []
-  const uploadDir = getProfileUploadDir(requestedProfile(ctx))
+  const uploadDir = getProfileUploadDir(requestedProfile(ctx), ownerId)
   await mkdir(uploadDir, { recursive: true })
   for (const part of parts) {
     const headerEnd = part.indexOf(Buffer.from('\r\n\r\n'))

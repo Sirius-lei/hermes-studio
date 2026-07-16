@@ -2,7 +2,12 @@ import { mkdtemp, rm, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { convertContentBlocks, convertContentBlocksForAgent } from '../../packages/server/src/services/DiTing/run-chat/content-blocks'
+import {
+  assertContentBlocksAccessibleToUser,
+  convertContentBlocks,
+  convertContentBlocksForAgent,
+} from '../../packages/server/src/services/DiTing/run-chat/content-blocks'
+import { getUserStorageRoot } from '../../packages/server/src/services/DiTing/user-storage'
 
 let tempDir = ''
 
@@ -48,5 +53,24 @@ describe('run chat content blocks', () => {
     })
     expect(parts[2].type).toBe('image_url')
     expect(parts[2].image_url?.url).toMatch(/^data:image\/png;base64,/)
+  })
+
+  it('allows ordinary users to attach files only from their own storage root', () => {
+    const ownFile = join(getUserStorageRoot(7), 'files', 'default', 'upload.txt')
+    const otherUserFile = join(getUserStorageRoot(8), 'files', 'default', 'upload.txt')
+
+    expect(() => assertContentBlocksAccessibleToUser([
+      { type: 'file', name: 'upload.txt', path: ownFile },
+    ], { id: 7, role: 'admin' })).not.toThrow()
+
+    expect(() => assertContentBlocksAccessibleToUser([
+      { type: 'file', name: 'upload.txt', path: otherUserFile },
+    ], { id: 7, role: 'admin' })).toThrow('Attached file is not available for this user')
+  })
+
+  it('allows super administrators to inspect files outside user storage', () => {
+    expect(() => assertContentBlocksAccessibleToUser([
+      { type: 'file', name: 'system.log', path: '/tmp/system.log' },
+    ], { id: 1, role: 'super_admin' })).not.toThrow()
   })
 })

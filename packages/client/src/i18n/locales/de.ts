@@ -567,6 +567,7 @@ export default {
     stopGateway: 'Gateway stoppen',
     start: 'Starten',
     workspaceSetFailed: 'Workspace konnte nicht festgelegt werden',
+    sessionCreateFailed: 'Sitzungsspeicher konnte nicht erstellt werden',
     workspaceSet: 'Workspace festgelegt',
     workspacePlaceholder: 'Projektpfad eingeben, z. B. /home/user/project',
     folderPickerEmpty: '(Leer)',

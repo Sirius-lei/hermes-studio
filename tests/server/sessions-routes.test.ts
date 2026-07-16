@@ -4,6 +4,7 @@ const listConversationsMock = vi.fn(async (ctx: any) => { ctx.body = { sessions:
 const getConversationMessagesMock = vi.fn(async (ctx: any) => { ctx.body = { session_id: ctx.params.id, messages: [] } })
 const getConversationMessagesPaginatedMock = vi.fn(async (ctx: any) => { ctx.body = { session_id: ctx.params.id, messages: [], pagination: {} } })
 const listMock = vi.fn(async (ctx: any) => { ctx.body = { sessions: [{ id: 's1' }] } })
+const createMock = vi.fn(async (ctx: any) => { ctx.status = 201; ctx.body = { session: { id: ctx.request.body.id } } })
 const countMock = vi.fn(async (ctx: any) => { ctx.body = { count: 1 } })
 const listDiTingSessionsMock = vi.fn(async (ctx: any) => { ctx.body = { sessions: [{ id: 'DiTing-1' }] } })
 const getDiTingSessionMock = vi.fn(async (ctx: any) => { ctx.body = { session: { id: ctx.params.id } } })
@@ -11,6 +12,9 @@ const importDiTingSessionMock = vi.fn(async (ctx: any) => { ctx.body = { session
 const searchMock = vi.fn(async (ctx: any) => { ctx.body = { results: [{ id: 'search-1' }] } })
 const getMock = vi.fn(async (ctx: any) => { ctx.body = { session: { id: ctx.params.id } } })
 const getContextMock = vi.fn(async (ctx: any) => { ctx.body = { session_id: ctx.params.id, messages: [] } })
+const listCollaborationRunsMock = vi.fn(async (ctx: any) => { ctx.body = { runs: [] } })
+const getCollaborationRunMock = vi.fn(async (ctx: any) => { ctx.body = { run: { id: ctx.params.id } } })
+const getCollaborationRunEventsMock = vi.fn(async (ctx: any) => { ctx.body = { run_id: ctx.params.id, events: [] } })
 const removeMock = vi.fn(async (ctx: any) => { ctx.body = { ok: true } })
 const renameMock = vi.fn(async (ctx: any) => { ctx.body = { ok: true } })
 const setWorkspaceMock = vi.fn(async (ctx: any) => { ctx.body = { ok: true } })
@@ -31,6 +35,7 @@ vi.mock('../../packages/server/src/controllers/DiTing/sessions', () => ({
   getConversationMessages: getConversationMessagesMock,
   getConversationMessagesPaginated: getConversationMessagesPaginatedMock,
   list: listMock,
+  create: createMock,
   count: countMock,
   listDiTingSessions: listDiTingSessionsMock,
   getDiTingSession: getDiTingSessionMock,
@@ -38,6 +43,9 @@ vi.mock('../../packages/server/src/controllers/DiTing/sessions', () => ({
   search: searchMock,
   get: getMock,
   getContext: getContextMock,
+  listCollaborationRuns: listCollaborationRunsMock,
+  getCollaborationRun: getCollaborationRunMock,
+  getCollaborationRunEvents: getCollaborationRunEventsMock,
   remove: removeMock,
   batchRemove: batchRemoveMock,
   rename: renameMock,
@@ -61,6 +69,7 @@ describe('session routes', () => {
     getConversationMessagesMock.mockClear()
     getConversationMessagesPaginatedMock.mockClear()
     listMock.mockClear()
+    createMock.mockClear()
     countMock.mockClear()
     listDiTingSessionsMock.mockClear()
     getDiTingSessionMock.mockClear()
@@ -68,6 +77,9 @@ describe('session routes', () => {
     searchMock.mockClear()
     getMock.mockClear()
     getContextMock.mockClear()
+    listCollaborationRunsMock.mockClear()
+    getCollaborationRunMock.mockClear()
+    getCollaborationRunEventsMock.mockClear()
     removeMock.mockClear()
     renameMock.mockClear()
     setModelMock.mockClear()
@@ -104,6 +116,20 @@ describe('session routes', () => {
       '/api/DiTing/workspace/folders',
       '/api/DiTing/workspace/folders/rename',
     ]))
+  })
+
+  it('delegates session creation to the controller', async () => {
+    const { sessionRoutes } = await import('../../packages/server/src/routes/DiTing/sessions')
+    const layer = sessionRoutes.stack.find((entry: any) => (
+      entry.path === '/api/DiTing/sessions' && entry.methods.includes('POST')
+    ))
+    const ctx: any = { request: { body: { id: 'session-new' } }, body: null, params: {}, query: {} }
+
+    await layer.stack[0](ctx)
+
+    expect(createMock).toHaveBeenCalledWith(ctx)
+    expect(ctx.status).toBe(201)
+    expect(ctx.body).toEqual({ session: { id: 'session-new' } })
   })
 
   it('delegates session count route before the session id route', async () => {

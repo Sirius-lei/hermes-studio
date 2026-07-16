@@ -567,6 +567,7 @@ export default {
     stopGateway: 'Gateway 중지',
     start: '시작',
     workspaceSetFailed: 'Workspace 설정 실패',
+    sessionCreateFailed: '세션 저장 공간을 만들지 못했습니다',
     workspaceSet: 'Workspace가 설정되었습니다',
     workspacePlaceholder: '프로젝트 경로 입력, 예: /home/user/project',
     folderPickerEmpty: '(비어 있음)',

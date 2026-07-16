@@ -705,6 +705,8 @@ async function uploadFiles(attachments: Attachment[]): Promise<{ name: string; p
   const headers: Record<string, string> = {}
   if (token) headers.Authorization = `Bearer ${token}`
   if (profileName) headers['X-DiTing-Profile'] = profileName
+  const userContextId = getActiveUserContextId()
+  if (userContextId) headers['X-DiTing-User-Context'] = userContextId
   const res = await fetch('/upload', {
     method: 'POST',
     body: formData,

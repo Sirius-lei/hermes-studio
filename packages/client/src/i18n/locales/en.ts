@@ -582,6 +582,7 @@ export default {
     folderPickerSelected: 'Selected:',
     workspaceSet: 'Workspace set',
     workspaceSetFailed: 'Failed to set workspace',
+    sessionCreateFailed: 'Failed to create session storage',
     setModel: 'Set Model',
     setModelTitle: 'Set Session Model',
     modelSet: 'Model set',

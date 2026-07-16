@@ -217,7 +217,7 @@ function handleLogout() {
       </div>
 
       <!-- System -->
-      <div class="nav-group">
+      <div v-if="isSuperAdmin" class="nav-group">
         <div class="nav-group-label" @click="toggleGroup('system')">
           <span>{{ groupLabel("System") }}</span>
           <svg class="nav-group-arrow" :class="{ collapsed: isGroupCollapsed('system') }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

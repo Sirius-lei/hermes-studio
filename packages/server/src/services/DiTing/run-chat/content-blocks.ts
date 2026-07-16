@@ -1,4 +1,5 @@
 import type { ContentBlock } from './types'
+import { isPathInUserStorage } from '../user-storage'
 
 type ResponseContentPart = { type: string; text?: string; image_url?: string }
 type AgentContentPart = { type: string; text?: string; image_url?: { url: string } }
@@ -27,6 +28,22 @@ export function extractTextForPreview(input: string | ContentBlock[]): string {
  */
 export function isContentBlockArray(input: any): input is ContentBlock[] {
   return Array.isArray(input) && input.length > 0 && ('type' in input[0])
+}
+
+export function assertContentBlocksAccessibleToUser(
+  input: string | ContentBlock[],
+  user?: { id?: string | number | null; role?: string | null } | null,
+): void {
+  if (typeof input === 'string' || user?.role === 'super_admin') return
+  if (user?.id == null || String(user.id).trim() === '') {
+    throw Object.assign(new Error('Authenticated user is required for file attachments'), { code: 'forbidden_file' })
+  }
+  for (const block of input) {
+    if (block.type !== 'image' && block.type !== 'file') continue
+    if (!block.path || !isPathInUserStorage(block.path, user.id)) {
+      throw Object.assign(new Error('Attached file is not available for this user'), { code: 'forbidden_file' })
+    }
+  }
 }
 
 /**

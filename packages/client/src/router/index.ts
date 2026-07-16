@@ -133,6 +133,7 @@ const router = createRouter({
       path: '/DiTing/settings',
       name: 'DiTing.settings',
       component: () => import('@/views/DiTing/SettingsView.vue'),
+      meta: { requiresSuperAdmin: true },
     },
     {
       path: '/DiTing/channels',

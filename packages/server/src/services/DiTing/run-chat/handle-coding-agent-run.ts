@@ -11,8 +11,9 @@ import type { ContentBlock, SessionState } from './types'
 import { writeModelRunProfileToken } from './model-run-prompt'
 import type { AuthenticatedUser } from '../../../middleware/user-auth'
 import { getSystemPrompt } from '../../../lib/llm-prompt'
-import { getSession } from '../../../db/DiTing/session-store'
+import { getSession, updateSession } from '../../../db/DiTing/session-store'
 import { effectiveSessionOwnerId } from '../session-access'
+import { ensureDiTingRunWorkspace } from './workspace'
 
 export interface CodingAgentRunSocketData {
   input: string | ContentBlock[]
@@ -40,7 +41,7 @@ function codingAgentId(data: CodingAgentRunSocketData): CodingAgentId {
 }
 
 function requestedUserContextFromSocket(socket: Socket): string | null {
-  const value = typeof socket.handshake.query?.user_id === 'string'
+  const value = typeof socket.handshake?.query?.user_id === 'string'
     ? socket.handshake.query.user_id.trim()
     : ''
   return value || null
@@ -68,6 +69,14 @@ export async function handleCodingAgentRun(
   let runId = codingAgentRunManager.runIdForSession(sessionId)
   const mode = data.mode === 'global' ? 'global' : 'scoped'
   const storedSession = getSession(sessionId)
+  const socketUser = socket.data?.user as AuthenticatedUser | undefined
+  const ownerId = storedSession?.user_id || effectiveSessionOwnerId(socketUser, requestedUserContextFromSocket(socket))
+  const workspace = await ensureDiTingRunWorkspace(
+    profile,
+    storedSession?.workspace || (socketUser?.role === 'super_admin' ? data.workspace : null),
+    { userId: ownerId, sessionId, allowCustomWorkspace: socketUser?.role === 'super_admin' },
+  )
+  if (storedSession && !storedSession.workspace) updateSession(sessionId, { workspace })
   const launchProvider = data.provider || (mode === 'scoped' ? storedSession?.provider || undefined : undefined)
   const launchModel = data.model || (mode === 'scoped' ? storedSession?.model || undefined : undefined)
   if (runId && !codingAgentRunManager.isSessionLaunchCompatible(sessionId, {
@@ -86,12 +95,12 @@ export async function handleCodingAgentRun(
       profile,
       provider: launchProvider,
       model: launchModel,
-      workspace: data.workspace,
+      workspace,
       baseUrl: data.baseUrl || data.base_url,
       apiKey: data.apiKey || data.api_key,
       apiMode: data.apiMode || data.api_mode,
       sessionSource: data.session_source,
-      userId: effectiveSessionOwnerId(socket.data?.user as AuthenticatedUser | undefined, requestedUserContextFromSocket(socket)),
+      userId: ownerId,
     }, state)
     runId = started.agentSessionId
   }
@@ -101,7 +110,6 @@ export async function handleCodingAgentRun(
 
   try {
     const inputText = contentBlocksToString(data.input)
-    const socketUser = socket.data?.user as AuthenticatedUser | undefined
     await writeModelRunProfileToken(socketUser, profile)
     const includeBaseSystemPrompt = agentId === 'claude-code' || agentId === 'codex'
     const runPrompt = [

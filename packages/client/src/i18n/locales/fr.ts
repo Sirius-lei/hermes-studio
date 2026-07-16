@@ -567,6 +567,7 @@ export default {
     stopGateway: 'Arrêter le gateway',
     start: 'Démarrer',
     workspaceSetFailed: 'Échec de la définition du workspace',
+    sessionCreateFailed: 'Échec de la création de l’espace de session',
     workspaceSet: 'Workspace défini',
     workspacePlaceholder: 'Saisissez le chemin du projet, ex. /home/user/project',
     folderPickerEmpty: '(Vide)',

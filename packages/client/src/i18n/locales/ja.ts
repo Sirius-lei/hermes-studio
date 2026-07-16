@@ -567,6 +567,7 @@ export default {
     stopGateway: 'Gateway を停止',
     start: '開始',
     workspaceSetFailed: 'Workspace の設定に失敗しました',
+    sessionCreateFailed: 'セッション領域の作成に失敗しました',
     workspaceSet: 'Workspace を設定しました',
     workspacePlaceholder: 'プロジェクトパスを入力 例: /home/user/project',
     folderPickerEmpty: '（空）',

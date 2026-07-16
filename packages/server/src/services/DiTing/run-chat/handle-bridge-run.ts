@@ -85,7 +85,7 @@ function isBridgeSessionSource(source?: string | null): boolean {
 }
 
 function requestedUserContextFromSocket(socket: Socket): string | null {
-  const value = typeof socket.handshake.query?.user_id === 'string'
+  const value = typeof socket.handshake?.query?.user_id === 'string'
     ? socket.handshake.query.user_id.trim()
     : ''
   return value || null
@@ -333,6 +333,7 @@ export async function handleBridgeRun(
   const workspace = await ensureDiTingRunWorkspace(profile, sessionRow?.workspace || data.workspace, {
     userId: sessionRow?.user_id || effectiveSessionOwnerId(socketUser, requestedUserContextFromSocket(socket)) || null,
     sessionId: session_id,
+    allowCustomWorkspace: socketUser?.role === 'super_admin',
   })
   if (sessionRow && !sessionRow.workspace) updateSession(session_id, { workspace })
   const sessionModel = sessionRow?.model || ''

@@ -582,6 +582,7 @@ export default {
     folderPickerSelected: '已选择：',
     workspaceSet: '工作区已设置',
     workspaceSetFailed: '设置工作区失败',
+    sessionCreateFailed: '创建会话空间失败',
     setModel: '设置模型',
     setModelTitle: '设置会话模型',
     modelSet: '模型已设置',

@@ -29,6 +29,7 @@ const listUserProfilesMock = vi.fn()
 const readConfigYamlForProfileMock = vi.fn()
 const bridgeSwitchSessionModelMock = vi.fn()
 const bridgeGetRuntimeStateMock = vi.fn()
+const ensureDiTingRunWorkspaceMock = vi.fn()
 const codingAgentRunManagerMock = vi.hoisted(() => ({
   stop: vi.fn(),
 }))
@@ -122,6 +123,10 @@ vi.mock('../../packages/server/src/services/agent-runner/coding-agent-run-manage
   codingAgentRunManager: codingAgentRunManagerMock,
 }))
 
+vi.mock('../../packages/server/src/services/DiTing/run-chat/workspace', () => ({
+  ensureDiTingRunWorkspace: ensureDiTingRunWorkspaceMock,
+}))
+
 vi.mock('../../packages/server/src/db/DiTing/compression-snapshot', () => ({
   getCompressionSnapshot: getCompressionSnapshotMock,
 }))
@@ -174,7 +179,60 @@ describe('session conversations controller', () => {
     bridgeSwitchSessionModelMock.mockReset()
     bridgeGetRuntimeStateMock.mockReset()
     bridgeGetRuntimeStateMock.mockReturnValue({ ready: false, running: false, endpoint: 'ipc:///tmp/diting-agent-bridge.sock' })
+    ensureDiTingRunWorkspaceMock.mockReset()
+    ensureDiTingRunWorkspaceMock.mockImplementation(async (profile: string, workspace?: string | null, options?: { userId?: string | number; sessionId?: string }) => {
+      if (workspace) return workspace
+      if (options?.userId != null && options.sessionId) {
+        return `/tmp/diting-web-ui/users/${options.userId}/sessions/${options.sessionId}/workspace`
+      }
+      return `/tmp/DiTing-test/${profile || 'default'}/workspace`
+    })
     codingAgentRunManagerMock.stop.mockReset()
+  })
+
+  it('creates a user-owned session in the authenticated user workspace', async () => {
+    localCreateSessionMock.mockImplementation((input: any) => ({
+      ...input,
+      title: input.title || null,
+      user_id: String(input.user_id),
+    }))
+
+    const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
+    const ctx: any = {
+      request: {
+        body: {
+          id: 'session-user-7',
+          profile: 'research',
+          source: 'cli',
+          model: 'gpt-5.4',
+          provider: 'custom:api',
+          user_id: '999',
+        },
+      },
+      state: {
+        user: { id: 7, role: 'admin' },
+        profile: { name: 'research' },
+      },
+      query: {},
+      headers: {},
+      body: null,
+      status: 200,
+    }
+
+    await mod.create(ctx)
+
+    expect(ensureDiTingRunWorkspaceMock).toHaveBeenCalledWith('research', '', {
+      userId: '7',
+      sessionId: 'session-user-7',
+      allowCustomWorkspace: false,
+    })
+    expect(localCreateSessionMock).toHaveBeenCalledWith(expect.objectContaining({
+      id: 'session-user-7',
+      profile: 'research',
+      user_id: '7',
+      workspace: '/tmp/diting-web-ui/users/7/sessions/session-user-7/workspace',
+    }))
+    expect(ctx.status).toBe(201)
   })
 
   it('lists conversations from the local session store', async () => {
@@ -277,6 +335,7 @@ describe('session conversations controller', () => {
     localListSessionsMock.mockReturnValue([
       {
         id: 'default-session',
+        user_id: '1',
         profile: 'default',
         source: 'cli',
         model: 'gpt-5',
@@ -299,6 +358,7 @@ describe('session conversations controller', () => {
       },
       {
         id: 'travel-session',
+        user_id: '1',
         profile: 'travel',
         source: 'cli',
         model: 'gpt-5',
@@ -321,6 +381,7 @@ describe('session conversations controller', () => {
       },
       {
         id: 'secret-session',
+        user_id: '1',
         profile: 'secret',
         source: 'cli',
         model: 'gpt-5',
@@ -354,7 +415,7 @@ describe('session conversations controller', () => {
     }
     await mod.list(ctx)
 
-    expect(localListSessionsMock).toHaveBeenCalledWith(undefined, undefined, 2000)
+    expect(localListSessionsMock).toHaveBeenCalledWith(undefined, undefined, 2000, '1')
     expect(ctx.body.sessions.map((session: any) => session.id)).toEqual(['default-session', 'travel-session'])
   })
 
@@ -419,12 +480,12 @@ describe('session conversations controller', () => {
   it('counts visible single-chat sessions with the same filters as the list endpoint', async () => {
     listUserProfilesMock.mockReturnValue([{ profile_name: 'default' }, { profile_name: 'travel' }])
     localListSessionsMock.mockReturnValue([
-      { id: 'default-session', profile: 'default', source: 'cli' },
-      { id: 'travel-session', profile: 'travel', source: 'coding_agent' },
-      { id: 'secret-session', profile: 'secret', source: 'cli' },
-      { id: 'unknown-profile-session', profile: 'missing', source: 'cli' },
-      { id: 'api-session', profile: 'default', source: 'api_server' },
-      { id: 'workflow-session', profile: 'default', source: 'workflow' },
+      { id: 'default-session', user_id: '1', profile: 'default', source: 'cli' },
+      { id: 'travel-session', user_id: '1', profile: 'travel', source: 'coding_agent' },
+      { id: 'secret-session', user_id: '1', profile: 'secret', source: 'cli' },
+      { id: 'unknown-profile-session', user_id: '1', profile: 'missing', source: 'cli' },
+      { id: 'api-session', user_id: '1', profile: 'default', source: 'api_server' },
+      { id: 'workflow-session', user_id: '1', profile: 'default', source: 'workflow' },
     ])
 
     const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
@@ -437,7 +498,7 @@ describe('session conversations controller', () => {
     }
     await mod.count(ctx)
 
-    expect(localListSessionsMock).toHaveBeenCalledWith(undefined, undefined, 2147483647)
+    expect(localListSessionsMock).toHaveBeenCalledWith(undefined, undefined, 2147483647, '1')
     expect(ctx.body).toEqual({ count: 3 })
   })
 
@@ -947,7 +1008,11 @@ describe('session conversations controller', () => {
     deleteDiTingSessionForProfileMock.mockResolvedValue(true)
 
     const mod = await import('../../packages/server/src/controllers/DiTing/sessions')
-    const ctx: any = { params: { id: 'history-only' }, body: null }
+    const ctx: any = {
+      params: { id: 'history-only' },
+      state: { user: { id: 1, role: 'super_admin' } },
+      body: null,
+    }
     await mod.remove(ctx)
 
     expect(getExactSessionDetailFromDbWithProfileMock).toHaveBeenCalledWith('history-only', 'travel')
@@ -987,6 +1052,7 @@ describe('session conversations controller', () => {
     listUserProfilesMock.mockReturnValue([{ profile_name: 'default' }, { profile_name: 'travel' }])
     getSessionMock.mockImplementation((id: string) => ({
       id,
+      user_id: '1',
       profile: id === 'travel-session' ? 'travel' : 'default',
     }))
     getExactSessionDetailFromDbWithProfileMock.mockResolvedValue({ id: 'matched', messages: [] })

@@ -75,7 +75,7 @@ function normalizeChatUrl(baseUrl: string, chatPath?: string) {
 }
 
 function requestedUserContextFromSocket(socket: Socket): string | null {
-  const value = typeof socket.handshake.query?.user_id === 'string'
+  const value = typeof socket.handshake?.query?.user_id === 'string'
     ? socket.handshake.query.user_id.trim()
     : ''
   return value || null

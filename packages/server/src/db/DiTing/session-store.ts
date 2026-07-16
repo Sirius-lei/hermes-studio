@@ -380,10 +380,11 @@ export function renameSession(id: string, title: string): boolean {
   return result.changes > 0
 }
 
-export function listSessions(profile?: string, source?: string, limit = 2000): DiTingSessionRow[] {
+export function listSessions(profile?: string, source?: string, limit = 2000, userId?: string | number | null): DiTingSessionRow[] {
   if (!isSqliteAvailable()) return []
   const db = getDb()!
   const profileFilter = profile?.trim()
+  const userFilter = userId == null ? '' : String(userId).trim()
 
   // Use a subquery to generate preview from first user message if not set
   const sql = `
@@ -426,6 +427,7 @@ export function listSessions(profile?: string, source?: string, limit = 2000): D
     WHERE 1 = 1
       ${profileFilter ? 'AND s.profile = ?' : ''}
       ${source ? 'AND s.source = ?' : ''}
+      ${userFilter ? 'AND s.user_id = ?' : ''}
     ORDER BY s.last_active DESC
     LIMIT ?
   `
@@ -437,18 +439,27 @@ export function listSessions(profile?: string, source?: string, limit = 2000): D
   if (source) {
     params.push(source)
   }
+  if (userFilter) {
+    params.push(userFilter)
+  }
   params.push(limit)
 
   const rows = db.prepare(sql).all(...params) as Record<string, unknown>[]
   return rows.map(mapSessionRow)
 }
 
-export function searchSessions(profile: string | null | undefined, query: string, limit = 20): DiTingSessionSearchRow[] {
+export function searchSessions(
+  profile: string | null | undefined,
+  query: string,
+  limit = 20,
+  userId?: string | number | null,
+): DiTingSessionSearchRow[] {
   if (!isSqliteAvailable()) return []
   const profileFilter = profile?.trim()
+  const userFilter = userId == null ? '' : String(userId).trim()
   const trimmed = query.trim()
   if (!trimmed) {
-    return listSessions(profileFilter, undefined, limit).map(s => ({ ...s, snippet: s.preview || '', matched_message_id: null }))
+    return listSessions(profileFilter, undefined, limit, userFilter).map(s => ({ ...s, snippet: s.preview || '', matched_message_id: null }))
   }
   const db = getDb()!
   const lowered = trimmed.toLowerCase()
@@ -459,6 +470,7 @@ export function searchSessions(profile: string | null | undefined, query: string
     `SELECT * FROM ${SESSIONS_TABLE}
      WHERE 1 = 1
        ${profileFilter ? 'AND profile = ?' : ''}
+       ${userFilter ? 'AND user_id = ?' : ''}
        AND (
        LOWER(title) LIKE ? OR LOWER(preview) LIKE ?
        OR id IN (SELECT DISTINCT session_id FROM ${MESSAGES_TABLE} WHERE LOWER(content) LIKE ? OR LOWER(COALESCE(tool_name, '')) LIKE ?)
@@ -466,6 +478,7 @@ export function searchSessions(profile: string | null | undefined, query: string
      ORDER BY last_active DESC LIMIT ?`,
   ).all(...[
     ...(profileFilter ? [profileFilter] : []),
+    ...(userFilter ? [userFilter] : []),
     pattern,
     pattern,
     pattern,

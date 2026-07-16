@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { renameSession, setSessionWorkspace, batchDeleteSessions, exportSession } from "@/api/DiTing/sessions";
+import { createSessionRecord, renameSession, setSessionWorkspace, batchDeleteSessions, exportSession } from "@/api/DiTing/sessions";
 import type { AvailableModelGroup } from "@/api/DiTing/system";
 import { fetchCodingAgentsStatus, inferCodingAgentApiMode, normalizeCodingAgentApiMode, type CodingAgentApiMode, type CodingAgentId } from "@/api/coding-agents";
 import {
@@ -847,11 +847,10 @@ watch(
   () => ensureNewChatProviderSelection(),
 );
 
-async function openNewChatModal() {
+async function prepareNewChatDefaults() {
   isBatchMode.value = false;
   selectedSessionKeys.value.clear();
   showBatchDeleteConfirm.value = false;
-  showNewChatModal.value = true;
   newChatLoading.value = true;
   try {
     if (profilesStore.profiles.length === 0) await profilesStore.fetchProfiles();
@@ -868,6 +867,40 @@ async function openNewChatModal() {
   } finally {
     newChatLoading.value = false;
   }
+}
+
+async function createDefaultUserChat() {
+  await prepareNewChatDefaults();
+  const session = chatStore.newChat({
+    profile: newChatProfile.value,
+    provider: newChatProvider.value,
+    model: newChatModel.value,
+    source: "cli",
+    agent: "DiTing",
+  });
+  try {
+    const created = await createSessionRecord({
+      id: session.id,
+      profile: session.profile,
+      source: session.source,
+      model: session.model,
+      provider: session.provider,
+    });
+    session.workspace = created.workspace || null;
+    await router.push({ name: "DiTing.session", params: { sessionId: session.id } });
+  } catch (error) {
+    console.error("Failed to create user session storage:", error);
+    message.error(t("chat.sessionCreateFailed"));
+  }
+}
+
+async function openNewChatModal() {
+  if (!isSuperAdmin.value) {
+    await createDefaultUserChat();
+    return;
+  }
+  showNewChatModal.value = true;
+  await prepareNewChatDefaults();
 }
 
 function handleNewChatProfileChange(value: string) {
@@ -926,6 +959,21 @@ async function confirmNewChat() {
     apiKey: source === "coding_agent" && !isGlobalCodingAgent ? group?.api_key || newChatApiKey.value.trim() || undefined : undefined,
     apiMode: source === "coding_agent" && !isGlobalCodingAgent ? newChatApiMode.value : undefined,
   });
+  try {
+    const created = await createSessionRecord({
+      id: session.id,
+      profile: session.profile,
+      source: session.source,
+      model: session.model,
+      provider: session.provider,
+      workspace: session.workspace,
+    });
+    session.workspace = created.workspace || session.workspace || null;
+  } catch (error) {
+    console.error("Failed to create session storage:", error);
+    message.error(t("chat.sessionCreateFailed"));
+    return;
+  }
   await router.push({
     name: chatStore.runtimeMode === "global_agent" ? "DiTing.globalAgentSession" : "DiTing.session",
     params: { sessionId: session.id },
@@ -1085,8 +1133,11 @@ const contextMenuOptions = computed(() => {
     label: t(contextSessionPinned.value ? "chat.unpin" : "chat.pin"),
     key: "pin",
   },
-  { label: t("chat.rename"), key: "rename" },
-  { label: t("chat.setWorkspace"), key: "workspace" }]
+  { label: t("chat.rename"), key: "rename" }]
+
+  if (isSuperAdmin.value) {
+    options.push({ label: t("chat.setWorkspace"), key: "workspace" })
+  }
 
   if (contextSession.value?.source === "cli" || contextSession.value?.source === "coding_agent") {
     options.push({ label: t("chat.setModel"), key: "model" })
@@ -1475,7 +1526,7 @@ async function handleSessionModelCustomSubmit() {
           </button>
         </nav>
 
-        <div class="session-mode-switch" role="tablist" aria-label="会话模式">
+        <div v-if="isSuperAdmin" class="session-mode-switch" role="tablist" aria-label="会话模式">
           <button
             class="session-mode-tab"
             :class="{ active: chatStore.runtimeMode !== 'global_agent' }"
@@ -1687,7 +1738,7 @@ async function handleSessionModelCustomSubmit() {
           @toggle-select="toggleSessionSelection(s)"
         />
       </div>
-      <div v-if="showSessions" class="page-sidebar-bottom">
+      <div v-if="showSessions && isSuperAdmin" class="page-sidebar-bottom">
         <button class="page-sidebar-menu-btn" type="button" @click="openSettingsPage">
           <svg
             width="16"
@@ -1735,6 +1786,7 @@ async function handleSessionModelCustomSubmit() {
     </NModal>
 
     <NModal
+      v-if="isSuperAdmin"
       v-model:show="showWorkspaceModal"
       preset="dialog"
       :title="t('chat.setWorkspaceTitle')"
@@ -1866,6 +1918,7 @@ async function handleSessionModelCustomSubmit() {
     </NModal>
 
     <NDrawer
+      v-if="isSuperAdmin"
       v-model:show="showNewChatModal"
       class="new-chat-drawer"
       placement="right"
@@ -1994,7 +2047,7 @@ async function handleSessionModelCustomSubmit() {
           </NButton>
           <span class="header-session-title">{{ headerTitle }}</span>
           <button
-            v-if="chatStore.activeSession?.workspace"
+            v-if="isSuperAdmin && chatStore.activeSession?.workspace"
             class="workspace-badge"
             type="button"
             :title="chatStore.activeSession.workspace"
@@ -2167,7 +2220,7 @@ async function handleSessionModelCustomSubmit() {
             @select-run="selectMultiAgentHistoryRun"
           />
           <aside
-            v-if="showToolPanel"
+            v-if="isSuperAdmin && showToolPanel"
             class="chat-tool-panel"
             :style="toolPanelStyle"
           >

@@ -1,6 +1,7 @@
 import { mkdir } from 'fs/promises'
 import { join } from 'path'
 import { getProfileDir } from '../DiTing-profile'
+import { getUserSessionWorkspaceDir } from '../user-storage'
 
 function safePathSegment(value: string | number | null | undefined, fallback: string): string {
   const normalized = String(value == null ? '' : value).trim()
@@ -19,9 +20,12 @@ export function defaultDiTingWorkspace(
     sessionId?: string | null
   } = {},
 ): string {
+  if (options.userId != null && String(options.userId).trim() && options.sessionId) {
+    return getUserSessionWorkspaceDir(options.userId, options.sessionId)
+  }
   const base = join(getProfileDir(profile || 'default'), 'workspace')
-  if (!options.sessionId) return base
-  const userSegment = safePathSegment(options.userId, 'anonymous')
+  if (options.userId == null || !String(options.userId).trim() || !options.sessionId) return base
+  const userSegment = safePathSegment(options.userId, 'user')
   const sessionSegment = safePathSegment(options.sessionId, 'session')
   return join(base, 'users', userSegment, 'sessions', sessionSegment)
 }
@@ -32,9 +36,13 @@ export async function ensureDiTingRunWorkspace(
   options: {
     userId?: string | number | null
     sessionId?: string | null
+    allowCustomWorkspace?: boolean
   } = {},
 ): Promise<string> {
-  const resolved = String(workspace || '').trim() || defaultDiTingWorkspace(profile, options)
+  const requested = String(workspace || '').trim()
+  const resolved = options.userId != null && options.sessionId && !options.allowCustomWorkspace
+    ? defaultDiTingWorkspace(profile, options)
+    : requested || defaultDiTingWorkspace(profile, options)
   await mkdir(resolved, { recursive: true })
   return resolved
 }

@@ -10,6 +10,7 @@ const provider = {
   writeFile: vi.fn(),
 }
 const createFileProviderMock = vi.fn(async () => provider)
+const localFileProviderMock = vi.fn(function () { return provider })
 const resolveDiTingPathMock = vi.fn((relativePath: string) => {
   const normalized = relativePath.replace(/^\/+/, '')
   return normalized ? `/home/agent/.diting/${normalized}` : '/home/agent/.diting'
@@ -17,9 +18,21 @@ const resolveDiTingPathMock = vi.fn((relativePath: string) => {
 
 vi.mock('../../packages/server/src/services/DiTing/file-provider', () => ({
   createFileProvider: createFileProviderMock,
+  LocalFileProvider: localFileProviderMock,
   resolveDiTingPath: resolveDiTingPathMock,
   isSensitivePath: vi.fn(() => false),
   MAX_EDIT_SIZE: 10 * 1024 * 1024,
+}))
+
+const ensureUserFilesDirMock = vi.fn(async (userId: string | number, profile: string) => `/web-ui/users/${userId}/files/${profile}`)
+const resolveUserFilesPathMock = vi.fn((userId: string | number, profile: string, relativePath: string) => {
+  const suffix = relativePath ? `/${relativePath}` : ''
+  return `/web-ui/users/${userId}/files/${profile}${suffix}`
+})
+
+vi.mock('../../packages/server/src/services/DiTing/user-storage', () => ({
+  ensureUserFilesDir: ensureUserFilesDirMock,
+  resolveUserFilesPath: resolveUserFilesPathMock,
 }))
 
 async function runFileRoute(path: string, ctx: any) {
@@ -50,7 +63,10 @@ describe('file routes path metadata', () => {
   beforeEach(() => {
     vi.resetModules()
     createFileProviderMock.mockClear()
+    localFileProviderMock.mockClear()
     resolveDiTingPathMock.mockClear()
+    ensureUserFilesDirMock.mockClear()
+    resolveUserFilesPathMock.mockClear()
     provider.listDir.mockReset()
     provider.stat.mockReset()
     provider.readFile.mockReset()
@@ -110,6 +126,28 @@ describe('file routes path metadata', () => {
       size: 12,
       modTime: '2026-05-20T00:00:00.000Z',
     })
+  })
+
+  it('lists ordinary-user files only from that user profile directory', async () => {
+    provider.listDir.mockResolvedValue([
+      { name: 'upload.txt', path: 'upload.txt', isDir: false, size: 4, modTime: '2026-07-16T00:00:00.000Z' },
+    ])
+    const ctx: any = {
+      query: {},
+      state: {
+        profile: { name: 'research' },
+        user: { id: 7, username: 'user', role: 'admin' },
+      },
+      body: null,
+    }
+
+    await runFileRoute('/api/DiTing/files/list', ctx)
+
+    expect(ensureUserFilesDirMock).toHaveBeenCalledWith(7, 'research')
+    expect(localFileProviderMock).toHaveBeenCalledWith('/web-ui/users/7/files/research')
+    expect(createFileProviderMock).not.toHaveBeenCalled()
+    expect(provider.listDir).toHaveBeenCalledWith('/web-ui/users/7/files/research')
+    expect(ctx.body.entries[0].absolutePath).toBe('/web-ui/users/7/files/research/upload.txt')
   })
 
   it('deletes files from the parsed request body', async () => {

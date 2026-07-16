@@ -8,6 +8,11 @@ import {
   resolveDiTingPath,
 } from '../../services/DiTing/file-provider'
 import { getActiveProfileName } from '../../services/DiTing/DiTing-profile'
+import {
+  isPathInUserStorage,
+  isPathInUsersStorage,
+  resolveUserFilesPath,
+} from '../../services/DiTing/user-storage'
 
 export const downloadRoutes = new Router()
 
@@ -79,13 +84,24 @@ downloadRoutes.get('/api/DiTing/download', async (ctx) => {
 
   try {
     const profile = requestedProfile(ctx)
+    const user = ctx.state.user
     // Validate the path first
     // Support both absolute and relative paths
-    const validPath = isAbsolute(filePath) ? validatePath(filePath) : resolveDiTingPath(filePath, profile)
+    const validPath = isAbsolute(filePath)
+      ? validatePath(filePath)
+      : user?.role !== 'super_admin' && user?.id != null
+        ? resolveUserFilesPath(user.id, profile, filePath)
+        : resolveDiTingPath(filePath, profile)
+
+    if (user?.role !== 'super_admin' && (!user?.id || !isPathInUserStorage(validPath, user.id))) {
+      ctx.status = 403
+      ctx.body = { error: 'File is not available for this user', code: 'forbidden' }
+      return
+    }
 
     // Choose provider: always use local for upload directory files
     let data: Buffer
-    if (isInUploadDir(validPath)) {
+    if (isInUploadDir(validPath) || isPathInUsersStorage(validPath)) {
       data = await localProvider.readFile(validPath)
     } else {
       const provider = await createFileProvider(profile)

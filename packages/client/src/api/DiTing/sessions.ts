@@ -40,6 +40,25 @@ export interface SessionDetail extends SessionSummary {
   messages: DiTingMessage[]
 }
 
+export interface CreateSessionInput {
+  id: string
+  profile?: string
+  source?: string
+  model?: string
+  provider?: string
+  title?: string
+  workspace?: string | null
+  user_id?: string | number
+}
+
+export async function createSessionRecord(input: CreateSessionInput): Promise<SessionSummary> {
+  const res = await request<{ session: SessionSummary }>('/api/DiTing/sessions', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+  return res.session
+}
+
 export interface SessionContextMessage {
   id: number
   role: 'user' | 'assistant'
