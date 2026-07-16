@@ -60,12 +60,12 @@ def _skin_color(key: str, fallback: str) -> str:
 
 from diting_cli import __version__ as VERSION, __release_date__ as RELEASE_DATE
 
-DiTing_AGENT_LOGO = """[bold #FFD700]██████╗ ██╗████████╗██╗███╗   ██╗ ██████╗[/]
-[bold #FFD700]██╔══██╗██║╚══██╔══╝██║████╗  ██║██╔════╝[/]
-[#FFBF00]██║  ██║██║   ██║   ██║██╔██╗ ██║██║  ███╗[/]
-[#FFBF00]██║  ██║██║   ██║   ██║██║╚██╗██║██║   ██║[/]
-[#CD7F32]██████╔╝██║   ██║   ██║██║ ╚████║╚██████╔╝[/]
-[#CD7F32]╚═════╝ ╚═╝   ╚═╝   ╚═╝╚═╝  ╚═══╝ ╚═════╝[/]"""
+DiTing_AGENT_LOGO = """[bold #FFD700]██████╗ ██╗████████╗██╗███╗   ██╗ ██████╗      █████╗  ██████╗ ███████╗███╗   ██╗████████╗[/]
+[bold #FFD700]██╔══██╗██║╚══██╔══╝██║████╗  ██║██╔════╝     ██╔══██╗██╔════╝ ██╔════╝████╗  ██║╚══██╔══╝[/]
+[#FFBF00]██║  ██║██║   ██║   ██║██╔██╗ ██║██║  ███╗    ███████║██║  ███╗█████╗  ██╔██╗ ██║   ██║[/]
+[#FFBF00]██║  ██║██║   ██║   ██║██║╚██╗██║██║   ██║    ██╔══██║██║   ██║██╔══╝  ██║╚██╗██║   ██║[/]
+[#CD7F32]██████╔╝██║   ██║   ██║██║ ╚████║╚██████╔╝    ██║  ██║╚██████╔╝███████╗██║ ╚████║   ██║[/]
+[#CD7F32]╚═════╝ ╚═╝   ╚═╝   ╚═╝╚═╝  ╚═══╝ ╚═════╝     ╚═╝  ╚═╝ ╚═════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝[/]"""
 
 DiTing_TOTEM = """[#CD7F32]              _/^^\\_        _/^^\\_[/]
 [#CD7F32]           .-'     `-.__.-'     `-.[/]
@@ -149,6 +149,68 @@ def _listening_art_line(encoded: str):
         run += char
     flush()
     return line
+
+
+def _scaled_listening_art(max_width: int) -> tuple[str, ...]:
+    """Compress the dot matrix for the two-column detailed banner."""
+    source_width = max(len(line) for line in DITING_LISTENING_ART)
+    if max_width >= source_width:
+        return DITING_LISTENING_ART
+
+    scaled = []
+    for line in DITING_LISTENING_ART:
+        padded = line.ljust(source_width)
+        output = []
+        for column in range(max_width):
+            start = int(column * source_width / max_width)
+            end = max(start + 1, int((column + 1) * source_width / max_width))
+            chunk = padded[start:end]
+            if ";" in chunk:
+                output.append(";")
+            elif "," in chunk:
+                output.append(",")
+            elif ":" in chunk:
+                output.append(":")
+            elif "." in chunk:
+                output.append(".")
+            else:
+                output.append(" ")
+        scaled.append("".join(output).rstrip())
+    return tuple(scaled)
+
+
+def _listening_art_markup(max_width: int) -> str:
+    """Return Rich markup for embedding the Listening art in a panel."""
+    rendered = []
+    for encoded in _scaled_listening_art(max_width):
+        parts = []
+        run = ""
+        run_color = None
+
+        def flush() -> None:
+            nonlocal run
+            if not run:
+                return
+            parts.append(f"[{run_color}]{run}[/]" if run_color else run)
+            run = ""
+
+        for token in encoded:
+            if token in ";,":
+                char = ":" if token == ";" else "."
+                color = _LISTENING_CYAN
+            elif token in ":.":
+                char = token
+                color = _LISTENING_GOLD
+            else:
+                char = token
+                color = None
+            if color != run_color:
+                flush()
+                run_color = color
+            run += char
+        flush()
+        rendered.append("".join(parts))
+    return "\n".join(rendered)
 
 
 def build_listening_splash(console: "Console") -> None:
@@ -737,15 +799,20 @@ def build_welcome_banner(console: "Console", model: str, cwd: str,
     text = _skin_color("banner_text", "#FFF8DC")
     session_color = _skin_color("session_border", "#8B8682")
 
-    # Use skin's custom totem art if provided
+    # Use a skin's custom hero when configured. The default DiTing skin uses
+    # the Listening dot matrix supplied for the product launch screen.
     try:
         from diting_cli.skin_engine import get_active_skin
         _bskin = get_active_skin()
-        _hero = _bskin.banner_hero if hasattr(_bskin, 'banner_hero') and _bskin.banner_hero else DiTing_TOTEM
+        if hasattr(_bskin, 'banner_hero') and _bskin.banner_hero:
+            _hero = _bskin.banner_hero
+        else:
+            _hero_width = 64 if (getattr(console, "width", 120) or 120) >= 132 else 42
+            _hero = _listening_art_markup(_hero_width)
     except Exception:
         _bskin = None
-        _hero = DiTing_TOTEM
-    left_lines = ["", _hero, ""]
+        _hero = _listening_art_markup(42)
+    left_lines = [f"[bold {_LISTENING_HEADER}]DITING // LISTENING[/]", "", _hero, ""]
     if (provider or "").strip().lower() == "moa":
         # MoA virtual provider: ``model`` is a preset name. Show the preset and
         # its aggregator so the banner is meaningful instead of a bare slug.

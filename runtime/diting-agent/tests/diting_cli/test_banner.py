@@ -11,6 +11,7 @@ import tools.mcp_tool
 
 def test_default_banner_uses_diting_wordmark_and_totem():
     assert "██████╗ ██╗████████╗██╗███╗   ██╗ ██████╗" in banner.DiTing_AGENT_LOGO
+    assert "█████╗  ██████╗ ███████╗███╗   ██╗████████╗" in banner.DiTing_AGENT_LOGO
     assert "听" in banner.DiTing_TOTEM
     assert "◉ ◉" in banner.DiTing_TOTEM
     assert "_/^^\\_" in banner.DiTing_TOTEM
@@ -83,6 +84,7 @@ def test_build_welcome_banner_uses_normalized_toolset_names():
     assert "homeassistant:" in output
     assert "honcho:" in output
     assert "web:" in output
+    assert "DITING // LISTENING" in output
     assert "homeassistant_tools:" not in output
     assert "honcho_tools:" not in output
     assert "web_tools:" not in output
