@@ -16,7 +16,7 @@ If you set `DiTing_ACTIVE_PROFILE=<name>`, the active profile files move to:
 
 ## Recommended flow
 
-1. Run `docker compose run --rm DiTing-webui prepare-DiTing-home`
+1. Run `docker compose run --rm diting-webui prepare-diting-home`
 2. Copy `config.yaml.example` to `config.yaml`
 3. Fill in the provider, model, base URL, and credentials you actually use
 4. Start the service with `docker compose up -d`
