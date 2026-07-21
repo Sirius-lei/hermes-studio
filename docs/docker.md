@@ -60,9 +60,38 @@ Common Compose overrides:
 | `DiTing_HOME_DIR` | `./diting_data` | Host Agent state directory |
 | `DiTing_WEB_UI_HOME_DIR` | `./diting_webui_data` | Host Web UI state directory |
 | `DiTing_OFFLINE` | `1` in Docker | Disable optional remote catalogs, update checks, and runtime downloads. Configured model APIs remain available. |
+| `DiTing_PYPI_INDEX_URL` | empty | Internal Python package index for Docker builds and runtime lazy installs. |
+| `DiTing_PYPI_EXTRA_INDEX_URL` | empty | Comma- or newline-separated extra Python package indexes. |
+| `DiTing_PYPI_TRUSTED_HOST` | empty | Comma- or newline-separated hosts allowed for non-TLS package indexes. Prefer HTTPS. |
 | `DiTing_ACTIVE_PROFILE` | `default` | Active profile |
 | `DiTing_DOCKER_REQUIRE_PROFILE_CONFIG` | `0` | Require profile config before startup |
 | `DiTing_AGENT_BRIDGE_WARM_PROFILES` | `active` | Profiles to prewarm after Web startup |
+
+The runtime also accepts the same values in `config.yaml` under `security`.
+Environment variables take precedence, which is useful for deployment secrets:
+
+```yaml
+security:
+  pypi_index_url: https://devpi.intra.example/root/pypi/+simple/
+  pypi_extra_index_urls: []
+  pypi_trusted_hosts: []
+```
+
+Build the image against an internal devpi source with the Compose build args:
+
+```bash
+DiTing_PYPI_INDEX_URL=https://devpi.intra.example/root/pypi/+simple/ \
+docker compose build diting-webui
+```
+
+The root Web UI Dockerfile and `runtime/diting-agent/Dockerfile` accept the
+same `DITING_PYPI_*` build arguments.
+
+Do not commit credentials in a URL or bake them into a reusable image. Inject
+authenticated values through the deployment environment or a secret-aware
+build process. The standard `PIP_INDEX_URL`, `PIP_EXTRA_INDEX_URL`, and
+`PIP_TRUSTED_HOST` variables are also accepted by runtime lazy installs when
+the DiTing-specific variables and config values are empty.
 
 Example custom port:
 
@@ -92,9 +121,14 @@ archive and the two mapped data directories.
 On the connected build machine:
 
 ```bash
-docker build -t diting-web-ui:0.6.20 .
+docker compose build diting-webui
+docker tag diting-web-ui-local:latest diting-web-ui:0.6.20
 docker save diting-web-ui:0.6.20 | gzip > diting-web-ui-0.6.20.tar.gz
 ```
+
+When the connected build machine uses an internal devpi source, export
+`DiTing_PYPI_INDEX_URL` (and, if needed, the extra-index/trusted-host
+variables) before `docker compose build`.
 
 On the offline host:
 

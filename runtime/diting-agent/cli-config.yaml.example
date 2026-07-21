@@ -357,6 +357,10 @@ terminal:
 #   tirith_path: "tirith"       # Path to tirith binary (supports ~ expansion)
 #   tirith_timeout: 5           # Scan timeout in seconds
 #   tirith_fail_open: true      # Allow commands if tirith unavailable
+#   allow_lazy_installs: true    # Install allowlisted optional dependencies on demand
+#   pypi_index_url: "https://devpi.intra.example/root/pypi/+simple/"
+#   pypi_extra_index_urls: []
+#   pypi_trusted_hosts: []       # Only needed for non-TLS package indexes
 
 # =============================================================================
 # Browser Tool Configuration

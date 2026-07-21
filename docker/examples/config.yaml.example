@@ -15,3 +15,11 @@ providers:
 agent:
   max_turns: 60
   timeout: 600
+
+security:
+  # Runtime installs are disabled by the default Docker deployment. These
+  # values apply when lazy installs are intentionally enabled.
+  allow_lazy_installs: false
+  pypi_index_url: ""
+  pypi_extra_index_urls: []
+  pypi_trusted_hosts: []

@@ -180,7 +180,13 @@ RUN npm install --prefer-offline --no-audit && \
 # The editable link is created after the source copy below.
 COPY pyproject.toml uv.lock ./
 RUN touch ./README.md
-RUN uv sync --frozen --no-install-project --extra all --extra messaging --extra anthropic --extra bedrock --extra azure-identity --extra hindsight --extra matrix
+ARG DITING_PYPI_INDEX_URL
+ARG DITING_PYPI_EXTRA_INDEX_URL
+ARG DITING_PYPI_TRUSTED_HOST
+RUN if [ -n "${DITING_PYPI_INDEX_URL:-}" ]; then export UV_INDEX_URL="$DITING_PYPI_INDEX_URL"; fi \
+    && if [ -n "${DITING_PYPI_EXTRA_INDEX_URL:-}" ]; then export UV_EXTRA_INDEX_URL="$(printf '%s' "$DITING_PYPI_EXTRA_INDEX_URL" | tr ',\n' '  ')"; fi \
+    && if [ -n "${DITING_PYPI_TRUSTED_HOST:-}" ]; then export UV_INSECURE_HOST="$(printf '%s' "$DITING_PYPI_TRUSTED_HOST" | tr ',\n' '  ')"; fi \
+    && uv sync --frozen --no-install-project --extra all --extra messaging --extra anthropic --extra bedrock --extra azure-identity --extra hindsight --extra matrix
 
 # ---------- Frontend build (cached independently from Python source) ----------
 # Copy only the frontend source trees first so that Python-only changes don't

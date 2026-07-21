@@ -749,6 +749,9 @@ Advanced per-platform knobs for throttling the outbound message batcher. Most us
 | `DiTing_REDACT_SECRETS` | `true`/`false` — control secret redaction in tool output, logs, and chat responses (default: `true`). |
 | `DiTing_WRITE_SAFE_ROOT` | Optional directory prefix that **hard-blocks** `write_file`/`patch` writes outside the listed roots (no approval prompt). Supports multiple directories separated by `os.pathsep` (`:` on Unix, `;` on Windows). See [DiTing_WRITE_SAFE_ROOT](#diting_write_safe_root) below. |
 | `DiTing_DISABLE_LAZY_INSTALLS` | Internal bridge var set automatically in the official Docker image to prevent runtime dependency installs into the immutable `/opt/diting` tree. The user-facing equivalent is `security.allow_lazy_installs: false` in `config.yaml`; do not set this in `.env`. |
+| `DiTing_PYPI_INDEX_URL` | Internal Python package index used by Docker builds and runtime lazy installs. Overrides `security.pypi_index_url`. |
+| `DiTing_PYPI_EXTRA_INDEX_URL` | Comma- or newline-separated extra Python package indexes. Overrides `security.pypi_extra_index_urls`. |
+| `DiTing_PYPI_TRUSTED_HOST` | Comma- or newline-separated hosts allowed for non-TLS package indexes. Prefer HTTPS; overrides `security.pypi_trusted_hosts`. |
 | `DiTing_DISABLE_FILE_STATE_GUARD` | Set to `1` to turn off the "file changed since you read it" guard on `patch`/`write_file`. |
 | `DiTing_CORE_TOOLS` | Comma-separated override for the canonical core tool list (advanced; rarely needed). |
 | `DiTing_BUNDLED_SKILLS` | Comma-separated override for the list of bundled skills loaded at startup. |

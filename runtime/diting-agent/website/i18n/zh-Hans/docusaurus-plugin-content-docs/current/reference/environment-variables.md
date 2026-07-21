@@ -561,6 +561,9 @@ Graph 事件（Teams 会议、日历、聊天等）的入站变更通知监听�
 | `DiTing_REDACT_SECRETS` | `true`/`false`——控制工具输出、日志和聊天响应中的密钥脱敏（默认：`true`）。 |
 | `DiTing_WRITE_SAFE_ROOT` | 可选目录前缀，**硬阻止** `write_file`/`patch` 写入列出的根目录之外的路径（无审批提示）。支持多个目录，使用 `os.pathsep` 分隔（Unix 为 `:`，Windows 为 `;`）。详见下方 [DiTing_WRITE_SAFE_ROOT](#diting_write_safe_root)。 |
 | `DiTing_DISABLE_LAZY_INSTALLS` | 官方 Docker 镜像中自动设置的内部桥接变量，用于阻止运行时将依赖安装到不可变的 `/opt/diting` 树。面向用户的等价配置是 `config.yaml` 中的 `security.allow_lazy_installs: false`；不要在 `.env` 中手动设置此变量。 |
+| `DiTing_PYPI_INDEX_URL` | Docker 构建和运行时懒安装使用的内部 Python 包源。覆盖 `security.pypi_index_url`。 |
+| `DiTing_PYPI_EXTRA_INDEX_URL` | 以逗号或换行分隔的额外 Python 包源。覆盖 `security.pypi_extra_index_urls`。 |
+| `DiTing_PYPI_TRUSTED_HOST` | 允许用于非 TLS 包源的主机列表，以逗号或换行分隔。优先使用 HTTPS；覆盖 `security.pypi_trusted_hosts`。 |
 | `DiTing_DISABLE_FILE_STATE_GUARD` | 设为 `1` 可关闭 `patch`/`write_file` 上的"文件自上次读取后已更改"保护。 |
 | `DiTing_CORE_TOOLS` | 规范核心工具列表的逗号分隔覆盖（高级；极少需要）。 |
 | `DiTing_BUNDLED_SKILLS` | 启动时加载的内置技能列表的逗号分隔覆盖。 |

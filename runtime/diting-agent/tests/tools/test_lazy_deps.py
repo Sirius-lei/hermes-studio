@@ -147,6 +147,130 @@ class TestSecurityGating:
 
 
 # ---------------------------------------------------------------------------
+# Package index configuration
+# ---------------------------------------------------------------------------
+
+
+class TestPackageIndexConfiguration:
+    _ENV_NAMES = (
+        "DiTing_PYPI_INDEX_URL",
+        "DiTing_PYPI_EXTRA_INDEX_URL",
+        "DiTing_PYPI_TRUSTED_HOST",
+        "PIP_INDEX_URL",
+        "PIP_EXTRA_INDEX_URL",
+        "PIP_TRUSTED_HOST",
+    )
+
+    def _clear_env(self, monkeypatch):
+        for name in self._ENV_NAMES:
+            monkeypatch.delenv(name, raising=False)
+
+    def test_configured_devpi_values_build_uv_and_pip_args(self, monkeypatch):
+        self._clear_env(monkeypatch)
+        monkeypatch.setattr(
+            "diting_cli.config.load_config",
+            lambda: {
+                "security": {
+                    "pypi_index_url": "https://devpi.intra/root/pypi/+simple/",
+                    "pypi_extra_index_urls": ["https://mirror.intra/simple/"],
+                    "pypi_trusted_hosts": ["devpi.intra"],
+                }
+            },
+        )
+
+        assert ld._package_index_args() == [
+            "--index-url",
+            "https://devpi.intra/root/pypi/+simple/",
+            "--extra-index-url",
+            "https://mirror.intra/simple/",
+            "--trusted-host",
+            "devpi.intra",
+        ]
+        assert ld._package_index_args(for_uv=True)[-2:] == [
+            "--allow-insecure-host",
+            "devpi.intra",
+        ]
+
+    def test_environment_values_override_config(self, monkeypatch):
+        self._clear_env(monkeypatch)
+        monkeypatch.setattr(
+            "diting_cli.config.load_config",
+            lambda: {"security": {"pypi_index_url": "https://config.invalid/simple/"}},
+        )
+        monkeypatch.setenv("DiTing_PYPI_INDEX_URL", "http://devpi.intra/simple/")
+        monkeypatch.setenv(
+            "DiTing_PYPI_EXTRA_INDEX_URL",
+            "https://mirror-a.intra/simple/,\nhttps://mirror-b.intra/simple/",
+        )
+        monkeypatch.setenv("DiTing_PYPI_TRUSTED_HOST", "devpi.intra,mirror-a.intra")
+
+        assert ld._package_index_args() == [
+            "--index-url",
+            "http://devpi.intra/simple/",
+            "--extra-index-url",
+            "https://mirror-a.intra/simple/",
+            "--extra-index-url",
+            "https://mirror-b.intra/simple/",
+            "--trusted-host",
+            "devpi.intra",
+            "--trusted-host",
+            "mirror-a.intra",
+        ]
+
+    def test_invalid_urls_and_trusted_hosts_are_ignored(self, monkeypatch):
+        self._clear_env(monkeypatch)
+        monkeypatch.setattr(
+            "diting_cli.config.load_config",
+            lambda: {
+                "security": {
+                    "pypi_index_url": "file:///tmp/packages",
+                    "pypi_extra_index_urls": ["not a url", "file:///tmp/mirror"],
+                    "pypi_trusted_hosts": ["devpi.intra/path", "bad host"],
+                }
+            },
+        )
+
+        assert ld._package_index_args() == []
+
+    def test_standard_pip_environment_is_supported_as_fallback(self, monkeypatch):
+        self._clear_env(monkeypatch)
+        monkeypatch.setattr("diting_cli.config.load_config", lambda: {"security": {}})
+        monkeypatch.setenv("PIP_INDEX_URL", "https://devpi.intra/simple/")
+        monkeypatch.setenv(
+            "PIP_EXTRA_INDEX_URL",
+            "https://mirror-a.intra/simple/ https://mirror-b.intra/simple/",
+        )
+
+        assert ld._package_index_args() == [
+            "--index-url",
+            "https://devpi.intra/simple/",
+            "--extra-index-url",
+            "https://mirror-a.intra/simple/",
+            "--extra-index-url",
+            "https://mirror-b.intra/simple/",
+        ]
+
+    def test_install_command_receives_index_args(self, monkeypatch):
+        self._clear_env(monkeypatch)
+        monkeypatch.setattr(ld, "_lazy_install_target", lambda: None)
+        monkeypatch.setattr(ld, "_package_index_args", lambda: ["--index-url", "https://devpi.intra/simple/"])
+        monkeypatch.setattr(ld.shutil, "which", lambda name: None)
+
+        calls = []
+
+        def fake_run(command, **kwargs):
+            calls.append(command)
+            return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+
+        monkeypatch.setattr(ld.subprocess, "run", fake_run)
+
+        result = ld._venv_pip_install(("test-package>=1",))
+
+        assert result.success is True
+        assert calls[1][-3:] == ["--index-url", "https://devpi.intra/simple/", "test-package>=1"]
+
+
+# ---------------------------------------------------------------------------
 # ensure() happy/sad paths
 # ---------------------------------------------------------------------------
 

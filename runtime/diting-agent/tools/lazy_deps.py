@@ -42,9 +42,10 @@ Security model:
   the venv in the first place. Compiled-wheel safety across image rebuilds
   is handled by an ABI/Python-version stamp on the target subdir (see
   :func:`_ensure_target_ready`).
-* **PyPI by package name only.** Specs may be ``"package>=1.0,<2"`` etc.
-  We do NOT support ``--index-url`` overrides, ``git+https://``, file:
-  paths, or any other input that could be hijacked by a malicious config.
+* **Controlled package indexes.** Specs may be ``"package>=1.0,<2"`` etc.
+  Package indexes are configured through ``security.pypi_*`` or the matching
+  ``DiTing_PYPI_*`` environment variables; arbitrary install arguments,
+  ``git+https://`` specs, and file paths remain unsupported.
 * **Allowlist.** Only specs that appear in :data:`LAZY_DEPS` can be
   installed via this path. A typo in feature name doesn't get the user
   install-anything semantics.
@@ -78,6 +79,7 @@ import sysconfig
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Optional
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
@@ -295,6 +297,69 @@ class _InstallResult:
 # security.allow_lazy_installs in config.yaml. When unset, lazy installs go
 # into the active venv as before.
 _LAZY_TARGET_ENV = "DiTing_LAZY_INSTALL_TARGET"
+
+
+def _split_package_index_values(value: Any) -> list[str]:
+    """Normalize a string/list of package index values without shell parsing."""
+    if isinstance(value, (list, tuple)):
+        return [str(item).strip() for item in value if str(item).strip()]
+    return [part for part in re.split(r"[\s,]+", str(value or "").strip()) if part]
+
+
+def _valid_package_index_url(value: Any) -> str:
+    candidate = str(value or "").strip()
+    if not candidate:
+        return ""
+    parsed = urlparse(candidate)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        logger.warning("Ignoring invalid Python package index URL")
+        return ""
+    return candidate
+
+
+def _package_index_args(*, for_uv: bool = False) -> list[str]:
+    """Build safe index flags for both uv and pip installers.
+
+    The URL may contain credentials supplied by an environment variable, so
+    this function deliberately never logs the resulting arguments.
+    """
+    config: dict[str, Any] = {}
+    try:
+        from diting_cli.config import load_config
+        config = load_config() or {}
+    except Exception:
+        pass
+    security = config.get("security") if isinstance(config.get("security"), dict) else {}
+
+    index_url = _valid_package_index_url(
+        os.environ.get("DiTing_PYPI_INDEX_URL")
+        or security.get("pypi_index_url")
+        or os.environ.get("PIP_INDEX_URL")
+    )
+    extra_values = _split_package_index_values(
+        os.environ.get("DiTing_PYPI_EXTRA_INDEX_URL")
+        or security.get("pypi_extra_index_urls")
+        or os.environ.get("PIP_EXTRA_INDEX_URL")
+    )
+    extra_urls = [_valid_package_index_url(value) for value in extra_values]
+    trusted_values = _split_package_index_values(
+        os.environ.get("DiTing_PYPI_TRUSTED_HOST")
+        or security.get("pypi_trusted_hosts")
+        or os.environ.get("PIP_TRUSTED_HOST")
+    )
+    trusted_hosts = [value for value in trusted_values if value and " " not in value and "/" not in value]
+
+    args: list[str] = []
+    if index_url:
+        args.extend(["--index-url", index_url])
+    for extra_url in extra_urls:
+        if extra_url:
+            args.extend(["--extra-index-url", extra_url])
+    insecure_host_flag = "--allow-insecure-host" if for_uv else "--trusted-host"
+    for trusted_host in trusted_hosts:
+        args.extend([insecure_host_flag, trusted_host])
+    return args
+
 
 # Name of the stamp file written into the target dir recording the Python
 # X.Y + ABI it was populated for. If a container rebuild bumps the
@@ -671,7 +736,15 @@ def _venv_pip_install(specs: tuple[str, ...], *, timeout: int = 300) -> _Install
         if uv_bin:
             try:
                 r = subprocess.run(
-                    [uv_bin, "pip", "install", *target_args, *constraint_args, *specs],
+                    [
+                        uv_bin,
+                        "pip",
+                        "install",
+                        *_package_index_args(for_uv=True),
+                        *target_args,
+                        *constraint_args,
+                        *specs,
+                    ],
                     capture_output=True, text=True, timeout=timeout, env=uv_env,
                     stdin=subprocess.DEVNULL,
                 )
@@ -706,7 +779,13 @@ def _venv_pip_install(specs: tuple[str, ...], *, timeout: int = 300) -> _Install
 
         try:
             r = subprocess.run(
-                pip_cmd + ["install", *target_args, *constraint_args, *specs],
+                pip_cmd + [
+                    "install",
+                    *_package_index_args(),
+                    *target_args,
+                    *constraint_args,
+                    *specs,
+                ],
                 capture_output=True, text=True, timeout=timeout,
                 stdin=subprocess.DEVNULL,
             )

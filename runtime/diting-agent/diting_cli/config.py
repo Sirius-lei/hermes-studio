@@ -2665,6 +2665,11 @@ DEFAULT_CONFIG = {
         # for restricted networks, audited environments, or air-gapped
         # systems where any runtime install is unacceptable.
         "allow_lazy_installs": True,
+        # Optional internal Python package indexes used by runtime lazy
+        # installs. Environment variables take precedence over these values.
+        "pypi_index_url": "",
+        "pypi_extra_index_urls": [],
+        "pypi_trusted_hosts": [],
     },
 
     "cron": {

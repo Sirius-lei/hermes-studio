@@ -3,6 +3,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      args:
+        DITING_PYPI_INDEX_URL: ${DiTing_PYPI_INDEX_URL:-}
+        DITING_PYPI_EXTRA_INDEX_URL: ${DiTing_PYPI_EXTRA_INDEX_URL:-}
+        DITING_PYPI_TRUSTED_HOST: ${DiTing_PYPI_TRUSTED_HOST:-}
     image: ${WEBUI_IMAGE:-diting-web-ui-local:latest}
     container_name: ${WEBUI_CONTAINER_NAME:-diting-webui}
     ports:
@@ -19,6 +23,9 @@ services:
       - DiTing_WEB_UI_HOME=/home/agent/.diting-web-ui
       - DiTing_OFFLINE=${DiTing_OFFLINE:-1}
       - DiTing_DISABLE_LAZY_INSTALLS=1
+      - DiTing_PYPI_INDEX_URL=${DiTing_PYPI_INDEX_URL:-}
+      - DiTing_PYPI_EXTRA_INDEX_URL=${DiTing_PYPI_EXTRA_INDEX_URL:-}
+      - DiTing_PYPI_TRUSTED_HOST=${DiTing_PYPI_TRUSTED_HOST:-}
       - DiTing_ACTIVE_PROFILE=${DiTing_ACTIVE_PROFILE:-default}
       - DiTing_DOCKER_REQUIRE_PROFILE_CONFIG=${DiTing_DOCKER_REQUIRE_PROFILE_CONFIG:-0}
       - DiTing_WEB_UI_MANAGED_GATEWAY=1

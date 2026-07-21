@@ -17,7 +17,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN useradd --create-home --home-dir /home/agent --shell /bin/sh agent
 
 COPY runtime/diting-agent /opt/diting/diting-agent
+ARG DITING_PYPI_INDEX_URL
+ARG DITING_PYPI_EXTRA_INDEX_URL
+ARG DITING_PYPI_TRUSTED_HOST
 RUN python3 -m venv /opt/diting/.venv \
+    && if [ -n "${DITING_PYPI_INDEX_URL:-}" ]; then export PIP_INDEX_URL="$DITING_PYPI_INDEX_URL"; fi \
+    && if [ -n "${DITING_PYPI_EXTRA_INDEX_URL:-}" ]; then export PIP_EXTRA_INDEX_URL="$(printf '%s' "$DITING_PYPI_EXTRA_INDEX_URL" | tr ',\n' '  ')"; fi \
+    && if [ -n "${DITING_PYPI_TRUSTED_HOST:-}" ]; then export PIP_TRUSTED_HOST="$(printf '%s' "$DITING_PYPI_TRUSTED_HOST" | tr ',\n' '  ')"; fi \
     && /opt/diting/.venv/bin/pip install --no-cache-dir --upgrade pip setuptools wheel \
     && /opt/diting/.venv/bin/pip install --no-cache-dir /opt/diting/diting-agent
 
