@@ -59,6 +59,7 @@ Common Compose overrides:
 | `WEBUI_CONTAINER_NAME` | `diting-webui` | Container name |
 | `DiTing_HOME_DIR` | `./diting_data` | Host Agent state directory |
 | `DiTing_WEB_UI_HOME_DIR` | `./diting_webui_data` | Host Web UI state directory |
+| `DiTing_OFFLINE` | `1` in Docker | Disable optional remote catalogs, update checks, and runtime downloads. Configured model APIs remain available. |
 | `DiTing_ACTIVE_PROFILE` | `default` | Active profile |
 | `DiTing_DOCKER_REQUIRE_PROFILE_CONFIG` | `0` | Require profile config before startup |
 | `DiTing_AGENT_BRIDGE_WARM_PROFILES` | `active` | Profiles to prewarm after Web startup |
@@ -80,3 +81,32 @@ docker compose down
 
 The generated login token is stored at `./diting_webui_data/.token` and is
 also available in the startup logs.
+
+## Offline Deployment
+
+An air-gapped host cannot build this Dockerfile from source because the build
+needs the Node base image, Debian packages, npm dependencies, and Python
+wheels. Build the image once on a connected machine, then transfer the image
+archive and the two mapped data directories.
+
+On the connected build machine:
+
+```bash
+docker build -t diting-web-ui:0.6.20 .
+docker save diting-web-ui:0.6.20 | gzip > diting-web-ui-0.6.20.tar.gz
+```
+
+On the offline host:
+
+```bash
+docker load < diting-web-ui-0.6.20.tar.gz
+WEBUI_IMAGE=diting-web-ui:0.6.20 docker compose -f docker-compose.offline.yml up -d --no-build
+docker compose -f docker-compose.offline.yml logs -f diting-webui
+```
+
+`docker-compose.offline.yml` has no `build:` section, so Compose will not
+attempt a registry pull or package installation. The image already contains
+the Web UI, Node production dependencies, Python environment, and DiTing
+Bridge. The model provider URL configured in `diting_data` still must be
+reachable from the internal network; offline mode only removes optional
+package/catalog/update traffic.

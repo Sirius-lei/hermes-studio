@@ -1,9 +1,6 @@
 services:
   diting-webui:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: ${WEBUI_IMAGE:-diting-web-ui-local:latest}
+    image: ${WEBUI_IMAGE:?WEBUI_IMAGE must point to a preloaded DiTing Web UI image}
     container_name: ${WEBUI_CONTAINER_NAME:-diting-webui}
     ports:
       - "${DITING_WEB_PORT:-16060}:6060"
@@ -17,7 +14,7 @@ services:
       - BIND_HOST=0.0.0.0
       - DiTing_HOME=/home/agent/.diting
       - DiTing_WEB_UI_HOME=/home/agent/.diting-web-ui
-      - DiTing_OFFLINE=${DiTing_OFFLINE:-1}
+      - DiTing_OFFLINE=1
       - DiTing_DISABLE_LAZY_INSTALLS=1
       - DiTing_ACTIVE_PROFILE=${DiTing_ACTIVE_PROFILE:-default}
       - DiTing_DOCKER_REQUIRE_PROFILE_CONFIG=${DiTing_DOCKER_REQUIRE_PROFILE_CONFIG:-0}

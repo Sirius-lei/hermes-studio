@@ -451,6 +451,10 @@ def check_for_updates() -> Optional[int]:
     if behind but the count is unknown, ``0`` if up-to-date, or ``None`` if
     the check failed or doesn't apply. Cached for 6 hours.
     """
+    offline = (os.environ.get("DiTing_OFFLINE") or os.environ.get("DITING_OFFLINE") or "").strip().lower()
+    if offline in {"1", "true", "yes", "on"}:
+        return None
+
     diting_home = get_diting_home()
     cache_file = diting_home / ".update_check"
     embedded_rev = os.environ.get("DiTing_REVISION") or None

@@ -9,6 +9,7 @@ import { resolveCopilotOAuthToken } from './copilot-models'
 import { logger } from '../logger'
 import { safeFileStore } from '../safe-file-store'
 import { getProfileDir, listProfileNamesFromDisk } from './DiTing-profile'
+import { isOfflineMode } from '../offline-mode'
 
 export type ModelCatalogSource = 'live' | 'fallback'
 
@@ -477,6 +478,10 @@ async function runLimited<T>(items: T[], limit: number, worker: (item: T) => Pro
 }
 
 export async function refreshConfiguredProviderModelCatalogs(options: { force?: boolean } = {}): Promise<void> {
+  const offline = isOfflineMode()
+  if (offline) {
+    logger.info('[model-catalog-cache] offline mode: live provider catalog fetches disabled; using configured fallbacks')
+  }
   const cache = await readProviderModelCatalogCache()
   if (!options.force && Object.keys(cache.providers).length > 0) {
     logger.info('[model-catalog-cache] provider model catalog cache exists; skipping startup refresh')
@@ -489,7 +494,7 @@ export async function refreshConfiguredProviderModelCatalogs(options: { force?: 
   await runLimited(candidates, 4, async (candidate) => {
     try {
       const profiles = candidate.profile.split(',').filter(Boolean)
-      if (candidate.skip_live_fetch) {
+      if (offline || candidate.skip_live_fetch) {
         await writeProviderModelCatalogEntry({
           provider: candidate.provider,
           label: candidate.label,

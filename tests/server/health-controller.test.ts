@@ -182,6 +182,23 @@ describe('health controller version metadata', () => {
     await expect(checkLatestVersion()).resolves.toBeUndefined()
   })
 
+  it('skips npm update checks in offline mode', async () => {
+    const previousOffline = process.env.DiTing_OFFLINE
+    process.env.DiTing_OFFLINE = '1'
+    try {
+      const fetchMock = vi.fn()
+      vi.stubGlobal('fetch', fetchMock)
+
+      const { checkLatestVersion } = await loadHealthControllerWithoutInjectedVersion()
+      await checkLatestVersion()
+
+      expect(fetchMock).not.toHaveBeenCalled()
+    } finally {
+      if (previousOffline === undefined) delete process.env.DiTing_OFFLINE
+      else process.env.DiTing_OFFLINE = previousOffline
+    }
+  })
+
   it('includes sanitized agent bridge readiness fields without leaking the endpoint path', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }))
 

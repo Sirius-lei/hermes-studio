@@ -1049,6 +1049,23 @@ class TestDiskFailureMarker:
 
         _tirith_mod._resolved_path = None
 
+    def test_offline_mode_skips_tirith_download(self, monkeypatch):
+        """Offline startup must not start the GitHub download path."""
+        from tools.tirith_security import _resolve_tirith_path, _INSTALL_FAILED
+
+        monkeypatch.setenv("DiTing_OFFLINE", "1")
+        _tirith_mod._resolved_path = None
+
+        with patch("tools.tirith_security.shutil.which", return_value=None), \
+             patch("tools.tirith_security._diting_bin_dir", return_value="/nonexistent"), \
+             patch("tools.tirith_security._install_tirith") as mock_install:
+            result = _resolve_tirith_path("tirith")
+
+        assert result is None
+        assert _tirith_mod._resolved_path is _INSTALL_FAILED
+        mock_install.assert_not_called()
+        _tirith_mod._resolved_path = None
+
     def test_cosign_missing_disk_marker_allows_retry(self):
         """Disk marker with cosign_missing reason allows retry when cosign appears."""
         from tools.tirith_security import _resolve_tirith_path

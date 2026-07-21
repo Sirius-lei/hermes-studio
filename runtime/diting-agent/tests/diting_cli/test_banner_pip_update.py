@@ -33,3 +33,12 @@ def test_version_tuple_comparison():
     assert _version_tuple("0.13.0") > _version_tuple("0.12.0")
     assert _version_tuple("0.13.0") == _version_tuple("0.13.0")
     assert _version_tuple("1.0.0") > _version_tuple("0.99.99")
+
+
+def test_update_check_skips_network_in_offline_mode(monkeypatch):
+    from diting_cli import banner
+
+    monkeypatch.setenv("DiTing_OFFLINE", "1")
+    with patch.object(banner, "_fetch_pypi_latest") as fetch:
+        assert banner.check_for_updates() is None
+    fetch.assert_not_called()

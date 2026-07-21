@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 import urllib.error
 import urllib.request
@@ -86,6 +87,12 @@ _catalog_cache: dict[str, Any] | None = None
 _catalog_cache_source_mtime: float = 0.0
 
 
+def _offline_mode() -> bool:
+    """Return whether optional remote catalog traffic is disabled."""
+    value = (os.getenv("DiTing_OFFLINE") or os.getenv("DITING_OFFLINE") or "").strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
@@ -104,7 +111,7 @@ def _load_catalog_config() -> dict[str, Any]:
         raw = {}
 
     return {
-        "enabled": bool(raw.get("enabled", True)),
+        "enabled": not _offline_mode() and bool(raw.get("enabled", True)),
         "url": str(raw.get("url") or DEFAULT_CATALOG_URL),
         "ttl_hours": float(raw.get("ttl_hours") or DEFAULT_TTL_HOURS),
         "providers": raw.get("providers") if isinstance(raw.get("providers"), dict) else {},

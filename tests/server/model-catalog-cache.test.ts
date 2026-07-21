@@ -200,6 +200,28 @@ describe('model catalog cache', () => {
     })
   })
 
+  it('uses configured fallback models without live requests in offline mode', async () => {
+    const previousOffline = process.env.DiTing_OFFLINE
+    process.env.DiTing_OFFLINE = '1'
+    try {
+      const { refreshConfiguredProviderModelCatalogs, providerModelCatalogKey } = await import(
+        '../../packages/server/src/services/DiTing/model-catalog-cache'
+      )
+
+      await refreshConfiguredProviderModelCatalogs({ force: true })
+
+      expect(mockFetchProviderModels).not.toHaveBeenCalled()
+      const cache = JSON.parse(cacheText)
+      expect(cache.providers[providerModelCatalogKey('custom:shared-local', 'https://custom.local/v1')]).toMatchObject({
+        models: ['local-a', 'local-b'],
+        source: 'fallback',
+      })
+    } finally {
+      if (previousOffline === undefined) delete process.env.DiTing_OFFLINE
+      else process.env.DiTing_OFFLINE = previousOffline
+    }
+  })
+
   it('adds authorized providers to the catalog cache and fetches live models for compatible auth providers', async () => {
     mockListProfileNamesFromDisk.mockReturnValue(['default'])
     mockReadAppConfig.mockResolvedValue({ copilotEnabled: true })

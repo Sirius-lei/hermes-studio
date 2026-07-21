@@ -4,6 +4,7 @@ import * as DiTingCli from '../services/DiTing/DiTing-cli'
 import { getAgentBridgeManager } from '../services/DiTing/agent-bridge/manager'
 import { redactAgentBridgeError } from '../services/DiTing/agent-bridge/redact'
 import { normalizeDiTingAgentVersion } from '../services/system-info'
+import { isOfflineMode } from '../services/offline-mode'
 
 declare const __APP_VERSION__: string
 
@@ -79,6 +80,7 @@ let pendingAgentBridgeHealthRefresh: Promise<AgentBridgeHealthPayload> | null = 
  * Set DiTing_WEB_UI_DISABLE_UPDATE_CHECK=true (or 1, on, yes) to disable.
  */
 function isUpdateCheckDisabled(): boolean {
+  if (isOfflineMode()) return true
   const raw = (process.env.DiTing_WEB_UI_DISABLE_UPDATE_CHECK || '').trim().toLowerCase()
   return raw === 'true' || raw === '1' || raw === 'on' || raw === 'yes'
 }

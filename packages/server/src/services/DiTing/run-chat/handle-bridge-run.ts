@@ -493,7 +493,10 @@ export async function handleBridgeRun(
         instructions: fullInstructions,
         state,
         bridge,
-        refresh: true,
+        // The fixed prompt/tool overhead is stable for this session. Refresh
+        // only when the model/profile changes or final usage explicitly needs
+        // a new estimate; probing the Bridge on every message delays TTFT.
+        refresh: false,
       })
       const contextTokens = fixedContextTokens == null
         ? localMessageTokens

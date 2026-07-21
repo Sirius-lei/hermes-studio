@@ -446,6 +446,12 @@ def _allow_lazy_installs() -> bool:
         if not bool(sec.get("allow_lazy_installs", True)):
             return False
 
+    # Air-gapped deployments must never turn a missing optional backend into
+    # a PyPI request. The model API configured by the operator remains usable.
+    offline = (os.environ.get("DiTing_OFFLINE") or os.environ.get("DITING_OFFLINE") or "").strip().lower()
+    if offline in {"1", "true", "yes", "on"}:
+        return False
+
     # (2) Sealed-venv env var: blocks ONLY when there is no safe durable
     # target to redirect into. With a target set, the install goes to the
     # data volume (append-only on sys.path), so the seal is preserved.

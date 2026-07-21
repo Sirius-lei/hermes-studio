@@ -65,6 +65,12 @@ def _env_int(key: str, default: int) -> int:
         return default
 
 
+def _offline_mode() -> bool:
+    """Return whether network-backed optional downloads are disabled."""
+    value = (os.getenv("DiTing_OFFLINE") or os.getenv("DITING_OFFLINE") or "").strip().lower()
+    return value in {"1", "true", "yes", "on"}
+
+
 def _load_security_config() -> dict:
     """Load security settings from config.yaml, with env var overrides."""
     defaults = {
@@ -489,7 +495,7 @@ def _is_explicit_path(configured_path: str) -> bool:
     return configured_path != "tirith"
 
 
-def _resolve_tirith_path(configured_path: str) -> str:
+def _resolve_tirith_path(configured_path: str) -> str | None:
     """Resolve the tirith binary path, auto-installing if necessary.
 
     If the user explicitly set a path (anything other than the bare "tirith"
@@ -554,6 +560,11 @@ def _resolve_tirith_path(configured_path: str) -> str:
         _install_failure_reason = ""
         _clear_install_failed()
         return diting_bin
+
+    if _offline_mode():
+        _resolved_path = _INSTALL_FAILED
+        _install_failure_reason = "offline_mode"
+        return None
 
     # Local checks failed.  If a previous install attempt already failed,
     # skip the network retry — UNLESS the failure was "cosign_missing" and
@@ -688,6 +699,11 @@ def ensure_installed(*, log_failures: bool = True):
         _install_failure_reason = ""
         _clear_install_failed()
         return diting_bin
+
+    if _offline_mode():
+        _resolved_path = _INSTALL_FAILED
+        _install_failure_reason = "offline_mode"
+        return None
 
     # If previously failed in-memory, check if the cause is now resolved
     if _resolved_path is _INSTALL_FAILED:

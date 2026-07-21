@@ -306,6 +306,16 @@ class TestDisabled:
         assert result == {}
         fetch.assert_not_called()
 
+    def test_offline_mode_short_circuits_remote_catalog(self, isolated_home, monkeypatch):
+        from diting_cli import model_catalog
+
+        monkeypatch.setenv("DiTing_OFFLINE", "1")
+        with patch.object(model_catalog, "_fetch_manifest") as fetch:
+            result = model_catalog.get_catalog(force_refresh=True)
+
+        assert result == {}
+        fetch.assert_not_called()
+
 
 class TestProviderOverride:
     def test_override_url_takes_precedence(self, isolated_home):

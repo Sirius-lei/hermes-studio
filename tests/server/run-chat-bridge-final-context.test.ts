@@ -170,6 +170,12 @@ describe('bridge run final context usage', () => {
     const socket = makeSocket()
     const state = makeState()
     const sessionMap = new Map([['session-1', state]])
+    buildCompressedHistoryMock.mockImplementationOnce(async (...args: any[]) => {
+      const estimate = args[7] as ((messages: any[], tokens: number) => Promise<number>) | undefined
+      await estimate?.([], 11)
+      await estimate?.([], 12)
+      return [{ role: 'user', content: 'previous' }]
+    })
     const bridge = {
       chat: vi.fn().mockResolvedValue({ run_id: 'run-1', status: 'started' }),
       contextEstimate: vi.fn().mockResolvedValue({
@@ -204,6 +210,7 @@ describe('bridge run final context usage', () => {
       'default',
       { model: 'gpt-test', provider: 'openai' },
     )
+    expect(bridge.contextEstimate).toHaveBeenCalledTimes(1)
     expect(bridge.contextEstimate.mock.calls[0][2]).toContain('system prompt')
     expect(bridge.contextEstimate.mock.calls[0][2]).toContain('X-DiTing-Profile')
     expect(state.contextTokens).toBe(12345)
